@@ -241,16 +241,25 @@ const Playlists = () => {
         {selectedPlaylist && (
           <div>
             <h2>{selectedPlaylist.name}</h2>
-            <ul>
+            <div className="playlist-grid">
+              <div className="playlist-grid-header">#</div>
+              <div className="playlist-grid-header">Title</div>
+              <div className="playlist-grid-header">Artist</div>
+              <div className="playlist-grid-header">Actions</div>
+              
               {tracks && tracks.map((track, index) => (
-                <li key={index}>
-                  {index + 1}. {track.music_file_details?.title || 'Unknown Title'} - {track.music_file_details?.artist || 'Unknown Artist'}
-                  <button onClick={() => removeSongFromPlaylist(track.order)}>Remove</button>
-                  {index > 0 && <button onClick={() => moveTrack(index, index - 1)}>Up</button>}
-                  {index < tracks.length - 1 && <button onClick={() => moveTrack(index, index + 1)}>Down</button>}
-                </li>
+                <React.Fragment key={index}>
+                  <div className="playlist-grid-item">{index + 1}</div>
+                  <div className="playlist-grid-item">{track.music_file_details?.title || 'Unknown Title'}</div>
+                  <div className="playlist-grid-item">{track.music_file_details?.artist || 'Unknown Artist'}</div>
+                  <div className="playlist-grid-item">
+                    <button onClick={() => removeSongFromPlaylist(index)}>Remove</button>
+                    {index > 0 && <button onClick={() => moveTrack(index, index - 1)}>↑</button>}
+                    {index < tracks.length - 1 && <button onClick={() => moveTrack(index, index + 1)}>↓</button>}
+                  </div>
+                </React.Fragment>
               ))}
-            </ul>
+            </div>
           </div>
         )}
 
