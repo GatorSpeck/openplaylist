@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import PlaylistModal from './PlaylistModal';
 import './Playlists.css'; // Import the CSS file for styling
 
 console.log('API URL:', import.meta.env.VITE_API_URL);
@@ -12,6 +13,8 @@ const Playlists = () => {
   const [songs, setSongs] = useState([]);
   const [filterQuery, setFilterQuery] = useState('');
   const [selectedPlaylistForTrack, setSelectedPlaylistForTrack] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [songToAdd, setSongToAdd] = useState(null);
 
   useEffect(() => {
     fetchPlaylists();
@@ -74,15 +77,10 @@ const Playlists = () => {
     }
   };
 
-  const addSongToPlaylist = async (songPath) => {
-    if (!selectedPlaylistForTrack) {
-      alert('Please select a playlist first.');
-      return;
-    }
-
+  const addSongToPlaylist = async (songPath, playlistId) => {
     try {
       // Fetch the latest details of the selected playlist
-      const playlistResponse = await axios.get(`${import.meta.env.VITE_API_URL}/api/playlists/${selectedPlaylistForTrack}`);
+      const playlistResponse = await axios.get(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}`);
       const foundPlaylist = playlistResponse.data;
 
       if (!foundPlaylist) {
@@ -96,13 +94,13 @@ const Playlists = () => {
       const updatedMusicFilePaths = [...musicFilePaths, songPath];
 
       // Update the playlist with the new list of music file paths
-      const response = await axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${selectedPlaylistForTrack}`, {
+      const response = await axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}`, {
         name: foundPlaylist.name,
         music_file_paths: updatedMusicFilePaths
       });
 
       // Update the selected playlist and tracks if it is the currently selected playlist
-      if (selectedPlaylist && selectedPlaylist.id === parseInt(selectedPlaylistForTrack, 10)) {
+      if (selectedPlaylist && selectedPlaylist.id === playlistId) {
         setSelectedPlaylist(response.data);
         setTracks(response.data.music_files);
       }
@@ -177,7 +175,7 @@ const Playlists = () => {
     try {
       await axios.get(`${import.meta.env.VITE_API_URL}/api/scan`);
       alert('Music scan completed successfully.');
-      fetchSongs();
+      fetchSongs(); // Reload the tracks data
     } catch (error) {
       console.error('Error scanning music:', error);
       alert('Error scanning music.');
@@ -188,11 +186,22 @@ const Playlists = () => {
     try {
       await axios.get(`${import.meta.env.VITE_API_URL}/api/fullscan`);
       alert('Full music scan completed successfully.');
-      fetchSongs();
+      fetchSongs(); // Reload the tracks data
     } catch (error) {
       console.error('Error performing full scan:', error);
       alert('Error performing full scan.');
     }
+  };
+
+  const handleAddToPlaylist = (songPath) => {
+    setSongToAdd(songPath);
+    setShowModal(true);
+  };
+
+  const handleSelectPlaylist = (playlistId) => {
+    addSongToPlaylist(songToAdd, playlistId);
+    setShowModal(false);
+    setSongToAdd(null);
   };
 
   const filteredSongs = songs.filter(song =>
@@ -223,7 +232,6 @@ const Playlists = () => {
           onChange={(e) => setNewPlaylistName(e.target.value)}
         />
         <button onClick={createPlaylist}>Create Playlist</button>
-
 
         <button onClick={scanMusic}>Scan Music</button>
         <button onClick={fullScanMusic}>Full Scan Music</button>
@@ -266,11 +274,18 @@ const Playlists = () => {
           {filteredSongs.map(song => (
             <li key={song.path}>
               {song.title} - {song.artist}
-              <button onClick={() => addSongToPlaylist(song.path)}>Add to Playlist</button>
+              <button onClick={() => handleAddToPlaylist(song.path)}>Add to Playlist</button>
             </li>
           ))}
         </ul>
       </div>
+      {showModal && (
+        <PlaylistModal
+          playlists={playlists}
+          onClose={() => setShowModal(false)}
+          onSelect={handleSelectPlaylist}
+        />
+      )}
     </div>
   );
 };

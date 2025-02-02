@@ -302,11 +302,14 @@ def update_playlist(playlist_id: int, playlist: PlaylistCreate):
         if db_playlist is None:
             raise HTTPException(status_code=404, detail="Playlist not found")
 
+        # Clear existing associations
+        db.query(PlaylistMusicFile).filter(PlaylistMusicFile.playlist_id == playlist_id).delete()
+
+        # Add new associations with updated order
         for index, path in enumerate(playlist.music_file_paths):
             music_file = db.query(MusicFileDB).filter(MusicFileDB.path == path).first()
             if music_file:
-                association = PlaylistMusicFile(order=index)
-                db_playlist.music_files.append(music_file)
+                association = PlaylistMusicFile(playlist_id=playlist_id, music_file_id=music_file.id, order=index)
                 db.add(association)
 
         db.commit()
