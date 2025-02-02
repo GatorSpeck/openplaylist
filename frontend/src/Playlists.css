@@ -1,0 +1,27 @@
+.playlists-container {
+  display: flex;
+}
+
+.playlists-panel {
+  width: 30%;
+  padding: 20px;
+  border-right: 1px solid #ccc;
+}
+
+.editor-panel {
+  width: 70%;
+  padding: 20px;
+}
+
+ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+li {
+  margin-bottom: 10px;
+}
+
+button {
+  margin-left: 10px;
+}

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import './Playlists.css'; // Import the CSS file for styling
 
 console.log('API URL:', import.meta.env.VITE_API_URL);
 
 const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
   const [newPlaylistName, setNewPlaylistName] = useState('');
-  const [newPlaylistPaths, setNewPlaylistPaths] = useState('');
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [songs, setSongs] = useState([]);
@@ -50,11 +50,10 @@ const Playlists = () => {
     try {
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/playlists`, {
         name: newPlaylistName,
-        music_file_paths: newPlaylistPaths.split(',').map(path => path.trim())
+        music_file_paths: []
       });
       setPlaylists([...playlists, response.data]);
       setNewPlaylistName('');
-      setNewPlaylistPaths('');
     } catch (error) {
       console.error('Error creating playlist:', error);
     }
@@ -145,68 +144,66 @@ const Playlists = () => {
   );
 
   return (
-    <div>
-      <h1>Playlists</h1>
-      <ul>
-        {playlists.map(playlist => (
-          <li key={playlist.id}>
-            <span onClick={() => fetchPlaylistDetails(playlist.id)}>{playlist.name}</span>
-            <button onClick={() => deletePlaylist(playlist.id)}>Delete</button>
-          </li>
-        ))}
-      </ul>
-      {selectedPlaylist && (
-        <div>
-          <h2>{selectedPlaylist.name}</h2>
-          <ul>
-            {tracks.map(track => (
-              <li key={track.path}>
-                {track.title} - {track.artist}
-                <button onClick={() => removeSongFromPlaylist(track.path)}>Remove</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      <h2>Create New Playlist</h2>
-      <input
-        type="text"
-        placeholder="Playlist Name"
-        value={newPlaylistName}
-        onChange={(e) => setNewPlaylistName(e.target.value)}
-      />
-      <input
-        type="text"
-        placeholder="Music File Paths (comma separated)"
-        value={newPlaylistPaths}
-        onChange={(e) => setNewPlaylistPaths(e.target.value)}
-      />
-      <button onClick={createPlaylist}>Create Playlist</button>
+    <div className="playlists-container">
+      <div className="playlists-panel">
+        <h1>Playlists</h1>
+        <ul>
+          {playlists.map(playlist => (
+            <li key={playlist.id}>
+              <span onClick={() => fetchPlaylistDetails(playlist.id)}>{playlist.name}</span>
+              <button onClick={() => deletePlaylist(playlist.id)}>Delete</button>
+            </li>
+          ))}
+        </ul>
+        <h2>Create New Playlist</h2>
+        <button onClick={createPlaylist}>Create Playlist</button>
+        <input
+          type="text"
+          placeholder="Playlist Name"
+          value={newPlaylistName}
+          onChange={(e) => setNewPlaylistName(e.target.value)}
+        />
+      </div>
+      <div className="editor-panel">
+        {selectedPlaylist && (
+          <div>
+            <h2>{selectedPlaylist.name}</h2>
+            <ul>
+              {tracks.map(track => (
+                <li key={track.path}>
+                  {track.title} - {track.artist}
+                  <button onClick={() => removeSongFromPlaylist(track.path)}>Remove</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-      <h2>All Songs</h2>
-      <input
-        type="text"
-        placeholder="Filter songs"
-        value={filterQuery}
-        onChange={(e) => setFilterQuery(e.target.value)}
-      />
-      <select
-        value={selectedPlaylistForTrack}
-        onChange={(e) => setSelectedPlaylistForTrack(e.target.value)}
-      >
-        <option value="">Select Playlist</option>
-        {playlists.map(playlist => (
-          <option key={playlist.id} value={playlist.id}>{playlist.name}</option>
-        ))}
-      </select>
-      <ul>
-        {filteredSongs.map(song => (
-          <li key={song.path}>
-            {song.title} - {song.artist}
-            <button onClick={() => addSongToPlaylist(song.path)}>Add to Playlist</button>
-          </li>
-        ))}
-      </ul>
+        <h2>All Songs</h2>
+        <input
+          type="text"
+          placeholder="Filter songs"
+          value={filterQuery}
+          onChange={(e) => setFilterQuery(e.target.value)}
+        />
+        <select
+          value={selectedPlaylistForTrack}
+          onChange={(e) => setSelectedPlaylistForTrack(e.target.value)}
+        >
+          <option value="">Select Playlist</option>
+          {playlists.map(playlist => (
+            <option key={playlist.id} value={playlist.id}>{playlist.name}</option>
+          ))}
+        </select>
+        <ul>
+          {filteredSongs.map(song => (
+            <li key={song.path}>
+              {song.title} - {song.artist}
+              <button onClick={() => addSongToPlaylist(song.path)}>Add to Playlist</button>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 };
