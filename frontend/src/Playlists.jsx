@@ -77,33 +77,18 @@ const Playlists = () => {
     }
   };
 
-  const addSongToPlaylist = async (songPath, playlistId) => {
-    try {
-      // Fetch the latest details of the selected playlist
-      const playlistResponse = await axios.get(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}`);
-      const foundPlaylist = playlistResponse.data;
-
-      if (!foundPlaylist) {
-        alert('Selected playlist not found.');
+  const addSongToPlaylist = async (song, playlistId) => {
+    const isDuplicate = tracks.some(track => track.id === song.id);
+    if (isDuplicate) {
+      const confirmAdd = window.confirm('This song is already in the playlist. Do you want to add it again?');
+      if (!confirmAdd) {
         return;
       }
+    }
 
-      const musicFilePaths = foundPlaylist.music_files ? foundPlaylist.music_files.map(file => file.path) : [];
-
-      // Add the new song to the list of music file paths
-      const updatedMusicFilePaths = [...musicFilePaths, songPath];
-
-      // Update the playlist with the new list of music file paths
-      const response = await axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}`, {
-        name: foundPlaylist.name,
-        music_file_paths: updatedMusicFilePaths
-      });
-
-      // Update the selected playlist and tracks if it is the currently selected playlist
-      if (selectedPlaylist && selectedPlaylist.id === playlistId) {
-        setSelectedPlaylist(response.data);
-        setTracks(response.data.music_files);
-      }
+    try {
+      await axios.post(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}/songs`, { songId: song.id });
+      fetchPlaylistDetails(playlistId);
     } catch (error) {
       console.error('Error adding song to playlist:', error);
     }
