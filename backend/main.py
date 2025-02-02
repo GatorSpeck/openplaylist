@@ -56,48 +56,48 @@ class MusicFileDB(Base):
     album = Column(String, index=True)
     last_modified = Column(DateTime, index=True)
     genres = Column(JSON, nullable=True)  # list of genres of the music file
-    playlists = relationship("PlaylistDB", secondary="playlist_music_file", back_populates="music_files")
 
 class PlaylistDB(Base):
     __tablename__ = "playlists"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(String, unique=True, index=True)
-    music_files = relationship("MusicFileDB", secondary="playlist_music_file", back_populates="playlists")
+    entries = relationship("PlaylistEntryDB", back_populates="playlist")
 
 
 # Association table for many-to-many relationship with an order field
-class PlaylistMusicFile(Base):
+class PlaylistEntryDB(Base):
     __tablename__ = 'playlist_music_file'
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     playlist_id = Column(Integer, ForeignKey('playlists.id'))
     music_file_id = Column(Integer, ForeignKey('music_files.id'))
     order = Column(Integer)
 
-    playlist = relationship("PlaylistDB", back_populates="playlist_music_files")
-    music_file = relationship("MusicFileDB", back_populates="playlist_music_files")
+    music_file = relationship("MusicFileDB", back_populates="playlists")
+    playlist = relationship("PlaylistDB", back_populates="entries")
 
-PlaylistDB.playlist_music_files = relationship("PlaylistMusicFile", back_populates="playlist")
-MusicFileDB.playlist_music_files = relationship("PlaylistMusicFile", back_populates="music_file")
+MusicFileDB.playlists = relationship("PlaylistEntryDB", back_populates="music_file")
 
 # Create the database tables
 Base.metadata.create_all(bind=engine)
 
 # Simple model for a music file
 class MusicFile(BaseModel):
+    id: Optional[int] = None
     path: str
     title: str
     artist: Optional[str] = None
     album: Optional[str] = None
     genres: List[str] = []
 
+class PlaylistEntry(BaseModel):
+    order: int
+    music_file_id: int
+    music_file_details: Optional[MusicFile] = None
+
 class Playlist(BaseModel):
     id: Optional[int] = None
     name: str
-    music_files: List[MusicFile] = []
-
-class PlaylistCreate(BaseModel):
-    name: str
-    music_file_paths: List[str] = []
+    entries: List[PlaylistEntry] = []
 
 IGNORED_FILETYPES = (".jpg", ".txt", ".db", ".m3u")
 
@@ -240,25 +240,25 @@ def search_music_files(query: str = Query(..., min_length=1)):
     return results
 
 @router.post("/playlists", response_model=Playlist)
-def create_playlist(playlist: PlaylistCreate):
+def create_playlist(playlist: Playlist):
     db = SessionLocal()
     try:
         # Create a new PlaylistDB instance
-        db_playlist = PlaylistDB(name=playlist.name)
+        db_playlist = PlaylistDB(name=playlist.name, entries=[])
         
         # Add music files to the playlist
-        for path in playlist.music_file_paths:
+        for path in playlist.entries:
             music_file = db.query(MusicFileDB).filter(MusicFileDB.path == path).first()
             if music_file:
-                db_playlist.music_files.append(music_file)
+                db_playlist.entries.append(music_file)
         
         # Add the new playlist to the database
         db.add(db_playlist)
         db.commit()
         db.refresh(db_playlist)
         
-        # Eagerly load the music_files relationship
-        db_playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.music_files)).filter(PlaylistDB.id == db_playlist.id).first()
+        # Eagerly load the entries relationship
+        db_playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).filter(PlaylistDB.id == db_playlist.id).first()
     except Exception as e:
         db.rollback()
         logging.error(f"Failed to create playlist: {e}", exc_info=True)
@@ -272,7 +272,7 @@ def create_playlist(playlist: PlaylistCreate):
 def read_playlists(skip: int = 0, limit: int = 10):
     db = SessionLocal()
     try:
-        playlists = db.query(PlaylistDB).options(joinedload(PlaylistDB.music_files)).offset(skip).limit(limit).all()
+        playlists = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries))
     except Exception as e:
         logging.error(f"Failed to read playlists: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to read playlists")
@@ -284,48 +284,96 @@ def read_playlists(skip: int = 0, limit: int = 10):
 def read_playlist(playlist_id: int):
     db = SessionLocal()
     try:
-        playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.music_files)).filter(PlaylistDB.id == playlist_id).first()
+        playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).filter(PlaylistDB.id == playlist_id).first()
         if playlist is None:
             raise HTTPException(status_code=404, detail="Playlist not found")
+        
+        entries = db.query(PlaylistEntryDB).join(MusicFileDB).filter(PlaylistEntryDB.playlist_id == playlist_id).all()
+        playlist_entries = [
+            PlaylistEntry(
+                order=entry.order,
+                music_file_id=entry.music_file_id,
+                music_file_details=MusicFile(
+                    id=entry.music_file.id,
+                    path=entry.music_file.path,
+                    title=entry.music_file.title,
+                    artist=entry.music_file.artist,
+                    album=entry.music_file.album,
+                    genres=entry.music_file.genres
+                )
+            ) for entry in entries
+        ]
     except Exception as e:
         logging.error(f"Failed to read playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to read playlist")
     finally:
         db.close()
-    return playlist
+    return Playlist(
+        id=playlist.id,
+        name=playlist.name,
+        entries=playlist_entries
+    )
 
 @router.put("/playlists/{playlist_id}", response_model=Playlist)
-def update_playlist(playlist_id: int, playlist: PlaylistCreate):
+def update_playlist(playlist_id: int, playlist: Playlist):
     db = SessionLocal()
+    # logging.info(f"Updating playlist {playlist_id}")
+    # logging.debug(f"Playlist: {playlist}")
     try:
-        db_playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.music_files)).filter(PlaylistDB.id == playlist_id).first()
+        db_playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).filter(PlaylistDB.id == playlist_id).first()
         if db_playlist is None:
             raise HTTPException(status_code=404, detail="Playlist not found")
 
         # Clear existing associations
-        db.query(PlaylistMusicFile).filter(PlaylistMusicFile.playlist_id == playlist_id).delete()
+        db.query(PlaylistEntryDB).filter(PlaylistEntryDB.playlist_id == playlist_id).delete()
 
         # Add new associations with updated order
-        for index, path in enumerate(playlist.music_file_paths):
-            music_file = db.query(MusicFileDB).filter(MusicFileDB.path == path).first()
+        for entry in playlist.entries:
+            logging.debug(entry)
+            music_file = db.query(MusicFileDB).filter(MusicFileDB.id == entry.music_file_id).first()
             if music_file:
-                association = PlaylistMusicFile(playlist_id=playlist_id, music_file_id=music_file.id, order=index)
+                association = PlaylistEntryDB(playlist_id=playlist_id, music_file_id=music_file.id, order=entry.order)
                 db.add(association)
+            else:
+                logging.warning(f"Music file {entry.music_file_id} not found")
 
         db.commit()
         db.refresh(db_playlist)
+
+        # Eagerly load the entries relationship
+        db_playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).filter(PlaylistDB.id == db_playlist.id).first()
+
+        entries = db.query(PlaylistEntryDB).join(MusicFileDB).filter(PlaylistEntryDB.playlist_id == playlist_id).all()
+        playlist_entries = [
+            PlaylistEntry(
+                order=entry.order,
+                music_file_id=entry.music_file_id,
+                music_file_details=MusicFile(
+                    id=entry.music_file.id,
+                    path=entry.music_file.path,
+                    title=entry.music_file.title,
+                    artist=entry.music_file.artist,
+                    album=entry.music_file.album,
+                    genres=entry.music_file.genres
+                )
+            ) for entry in entries
+        ]
     except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.error(f"Failed to update playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update playlist")
     finally:
         db.close()
-    return db_playlist
+    return Playlist(
+        id=db_playlist.id,
+        name=db_playlist.name,
+        entries=playlist_entries
+    )
 
 @router.delete("/playlists/{playlist_id}")
 def delete_playlist(playlist_id: int):
     db = SessionLocal()
     try:
-        playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.music_files)).filter(PlaylistDB.id == playlist_id).first()
+        playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).filter(PlaylistDB.id == playlist_id).first()
         if playlist is None:
             raise HTTPException(status_code=404, detail="Playlist not found")
         db.delete(playlist)
@@ -342,13 +390,13 @@ def delete_playlist(playlist_id: int):
 def export_playlist(playlist_id: int):
     db = SessionLocal()
     try:
-        playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.music_files)).filter(PlaylistDB.id == playlist_id).first()
+        playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).filter(PlaylistDB.id == playlist_id).first()
         if playlist is None:
             raise HTTPException(status_code=404, detail="Playlist not found")
 
         # Generate the .m3u content
         m3u_content = "#EXTM3U\n"
-        for music_file in playlist.music_files:
+        for music_file in playlist.entries:
             m3u_content += f"#EXTINF:-1,{music_file.title} - {music_file.artist}\n"
             m3u_content += f"{music_file.path}\n"
 
