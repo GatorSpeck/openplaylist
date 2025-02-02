@@ -204,11 +204,16 @@ def prune_music_files():
     db.commit()
     db.close()
 
-@router.get("/music")
+@router.get("/music", response_model=List[MusicFile])
 def get_music_files():
     db = SessionLocal()
-    music_files = db.query(MusicFileDB).all()
-
+    try:
+        music_files = db.query(MusicFileDB).all()
+    except Exception as e:
+        logging.error(f"Failed to get music files: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get music files")
+    finally:
+        db.close()
     return music_files
 
 @router.get("/search")
@@ -255,18 +260,27 @@ def create_playlist(playlist: PlaylistCreate):
 @router.get("/playlists", response_model=List[Playlist])
 def read_playlists(skip: int = 0, limit: int = 10):
     db = SessionLocal()
-    playlists = db.query(PlaylistDB).offset(skip).limit(limit).all()
-    
+    try:
+        playlists = db.query(PlaylistDB).options(joinedload(PlaylistDB.music_files)).offset(skip).limit(limit).all()
+    except Exception as e:
+        logging.error(f"Failed to read playlists: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to read playlists")
+    finally:
+        db.close()
     return playlists
 
 @router.get("/playlists/{playlist_id}", response_model=Playlist)
 def read_playlist(playlist_id: int):
     db = SessionLocal()
-    playlist = db.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
-    
-    if playlist is None:
-        raise HTTPException(status_code=404, detail="Playlist not found")
-    
+    try:
+        playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.music_files)).filter(PlaylistDB.id == playlist_id).first()
+        if playlist is None:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+    except Exception as e:
+        logging.error(f"Failed to read playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to read playlist")
+    finally:
+        db.close()
     return playlist
 
 @router.put("/playlists/{playlist_id}", response_model=Playlist)
@@ -291,7 +305,7 @@ def update_playlist(playlist_id: int, playlist: PlaylistCreate):
         db.close()
     return db_playlist
 
-@router.delete("/playlists/{playlist_id}", response_model=Playlist)
+@router.delete("/playlists/{playlist_id}")
 def delete_playlist(playlist_id: int):
     db = SessionLocal()
     try:
@@ -302,10 +316,11 @@ def delete_playlist(playlist_id: int):
         db.commit()
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.error(f"Failed to delete playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to delete playlist")
     finally:
         db.close()
-    return playlist
+    return {"detail": "Playlist deleted successfully"}
 
 # Further endpoints for playlists would go here.
 
