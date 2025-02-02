@@ -263,30 +263,30 @@ const Playlists = () => {
           </div>
         )}
 
-        <h2>All Songs</h2>
+        <h2>Songs</h2>
         <input
           type="text"
           placeholder="Filter songs"
           value={filterQuery}
           onChange={(e) => setFilterQuery(e.target.value)}
         />
-        <select
-          value={selectedPlaylistForTrack}
-          onChange={(e) => setSelectedPlaylistForTrack(e.target.value)}
-        >
-          <option value="">Select Playlist</option>
-          {playlists.map(playlist => (
-            <option key={playlist.id} value={playlist.id}>{playlist.name}</option>
+        <div className="playlist-grid">
+          <div className="playlist-grid-header">ID</div>
+          <div className="playlist-grid-header">Title</div>
+          <div className="playlist-grid-header">Artist</div>
+          <div className="playlist-grid-header">Actions</div>
+          
+          {filteredSongs.map((song) => (
+            <React.Fragment key={song.id}>
+              <div className="playlist-grid-item">{song.id}</div>
+              <div className="playlist-grid-item">{song.title || 'Unknown Title'}</div>
+              <div className="playlist-grid-item">{song.artist || 'Unknown Artist'}</div>
+              <div className="playlist-grid-item">
+                <button onClick={() => handleAddToPlaylist(song)}>Add to Playlist</button>
+              </div>
+            </React.Fragment>
           ))}
-        </select>
-        <ul>
-          {filteredSongs.map(song => (
-            <li key={song.id}>
-              {song.id}: {song.title} - {song.artist}
-              <button onClick={() => handleAddToPlaylist(song)}>Add to Playlist</button>
-            </li>
-          ))}
-        </ul>
+        </div>
       </div>
       {showModal && (
         <PlaylistModal
