@@ -43,7 +43,7 @@ const Playlists = () => {
     try {
       const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}`);
       setSelectedPlaylist(response.data);
-      setTracks(response.data.music_files);
+      await setTracks(response.data.entries);
     } catch (error) {
       console.error('Error fetching playlist details:', error);
     }
@@ -53,7 +53,7 @@ const Playlists = () => {
     try {
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/playlists`, {
         name: newPlaylistName,
-        music_file_paths: []
+        entries: []
       });
       setPlaylists([...playlists, response.data]);
       setNewPlaylistName('');
@@ -78,6 +78,7 @@ const Playlists = () => {
   };
 
   const addSongToPlaylist = async (song, playlistId) => {
+    console.log(tracks);
     const isDuplicate = tracks.some(track => track.id === song.id);
     if (isDuplicate) {
       const confirmAdd = window.confirm('This song is already in the playlist. Do you want to add it again?');
@@ -86,35 +87,50 @@ const Playlists = () => {
       }
     }
 
+    console.log(song);
+
+    const updatedTracks = [...tracks, { order: tracks.length, music_file_id: song.id }];
+    console.log(updatedTracks);
+    setTracks(updatedTracks);
+
+    const playlist = playlists.find(playlist => playlist.id === playlistId);
+    playlist.entries = updatedTracks;
+    console.log(playlist);
+
     try {
-      await axios.post(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}/songs`, { songId: song.id });
+      await axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}`, playlist );
       fetchPlaylistDetails(playlistId);
     } catch (error) {
       console.error('Error adding song to playlist:', error);
     }
   };
 
-  const removeSongFromPlaylist = async (songPath) => {
+  const removeSongFromPlaylist = async (index) => {
     if (!selectedPlaylist) {
       alert('Please select a playlist first.');
       return;
     }
 
-    try {
-      // Remove the song from the list of music file paths
-      const updatedMusicFilePaths = selectedPlaylist.music_files
-        .filter(file => file.path !== songPath)
-        .map(file => file.path);
+    console.log("Removing song from playlist at index", index);
 
-      // Update the playlist with the new list of music file paths
+    try {
+      // Remove the song from the list of entries
+      console.log(selectedPlaylist.entries);
+      let updatedEntries = selectedPlaylist.entries.filter((_, i) => i !== index);
+      console.log(updatedEntries);
+
+      // Update the order of the remaining tracks
+      updatedEntries = updatedEntries.map((entry, i) => ({ ...entry, order: i }));
+
+      // Update the playlist with the new list of entries
       const response = await axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${selectedPlaylist.id}`, {
         name: selectedPlaylist.name,
-        music_file_paths: updatedMusicFilePaths
+        entries: updatedEntries
       });
 
       // Update the selected playlist and tracks
       setSelectedPlaylist(response.data);
-      setTracks(response.data.music_files);
+      setTracks(response.data.entries);
     } catch (error) {
       console.error('Error removing song from playlist:', error);
     }
@@ -178,8 +194,8 @@ const Playlists = () => {
     }
   };
 
-  const handleAddToPlaylist = (songPath) => {
-    setSongToAdd(songPath);
+  const handleAddToPlaylist = (song) => {
+    setSongToAdd(song);
     setShowModal(true);
   };
 
@@ -226,10 +242,10 @@ const Playlists = () => {
           <div>
             <h2>{selectedPlaylist.name}</h2>
             <ul>
-              {tracks.map((track, index) => (
-                <li key={track.path}>
-                  {index + 1}. {track.title} - {track.artist}
-                  <button onClick={() => removeSongFromPlaylist(track.path)}>Remove</button>
+              {tracks && tracks.map((track, index) => (
+                <li key={index}>
+                  {index + 1}. {track.music_file_details?.title || 'Unknown Title'} - {track.music_file_details?.artist || 'Unknown Artist'}
+                  <button onClick={() => removeSongFromPlaylist(track.order)}>Remove</button>
                   {index > 0 && <button onClick={() => moveTrack(index, index - 1)}>Up</button>}
                   {index < tracks.length - 1 && <button onClick={() => moveTrack(index, index + 1)}>Down</button>}
                 </li>
@@ -237,7 +253,6 @@ const Playlists = () => {
             </ul>
           </div>
         )}
-
 
         <h2>All Songs</h2>
         <input
@@ -257,9 +272,9 @@ const Playlists = () => {
         </select>
         <ul>
           {filteredSongs.map(song => (
-            <li key={song.path}>
-              {song.title} - {song.artist}
-              <button onClick={() => handleAddToPlaylist(song.path)}>Add to Playlist</button>
+            <li key={song.id}>
+              {song.id}: {song.title} - {song.artist}
+              <button onClick={() => handleAddToPlaylist(song)}>Add to Playlist</button>
             </li>
           ))}
         </ul>
