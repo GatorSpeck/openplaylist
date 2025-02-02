@@ -137,6 +137,64 @@ const Playlists = () => {
     }
   };
 
+  const moveTrack = (fromIndex, toIndex) => {
+    const updatedTracks = [...tracks];
+    const [movedTrack] = updatedTracks.splice(fromIndex, 1);
+    updatedTracks.splice(toIndex, 0, movedTrack);
+
+    setTracks(updatedTracks);
+
+    // Update the playlist with the new order of tracks
+    const updatedMusicFilePaths = updatedTracks.map(track => track.path);
+    axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${selectedPlaylist.id}`, {
+      name: selectedPlaylist.name,
+      music_file_paths: updatedMusicFilePaths
+    }).then(response => {
+      setSelectedPlaylist(response.data);
+    }).catch(error => {
+      console.error('Error updating playlist order:', error);
+    });
+  };
+
+  const exportPlaylist = async (playlistId) => {
+    try {
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}/export`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${selectedPlaylist.name}.m3u`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error('Error exporting playlist:', error);
+    }
+  };
+
+  const scanMusic = async () => {
+    try {
+      await axios.get(`${import.meta.env.VITE_API_URL}/api/scan`);
+      alert('Music scan completed successfully.');
+      fetchSongs();
+    } catch (error) {
+      console.error('Error scanning music:', error);
+      alert('Error scanning music.');
+    }
+  };
+
+  const fullScanMusic = async () => {
+    try {
+      await axios.get(`${import.meta.env.VITE_API_URL}/api/fullscan`);
+      alert('Full music scan completed successfully.');
+      fetchSongs();
+    } catch (error) {
+      console.error('Error performing full scan:', error);
+      alert('Error performing full scan.');
+    }
+  };
+
   const filteredSongs = songs.filter(song =>
     song.title.toLowerCase().includes(filterQuery.toLowerCase()) ||
     song.artist.toLowerCase().includes(filterQuery.toLowerCase()) ||
@@ -152,32 +210,41 @@ const Playlists = () => {
             <li key={playlist.id}>
               <span onClick={() => fetchPlaylistDetails(playlist.id)}>{playlist.name}</span>
               <button onClick={() => deletePlaylist(playlist.id)}>Delete</button>
+              <button onClick={() => exportPlaylist(playlist.id)}>Export</button>
             </li>
           ))}
         </ul>
+
         <h2>Create New Playlist</h2>
-        <button onClick={createPlaylist}>Create Playlist</button>
         <input
           type="text"
           placeholder="Playlist Name"
           value={newPlaylistName}
           onChange={(e) => setNewPlaylistName(e.target.value)}
         />
+        <button onClick={createPlaylist}>Create Playlist</button>
+
+
+        <button onClick={scanMusic}>Scan Music</button>
+        <button onClick={fullScanMusic}>Full Scan Music</button>
       </div>
       <div className="editor-panel">
         {selectedPlaylist && (
           <div>
             <h2>{selectedPlaylist.name}</h2>
             <ul>
-              {tracks.map(track => (
+              {tracks.map((track, index) => (
                 <li key={track.path}>
-                  {track.title} - {track.artist}
+                  {index + 1}. {track.title} - {track.artist}
                   <button onClick={() => removeSongFromPlaylist(track.path)}>Remove</button>
+                  {index > 0 && <button onClick={() => moveTrack(index, index - 1)}>Up</button>}
+                  {index < tracks.length - 1 && <button onClick={() => moveTrack(index, index + 1)}>Down</button>}
                 </li>
               ))}
             </ul>
           </div>
         )}
+
 
         <h2>All Songs</h2>
         <input

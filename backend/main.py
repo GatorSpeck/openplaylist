@@ -20,6 +20,8 @@ from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
+from fastapi.responses import StreamingResponse
+import io
 
 
 app = FastAPI()
@@ -47,26 +49,35 @@ Base = declarative_base()
 # SQLAlchemy model for a music file
 class MusicFileDB(Base):
     __tablename__ = "music_files"
-    path = Column(String, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    path = Column(String, index=True)
     title = Column(String, index=True)
     artist = Column(String, index=True)
     album = Column(String, index=True)
     last_modified = Column(DateTime, index=True)
     genres = Column(JSON, nullable=True)  # list of genres of the music file
-
-# Association table for many-to-many relationship
-playlist_music_files = Table('playlist_music_files', Base.metadata,
-    Column('playlist_id', Integer, ForeignKey('playlists.id'), primary_key=True),
-    Column('music_file_path', String, ForeignKey('music_files.path'), primary_key=True)
-)
+    playlists = relationship("PlaylistDB", secondary="playlist_music_file", back_populates="music_files")
 
 class PlaylistDB(Base):
     __tablename__ = "playlists"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(String, unique=True, index=True)
-    music_files = relationship("MusicFileDB", secondary=playlist_music_files, back_populates="playlists")
+    music_files = relationship("MusicFileDB", secondary="playlist_music_file", back_populates="playlists")
 
-MusicFileDB.playlists = relationship("PlaylistDB", secondary=playlist_music_files, back_populates="music_files")
+
+# Association table for many-to-many relationship with an order field
+class PlaylistMusicFile(Base):
+    __tablename__ = 'playlist_music_file'
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    playlist_id = Column(Integer, ForeignKey('playlists.id'))
+    music_file_id = Column(Integer, ForeignKey('music_files.id'))
+    order = Column(Integer)
+
+    playlist = relationship("PlaylistDB", back_populates="playlist_music_files")
+    music_file = relationship("MusicFileDB", back_populates="playlist_music_files")
+
+PlaylistDB.playlist_music_files = relationship("PlaylistMusicFile", back_populates="playlist")
+MusicFileDB.playlist_music_files = relationship("PlaylistMusicFile", back_populates="music_file")
 
 # Create the database tables
 Base.metadata.create_all(bind=engine)
@@ -173,7 +184,7 @@ def scan():
     scan_directory(os.getenv("MUSIC_PATH", "data/music"))
 
 @router.get("/fullscan")
-def scan():
+def full_scan():
     drop_music_files()
     scan_directory(os.getenv("MUSIC_PATH", "data/music"))
     prune_music_files()
@@ -290,12 +301,14 @@ def update_playlist(playlist_id: int, playlist: PlaylistCreate):
         db_playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.music_files)).filter(PlaylistDB.id == playlist_id).first()
         if db_playlist is None:
             raise HTTPException(status_code=404, detail="Playlist not found")
-        db_playlist.name = playlist.name
-        db_playlist.music_files = []
-        for path in playlist.music_file_paths:
+
+        for index, path in enumerate(playlist.music_file_paths):
             music_file = db.query(MusicFileDB).filter(MusicFileDB.path == path).first()
             if music_file:
+                association = PlaylistMusicFile(order=index)
                 db_playlist.music_files.append(music_file)
+                db.add(association)
+
         db.commit()
         db.refresh(db_playlist)
     except Exception as e:
@@ -321,6 +334,30 @@ def delete_playlist(playlist_id: int):
     finally:
         db.close()
     return {"detail": "Playlist deleted successfully"}
+
+@router.get("/playlists/{playlist_id}/export", response_class=StreamingResponse)
+def export_playlist(playlist_id: int):
+    db = SessionLocal()
+    try:
+        playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.music_files)).filter(PlaylistDB.id == playlist_id).first()
+        if playlist is None:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+
+        # Generate the .m3u content
+        m3u_content = "#EXTM3U\n"
+        for music_file in playlist.music_files:
+            m3u_content += f"#EXTINF:-1,{music_file.title} - {music_file.artist}\n"
+            m3u_content += f"{music_file.path}\n"
+
+        # Create a StreamingResponse to return the .m3u file
+        response = StreamingResponse(io.StringIO(m3u_content), media_type="audio/x-mpegurl")
+        response.headers["Content-Disposition"] = f"attachment; filename={playlist.name}.m3u"
+        return response
+    except Exception as e:
+        logging.error(f"Failed to export playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to export playlist")
+    finally:
+        db.close()
 
 # Further endpoints for playlists would go here.
 
