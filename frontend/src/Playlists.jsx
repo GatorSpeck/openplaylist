@@ -17,6 +17,8 @@ const Playlists = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [newPlaylistModalVisible, setNewPlaylistModalVisible] = useState(false);
   const [newPlaylistNameModal, setNewPlaylistNameModal] = useState('');
+  const [selectedSongs, setSelectedSongs] = useState([]);
+  const [selectedTracks, setSelectedTracks] = useState([]);
 
   useEffect(() => {
     fetchPlaylists();
@@ -79,29 +81,26 @@ const Playlists = () => {
     }
   };
 
-  const addSongToPlaylist = async (song, playlistId) => {
-    console.log(tracks);
-    const isDuplicate = tracks.some(track => track.id === song.id);
-    if (isDuplicate) {
-      const confirmAdd = window.confirm('This song is already in the playlist. Do you want to add it again?');
-      if (!confirmAdd) {
-        return;
-      }
-    }
-
-    console.log(song);
-
-    const updatedTracks = [...tracks, { order: tracks.length, music_file_id: song.id }];
-    setTracks(updatedTracks);
-
-    const playlist = playlists.find(playlist => playlist.id === playlistId);
-    playlist.entries = updatedTracks;
-
+  const addSongToPlaylist = async (songs, playlistId) => {
+    const songsArray = Array.isArray(songs) ? songs : [songs];
+    
+    const updatedTracks = [
+      ...tracks,
+      ...songsArray.map((song, idx) => ({
+        order: tracks.length + idx,
+        music_file_id: song.id
+      }))
+    ];
+  
     try {
-      await axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}`, playlist );
+      await axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}`, {
+        name: selectedPlaylist.name,
+        entries: updatedTracks
+      });
       fetchPlaylistDetails(playlistId);
+      clearSelectedSongs();
     } catch (error) {
-      console.error('Error adding song to playlist:', error);
+      console.error('Error adding songs to playlist:', error);
     }
   };
 
@@ -248,6 +247,62 @@ const Playlists = () => {
     }
   };
 
+  const toggleSongSelection = (song) => {
+    if (selectedSongs.find(s => s.id === song.id)) {
+      setSelectedSongs(selectedSongs.filter(s => s.id !== song.id));
+    } else {
+      setSelectedSongs([...selectedSongs, song]);
+    }
+  };
+
+  const clearSelectedSongs = () => {
+    setSelectedSongs([]);
+  };
+
+  const handleAddSelectedToPlaylist = () => {
+    setSongToAdd(selectedSongs);
+    setShowModal(true);
+  };
+
+  const toggleTrackSelection = (index) => {
+    setSelectedTracks(prev => 
+      prev.includes(index) 
+        ? prev.filter(i => i !== index)
+        : [...prev, index]
+    );
+  };
+
+  const clearTrackSelection = () => {
+    setSelectedTracks([]);
+  };
+
+  const removeSelectedTracks = async () => {
+    if (!selectedPlaylist || selectedTracks.length === 0) return;
+
+    try {
+      const remainingEntries = selectedPlaylist.entries.filter((_, index) => 
+        !selectedTracks.includes(index)
+      ).map((entry, index) => ({
+        ...entry,
+        order: index
+      }));
+
+      const response = await axios.put(
+        `${import.meta.env.VITE_API_URL}/api/playlists/${selectedPlaylist.id}`,
+        {
+          name: selectedPlaylist.name,
+          entries: remainingEntries
+        }
+      );
+
+      setSelectedPlaylist(response.data);
+      setTracks(response.data.entries);
+      clearTrackSelection();
+    } catch (error) {
+      console.error('Error removing tracks:', error);
+    }
+  };
+
   return (
     <div className="playlists-container">
       <div className="playlists-panel">
@@ -287,10 +342,22 @@ const Playlists = () => {
           {selectedPlaylist && (
             <div>
               <h2>{selectedPlaylist.name}</h2>
+
+              {selectedTracks.length > 0 && (
+                <div className="batch-actions">
+                  <button onClick={removeSelectedTracks}>
+                    Remove {selectedTracks.length} Selected Tracks
+                  </button>
+                  <button onClick={clearTrackSelection}>
+                    Clear Selection
+                  </button>
+                </div>
+              )}
+              
               <Droppable droppableId="playlist">
                 {(provided) => (
                   <div className="playlist-grid" {...provided.droppableProps} ref={provided.innerRef}>
-                    <div className="playlist-grid-header">#</div>
+                    <div className="playlist-grid-header">Select</div>
                     <div className="playlist-grid-header">Artist</div>
                     <div className="playlist-grid-header">Album</div>
                     <div className="playlist-grid-header">Title</div>
@@ -306,12 +373,15 @@ const Playlists = () => {
                       >
                         {(provided) => (
                           <React.Fragment>
-                            <div
-                              ref={provided.innerRef}
+                            <div className="playlist-grid-item" ref={provided.innerRef}
                               {...provided.draggableProps}
-                              {...provided.dragHandleProps}
-                              className="playlist-grid-item"
-                            >{index + 1}</div>
+                              {...provided.dragHandleProps}>
+                              <input
+                                type="checkbox"
+                                checked={selectedTracks.includes(index)}
+                                onChange={() => toggleTrackSelection(index)}
+                              />
+                            </div>
                             <div className="playlist-grid-item">{track.music_file_details?.artist || 'Unknown Artist'}</div>
                             <div className="playlist-grid-item">{track.music_file_details?.album || 'Unknown Album'}</div>
                             <div className="playlist-grid-item">{track.music_file_details?.title || 'Unknown Title'}</div>
@@ -337,6 +407,18 @@ const Playlists = () => {
             value={filterQuery}
             onChange={(e) => setFilterQuery(e.target.value)}
           />
+
+          {selectedSongs.length > 0 && (
+            <div className="batch-actions">
+              <button onClick={handleAddSelectedToPlaylist}>
+                Add {selectedSongs.length} Selected to Playlist
+              </button>
+              <button onClick={clearSelectedSongs}>
+                Clear Selection
+              </button>
+            </div>
+          )}
+          
           <Droppable droppableId="songs">
             {(provided) => (
               <div {...provided.droppableProps} ref={provided.innerRef} className="playlist-grid">
@@ -361,7 +443,11 @@ const Playlists = () => {
                           ref={provided.innerRef}
                           className="playlist-grid-item"
                         >
-                          {song.id}
+                          <input 
+                            type="checkbox"
+                            checked={selectedSongs.some(s => s.id === song.id)}
+                            onChange={() => toggleSongSelection(song)}
+                          />
                         </div>
                         <div className="playlist-grid-item">{song.artist || 'Unknown Artist'}</div>
                         <div className="playlist-grid-item">{song.album || 'Unknown Album'}</div>
