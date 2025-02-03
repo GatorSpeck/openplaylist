@@ -15,6 +15,8 @@ const Playlists = () => {
   const [showModal, setShowModal] = useState(false);
   const [songToAdd, setSongToAdd] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [newPlaylistModalVisible, setNewPlaylistModalVisible] = useState(false);
+  const [newPlaylistNameModal, setNewPlaylistNameModal] = useState('');
 
   useEffect(() => {
     fetchPlaylists();
@@ -188,6 +190,22 @@ const Playlists = () => {
     setSongToAdd(null);
   };
 
+  const handleCreateNewPlaylist = async () => {
+    try {
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/playlists`, {
+        name: newPlaylistNameModal,
+        entries: [{ order: 0, music_file_id: songToAdd.id }]
+      });
+      setPlaylists([...playlists, response.data]);
+      setNewPlaylistNameModal('');
+      setShowModal(false);
+      setSongToAdd(null);
+      setNewPlaylistModalVisible(false);
+    } catch (error) {
+      console.error('Error creating new playlist:', error);
+    }
+  };
+
   const filteredSongs = songs.filter(song =>
     song.title.toLowerCase().includes(filterQuery.toLowerCase()) ||
     song.artist.toLowerCase().includes(filterQuery.toLowerCase()) ||
@@ -327,7 +345,23 @@ const Playlists = () => {
           playlists={playlists}
           onClose={() => setShowModal(false)}
           onSelect={handleSelectPlaylist}
+          onCreateNewPlaylist={() => setNewPlaylistModalVisible(true)}
         />
+      )}
+      {newPlaylistModalVisible && (
+        <div className="modal">
+          <div className="modal-content">
+            <h3>Create New Playlist</h3>
+            <input
+              type="text"
+              value={newPlaylistNameModal}
+              onChange={(e) => setNewPlaylistNameModal(e.target.value)}
+              placeholder="New Playlist Name"
+            />
+            <button onClick={handleCreateNewPlaylist}>Create</button>
+            <button onClick={() => setNewPlaylistModalVisible(false)}>Cancel</button>
+          </div>
+        </div>
       )}
     </div>
   );

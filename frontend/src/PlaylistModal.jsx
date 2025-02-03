@@ -1,7 +1,7 @@
 import React from 'react';
 import './PlaylistModal.css'; // Import the CSS file for styling
 
-const PlaylistModal = ({ playlists, onClose, onSelect }) => {
+const PlaylistModal = ({ playlists, onClose, onSelect, onCreateNewPlaylist }) => {
   return (
     <div className="modal">
       <div className="modal-content">
@@ -14,6 +14,7 @@ const PlaylistModal = ({ playlists, onClose, onSelect }) => {
             </li>
           ))}
         </ul>
+        <button onClick={onCreateNewPlaylist}>Create New Playlist</button>
       </div>
     </div>
   );

@@ -211,10 +211,12 @@ def create_playlist(playlist: Playlist):
         db_playlist = PlaylistDB(name=playlist.name, entries=[])
         
         # Add music files to the playlist
-        for path in playlist.entries:
-            music_file = db.query(MusicFileDB).filter(MusicFileDB.path == path).first()
+        for entry in playlist.entries:
+            music_file = db.query(MusicFileDB).filter(MusicFileDB.id == entry.music_file_id).first()
             if music_file:
-                db_playlist.entries.append(music_file)
+                db_playlist.entries.append(PlaylistEntryDB(playlist_id=db_playlist.id, music_file_id=music_file.id, order=entry.order))
+            else:
+                logging.warning(f"Music file {entry.music_file_id} not found")
         
         # Add the new playlist to the database
         db.add(db_playlist)
