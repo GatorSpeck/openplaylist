@@ -215,26 +215,36 @@ const Playlists = () => {
   const onDragEnd = async (result) => {
     if (!result.destination) return;
 
-    const updatedTracks = Array.from(tracks);
-    const [movedTrack] = updatedTracks.splice(result.source.index, 1);
-    updatedTracks.splice(result.destination.index, 0, movedTrack);
+    const { source, destination } = result;
 
-    setTracks(updatedTracks);
+    // If dragging within playlist
+    if (source.droppableId === 'playlist' && destination.droppableId === 'playlist') {
+      const updatedTracks = Array.from(tracks);
+      const [movedTrack] = updatedTracks.splice(source.index, 1);
+      updatedTracks.splice(destination.index, 0, movedTrack);
+      
+      setTracks(updatedTracks);
+      
+      const updatedEntries = updatedTracks.map((track, index) => ({
+        ...track,
+        order: index,
+      }));
 
-    // Update the order of the tracks in the playlist
-    const updatedEntries = updatedTracks.map((track, index) => ({
-      ...track,
-      order: index,
-    }));
-
-    try {
-      await axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${selectedPlaylist.id}`, {
-        name: selectedPlaylist.name,
-        entries: updatedEntries,
-      });
-      fetchPlaylistDetails(selectedPlaylist.id);
-    } catch (error) {
-      console.error('Error updating playlist order:', error);
+      try {
+        await axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${selectedPlaylist.id}`, {
+          name: selectedPlaylist.name,
+          entries: updatedEntries,
+        });
+        fetchPlaylistDetails(selectedPlaylist.id);
+      } catch (error) {
+        console.error('Error updating playlist order:', error);
+      }
+    }
+    
+    // If dragging from songs to playlist
+    if (source.droppableId === 'songs' && destination.droppableId === 'playlist') {
+      const song = filteredSongs[source.index];
+      addSongToPlaylist(song, selectedPlaylist.id);
     }
   };
 
@@ -273,11 +283,11 @@ const Playlists = () => {
         )}
       </div>
       <div className="editor-panel">
-        {selectedPlaylist && (
-          <div>
-            <h2>{selectedPlaylist.name}</h2>
-            <DragDropContext onDragEnd={onDragEnd}>
-              <Droppable droppableId="tracks">
+        <DragDropContext onDragEnd={onDragEnd}>
+          {selectedPlaylist && (
+            <div>
+              <h2>{selectedPlaylist.name}</h2>
+              <Droppable droppableId="playlist">
                 {(provided) => (
                   <div className="playlist-grid" {...provided.droppableProps} ref={provided.innerRef}>
                     <div className="playlist-grid-header">#</div>
@@ -286,12 +296,22 @@ const Playlists = () => {
                     <div className="playlist-grid-header">Title</div>
                     <div className="playlist-grid-header">Genres</div>
                     <div className="playlist-grid-header">Actions</div>
-                    
-                    {tracks && tracks.map((track, index) => (
-                      <Draggable key={index} draggableId={index.toString()} index={index}>
+
+                    {tracks.map((track, index) => (
+                      <Draggable 
+                        key={index} 
+                        draggableId={index.toString()} 
+                        index={index}
+
+                      >
                         {(provided) => (
-                          <React.Fragment key={index}>
-                            <div className="playlist-grid-item" ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps}>{index + 1}</div>
+                          <React.Fragment>
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              className="playlist-grid-item"
+                            >{index + 1}</div>
                             <div className="playlist-grid-item">{track.music_file_details?.artist || 'Unknown Artist'}</div>
                             <div className="playlist-grid-item">{track.music_file_details?.album || 'Unknown Album'}</div>
                             <div className="playlist-grid-item">{track.music_file_details?.title || 'Unknown Title'}</div>
@@ -307,38 +327,58 @@ const Playlists = () => {
                   </div>
                 )}
               </Droppable>
-            </DragDropContext>
-          </div>
-        )}
+            </div>
+          )}
 
-        <h2>Songs</h2>
-        <input
-          type="text"
-          placeholder="Filter songs"
-          value={filterQuery}
-          onChange={(e) => setFilterQuery(e.target.value)}
-        />
-        <div className="playlist-grid">
-          <div className="playlist-grid-header">ID</div>
-          <div className="playlist-grid-header">Artist</div>
-          <div className="playlist-grid-header">Album</div>
-          <div className="playlist-grid-header">Title</div>
-          <div className="playlist-grid-header">Genres</div>
-          <div className="playlist-grid-header">Actions</div>
-          
-          {filteredSongs.map((song) => (
-            <React.Fragment key={song.id}>
-              <div className="playlist-grid-item">{song.id}</div>
-              <div className="playlist-grid-item">{song.artist || 'Unknown Artist'}</div>
-              <div className="playlist-grid-item">{song.album || 'Unknown Album'}</div>
-              <div className="playlist-grid-item">{song.title || 'Unknown Title'}</div>
-              <div className="playlist-grid-item">{song.genres?.join(', ') || 'Unknown Genres'}</div>
-              <div className="playlist-grid-item">
-                <button onClick={() => handleAddToPlaylist(song)}>Add to Playlist</button>
+          <h2>Songs</h2>
+          <input
+            type="text"
+            placeholder="Filter songs"
+            value={filterQuery}
+            onChange={(e) => setFilterQuery(e.target.value)}
+          />
+          <Droppable droppableId="songs">
+            {(provided) => (
+              <div {...provided.droppableProps} ref={provided.innerRef} className="playlist-grid">
+                <div className="playlist-grid-header">ID</div>
+                <div className="playlist-grid-header">Artist</div>
+                <div className="playlist-grid-header">Album</div>
+                <div className="playlist-grid-header">Title</div>
+                <div className="playlist-grid-header">Genres</div>
+                <div className="playlist-grid-header">Actions</div>
+                
+                {filteredSongs.map((song, index) => (
+                  <Draggable 
+                    key={song.id} 
+                    draggableId={`song-${song.id}`} 
+                    index={index}
+                  >
+                    {(provided) => (
+                      <React.Fragment>
+                        <div 
+                          {...provided.draggableProps}
+                          {...provided.dragHandleProps}
+                          ref={provided.innerRef}
+                          className="playlist-grid-item"
+                        >
+                          {song.id}
+                        </div>
+                        <div className="playlist-grid-item">{song.artist || 'Unknown Artist'}</div>
+                        <div className="playlist-grid-item">{song.album || 'Unknown Album'}</div>
+                        <div className="playlist-grid-item">{song.title || 'Unknown Title'}</div>
+                        <div className="playlist-grid-item">{song.genres?.join(', ') || 'Unknown Genres'}</div>
+                        <div className="playlist-grid-item">
+                          <button onClick={() => handleAddToPlaylist(song)}>Add to Playlist</button>
+                        </div>
+                      </React.Fragment>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
               </div>
-            </React.Fragment>
-          ))}
-        </div>
+            )}
+          </Droppable>
+        </DragDropContext>
       </div>
       {showModal && (
         <PlaylistModal
