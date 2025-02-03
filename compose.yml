@@ -1,0 +1,30 @@
+version: '3.8'
+
+networks:
+  playlist:
+    driver: bridge
+
+services:
+  backend:
+    build: ./backend
+    volumes:
+      - ${MUSIC_PATH}:/music:ro
+    restart: unless-stopped
+    networks:
+      - playlist
+    expose:
+      - 3000
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:8080"
+    volumes:
+      - /app/node_modules
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://backend:3000
+    restart: unless-stopped
+    networks:
+      - playlist
