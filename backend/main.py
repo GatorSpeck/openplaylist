@@ -6,7 +6,7 @@ from fastapi import FastAPI, Query, APIRouter, Request
 import uvicorn
 from mutagen.easyid3 import EasyID3
 from mutagen.flac import FLAC
-from sqlalchemy import create_engine, Column, String, DateTime, or_, JSON, Table, ForeignKey, Integer
+from sqlalchemy import create_engine, Column, String, DateTime, or_, JSON, Table, ForeignKey, Integer, text
 from sqlalchemy.orm import sessionmaker, relationship, declarative_base
 import dotenv
 from typing import Optional, List
@@ -86,7 +86,6 @@ def scan_directory(directory: str, deep=False):
         return []
 
     logging.info(f"Scanning directory {directory}")
-    music_files = []
     start_time = time.time()
     new_adds = 0
 
@@ -183,24 +182,60 @@ def prune_music_files():
 @router.get("/search", response_model=List[MusicFile])
 def search_music_files(query: str = Query(..., min_length=1), limit: int = 50):
     db = Database.get_session()
+    start_time = time.time()
+    
     search_query = urllib.parse.unquote(query)
-    search_query = f"%{search_query}%"
     tokens = search_query.split()
-    query = db.query(MusicFileDB)
     
-    for token in tokens:
-        token = f"%{token}%"
-        query = query.filter(
-            or_(
-                MusicFileDB.title.ilike(token),
-                MusicFileDB.artist.ilike(token),
-                MusicFileDB.album.ilike(token)
-            )
-        )
+    # Build scoring expression
+    scoring = """
+        CASE
+            -- Exact title match (highest priority)
+            WHEN lower(title) = lower(:token) THEN 100
+            -- Title starts with token
+            WHEN lower(title) LIKE lower(:token || '%') THEN 75
+            -- Title contains token
+            WHEN lower(title) LIKE lower('%' || :token || '%') THEN 50
+            -- Artist exact match
+            WHEN lower(artist) = lower(:token) THEN 40
+            -- Artist contains token
+            WHEN lower(artist) LIKE lower('%' || :token || '%') THEN 30
+            -- Album exact match
+            WHEN lower(album) = lower(:token) THEN 20
+            -- Album contains token
+            WHEN lower(album) LIKE lower('%' || :token || '%') THEN 10
+            ELSE 0
+        END
+    """
     
-    results = query.limit(limit).all()
-
-    return results
+    # Add score for each token
+    score_sum = "+".join([scoring.replace(":token", f":token{i}") 
+                         for i in range(len(tokens))])
+    
+    # Build query with scoring
+    query = db.query(
+        MusicFileDB,
+        text(f"({score_sum}) as relevance")
+    )
+    
+    # Add token parameters
+    for i, token in enumerate(tokens):
+        query = query.params({f"token{i}": token})
+        
+        # Filter to only include results matching at least one token
+        query = query.filter(or_(
+            MusicFileDB.title.ilike(f"%{token}%"),
+            MusicFileDB.artist.ilike(f"%{token}%"), 
+            MusicFileDB.album.ilike(f"%{token}%")
+        ))
+    
+    # Order by relevance score
+    results = query.order_by(text("relevance DESC")).limit(limit).all()
+    
+    logging.info(f"Search query: {search_query} returned {len(results)} results in {time.time() - start_time:.2f} seconds")
+    
+    # Extract just the MusicFileDB objects from results
+    return [r[0] for r in results]
 
 @router.post("/playlists", response_model=Playlist)
 def create_playlist(playlist: Playlist):
