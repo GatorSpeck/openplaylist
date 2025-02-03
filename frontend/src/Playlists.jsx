@@ -21,6 +21,11 @@ const Playlists = () => {
   const [selectedSongs, setSelectedSongs] = useState([]);
   const [selectedTracks, setSelectedTracks] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [allSongsSelected, setAllSongsSelected] = useState(false);
+  const [allTracksSelected, setAllTracksSelected] = useState(false);
+  const [cloneModalVisible, setCloneModalVisible] = useState(false);
+  const [clonePlaylistName, setClonePlaylistName] = useState('');
+  const [playlistToClone, setPlaylistToClone] = useState(null);
 
   useEffect(() => {
     fetchPlaylists();
@@ -232,6 +237,27 @@ const Playlists = () => {
     }
   };
 
+  const handleClonePlaylist = async () => {
+    try {
+      const playlistData = {
+        name: clonePlaylistName,
+        entries: playlistToClone.entries
+      };
+      
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/playlists`, 
+        playlistData
+      );
+      
+      setPlaylists([...playlists, response.data]);
+      setCloneModalVisible(false);
+      setClonePlaylistName('');
+      setPlaylistToClone(null);
+    } catch (error) {
+      console.error('Error cloning playlist:', error);
+    }
+  };
+
   const filteredSongs = songs;
 
   const onDragEnd = async (result) => {
@@ -271,11 +297,13 @@ const Playlists = () => {
   };
 
   const toggleSongSelection = (song) => {
-    if (selectedSongs.find(s => s.id === song.id)) {
-      setSelectedSongs(selectedSongs.filter(s => s.id !== song.id));
-    } else {
-      setSelectedSongs([...selectedSongs, song]);
-    }
+    setSelectedSongs(prev => {
+      const newSelection = prev.some(s => s.id === song.id)
+        ? prev.filter(s => s.id !== song.id)
+        : [...prev, song];
+      setAllSongsSelected(newSelection.length === songs.length);
+      return newSelection;
+    });
   };
 
   const clearSelectedSongs = () => {
@@ -288,11 +316,13 @@ const Playlists = () => {
   };
 
   const toggleTrackSelection = (index) => {
-    setSelectedTracks(prev => 
-      prev.includes(index) 
+    setSelectedTracks(prev => {
+      const newSelection = prev.includes(index)
         ? prev.filter(i => i !== index)
-        : [...prev, index]
-    );
+        : [...prev, index];
+      setAllTracksSelected(newSelection.length === tracks.length);
+      return newSelection;
+    });
   };
 
   const clearTrackSelection = () => {
@@ -326,6 +356,24 @@ const Playlists = () => {
     }
   };
 
+  const toggleAllSongs = () => {
+    if (allSongsSelected) {
+      setSelectedSongs([]);
+    } else {
+      setSelectedSongs(songs);
+    }
+    setAllSongsSelected(!allSongsSelected);
+  };
+
+  const toggleAllTracks = () => {
+    if (allTracksSelected) {
+      setSelectedTracks([]);
+    } else {
+      setSelectedTracks(tracks.map((_, index) => index));
+    }
+    setAllTracksSelected(!allTracksSelected);
+  };
+
   return (
     <div className="playlists-container">
       <div className="playlists-panel">
@@ -336,6 +384,11 @@ const Playlists = () => {
               <span onClick={() => fetchPlaylistDetails(playlist.id)}>{playlist.name}</span>
               <button onClick={() => deletePlaylist(playlist.id)}>Delete</button>
               <button onClick={() => exportPlaylist(playlist.id)}>Export</button>
+              <button onClick={() => {
+                setPlaylistToClone(playlist);
+                setClonePlaylistName(`${playlist.name} (Copy)`);
+                setCloneModalVisible(true);
+              }}>Clone</button>
             </li>
           ))}
         </ul>
@@ -380,7 +433,13 @@ const Playlists = () => {
               <Droppable droppableId="playlist">
                 {(provided) => (
                   <div className="playlist-grid" {...provided.droppableProps} ref={provided.innerRef}>
-                    <div className="playlist-grid-header">Select</div>
+                    <div className="playlist-grid-header">
+                      <input
+                        type="checkbox"
+                        checked={allTracksSelected}
+                        onChange={toggleAllTracks}
+                      />
+                    </div>
                     <div className="playlist-grid-header">Artist</div>
                     <div className="playlist-grid-header">Album</div>
                     <div className="playlist-grid-header">Title</div>
@@ -450,7 +509,13 @@ const Playlists = () => {
             <Droppable droppableId="songs">
               {(provided) => (
                 <div {...provided.droppableProps} ref={provided.innerRef} className="playlist-grid">
-                  <div className="playlist-grid-header">ID</div>
+                  <div className="playlist-grid-header">
+                    <input
+                      type="checkbox"
+                      checked={allSongsSelected}
+                      onChange={toggleAllSongs}
+                    />
+                  </div>
                   <div className="playlist-grid-header">Artist</div>
                   <div className="playlist-grid-header">Album</div>
                   <div className="playlist-grid-header">Title</div>
@@ -516,6 +581,25 @@ const Playlists = () => {
             />
             <button onClick={handleCreateNewPlaylist}>Create</button>
             <button onClick={() => setNewPlaylistModalVisible(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {cloneModalVisible && (
+        <div className="modal">
+          <div className="modal-content">
+            <h3>Clone Playlist</h3>
+            <input
+              type="text"
+              value={clonePlaylistName}
+              onChange={(e) => setClonePlaylistName(e.target.value)}
+              placeholder="New Playlist Name"
+            />
+            <button onClick={handleClonePlaylist}>Clone</button>
+            <button onClick={() => {
+              setCloneModalVisible(false);
+              setClonePlaylistName('');
+              setPlaylistToClone(null);
+            }}>Cancel</button>
           </div>
         </div>
       )}
