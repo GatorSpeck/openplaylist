@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import PlaylistModal from './PlaylistModal';
 import './Playlists.css'; // Import the CSS file for styling
 
@@ -43,7 +44,7 @@ const Playlists = () => {
     try {
       const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}`);
       setSelectedPlaylist(response.data);
-      await setTracks(response.data.entries);
+      setTracks(response.data.entries);
     } catch (error) {
       console.error('Error fetching playlist details:', error);
     }
@@ -136,25 +137,6 @@ const Playlists = () => {
     }
   };
 
-  const moveTrack = (fromIndex, toIndex) => {
-    const updatedTracks = [...tracks];
-    const [movedTrack] = updatedTracks.splice(fromIndex, 1);
-    updatedTracks.splice(toIndex, 0, movedTrack);
-
-    setTracks(updatedTracks);
-
-    // Update the playlist with the new order of tracks
-    const updatedMusicFilePaths = updatedTracks.map(track => track.path);
-    axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${selectedPlaylist.id}`, {
-      name: selectedPlaylist.name,
-      music_file_paths: updatedMusicFilePaths
-    }).then(response => {
-      setSelectedPlaylist(response.data);
-    }).catch(error => {
-      console.error('Error updating playlist order:', error);
-    });
-  };
-
   const exportPlaylist = async (playlistId) => {
     try {
       const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}/export`, {
@@ -211,6 +193,32 @@ const Playlists = () => {
     song.album.toLowerCase().includes(filterQuery.toLowerCase())
   );
 
+  const onDragEnd = async (result) => {
+    if (!result.destination) return;
+
+    const updatedTracks = Array.from(tracks);
+    const [movedTrack] = updatedTracks.splice(result.source.index, 1);
+    updatedTracks.splice(result.destination.index, 0, movedTrack);
+
+    setTracks(updatedTracks);
+
+    // Update the order of the tracks in the playlist
+    const updatedEntries = updatedTracks.map((track, index) => ({
+      ...track,
+      order: index,
+    }));
+
+    try {
+      await axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${selectedPlaylist.id}`, {
+        name: selectedPlaylist.name,
+        entries: updatedEntries,
+      });
+      fetchPlaylistDetails(selectedPlaylist.id);
+    } catch (error) {
+      console.error('Error updating playlist order:', error);
+    }
+  };
+
   return (
     <div className="playlists-container">
       <div className="playlists-panel">
@@ -241,25 +249,34 @@ const Playlists = () => {
         {selectedPlaylist && (
           <div>
             <h2>{selectedPlaylist.name}</h2>
-            <div className="playlist-grid">
-              <div className="playlist-grid-header">#</div>
-              <div className="playlist-grid-header">Title</div>
-              <div className="playlist-grid-header">Artist</div>
-              <div className="playlist-grid-header">Actions</div>
-              
-              {tracks && tracks.map((track, index) => (
-                <React.Fragment key={index}>
-                  <div className="playlist-grid-item">{index + 1}</div>
-                  <div className="playlist-grid-item">{track.music_file_details?.title || 'Unknown Title'}</div>
-                  <div className="playlist-grid-item">{track.music_file_details?.artist || 'Unknown Artist'}</div>
-                  <div className="playlist-grid-item">
-                    <button onClick={() => removeSongFromPlaylist(index)}>Remove</button>
-                    {index > 0 && <button onClick={() => moveTrack(index, index - 1)}>↑</button>}
-                    {index < tracks.length - 1 && <button onClick={() => moveTrack(index, index + 1)}>↓</button>}
+            <DragDropContext onDragEnd={onDragEnd}>
+              <Droppable droppableId="tracks">
+                {(provided) => (
+                  <div className="playlist-grid" {...provided.droppableProps} ref={provided.innerRef}>
+                    <div className="playlist-grid-header">#</div>
+                    <div className="playlist-grid-header">Title</div>
+                    <div className="playlist-grid-header">Artist</div>
+                    <div className="playlist-grid-header">Actions</div>
+                    
+                    {tracks && tracks.map((track, index) => (
+                      <Draggable key={index} draggableId={index.toString()} index={index}>
+                        {(provided) => (
+                          <React.Fragment key={index}>
+                            <div className="playlist-grid-item" ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps}>{index + 1}</div>
+                            <div className="playlist-grid-item">{track.music_file_details?.title || 'Unknown Title'}</div>
+                            <div className="playlist-grid-item">{track.music_file_details?.artist || 'Unknown Artist'}</div>
+                            <div className="playlist-grid-item">
+                              <button onClick={() => removeSongFromPlaylist(index)}>Remove</button>
+                            </div>
+                          </React.Fragment>
+                        )}
+                      </Draggable>
+                    ))}
+                    {provided.placeholder}
                   </div>
-                </React.Fragment>
-              ))}
-            </div>
+                )}
+              </Droppable>
+            </DragDropContext>
           </div>
         )}
 
