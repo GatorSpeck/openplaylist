@@ -77,7 +77,7 @@ def extract_metadata(file_path, extractor):
 
     return {}
 
-def scan_directory(directory: str, deep=False):
+def scan_directory(directory: str):
     directory = pathlib.Path(directory)
     if not directory.exists():
         logging.error(f"Directory {directory} does not exist")
@@ -143,12 +143,12 @@ router = APIRouter()
 
 @router.get("/scan")
 def scan():
-    scan_directory(os.getenv("MUSIC_PATH", "data/music"))
+    scan_directory(os.getenv("MUSIC_PATH", "/music"))
 
 @router.get("/fullscan")
 def full_scan():
     drop_music_files()
-    scan_directory(os.getenv("MUSIC_PATH", "data/music"))
+    scan_directory(os.getenv("MUSIC_PATH", "/music"))
     prune_music_files()
 
 def drop_music_files():
@@ -452,8 +452,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 app.include_router(router, prefix="/api")
 
-host = os.getenv("HOST", "127.0.0.1")
-port = int(os.getenv("PORT", 8000))
+host = os.getenv("HOST", "0.0.0.0")
+port = int(os.getenv("PORT", 3000))
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host=host, port=port, reload=True)

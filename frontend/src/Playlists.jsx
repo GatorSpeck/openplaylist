@@ -34,7 +34,7 @@ const Playlists = () => {
 
   const fetchPlaylists = async () => {
     try {
-      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/playlists`);
+      const response = await axios.get(`/api/playlists`);
       setPlaylists(response.data);
     } catch (error) {
       console.error('Error fetching playlists:', error);
@@ -48,7 +48,7 @@ const Playlists = () => {
 
     setIsLoading(true);
     try {
-      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/search`, {
+      const response = await axios.get(`/api/search`, {
         params: { 
           query: encodeURIComponent(query),
           limit: 50  // Optional: limit results
@@ -77,7 +77,7 @@ const Playlists = () => {
 
   const fetchPlaylistDetails = async (playlistId) => {
     try {
-      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}`);
+      const response = await axios.get(`/api/playlists/${playlistId}`);
       setSelectedPlaylist(response.data);
       setTracks(response.data.entries);
     } catch (error) {
@@ -87,7 +87,7 @@ const Playlists = () => {
 
   const createPlaylist = async () => {
     try {
-      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/playlists`, {
+      const response = await axios.post(`/api/playlists`, {
         name: newPlaylistName,
         entries: []
       });
@@ -101,7 +101,7 @@ const Playlists = () => {
   const deletePlaylist = async (playlistId) => {
     if (window.confirm('Are you sure you want to delete this playlist?')) {
       try {
-        await axios.delete(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}`);
+        await axios.delete(`/api/playlists/${playlistId}`);
         setPlaylists(playlists.filter(playlist => playlist.id !== playlistId));
         if (selectedPlaylist && selectedPlaylist.id === playlistId) {
           setSelectedPlaylist(null);
@@ -125,7 +125,7 @@ const Playlists = () => {
     ];
   
     try {
-      await axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}`, {
+      await axios.put(`/api/playlists/${playlistId}`, {
         name: selectedPlaylist.name,
         entries: updatedTracks
       });
@@ -154,7 +154,7 @@ const Playlists = () => {
       updatedEntries = updatedEntries.map((entry, i) => ({ ...entry, order: i }));
 
       // Update the playlist with the new list of entries
-      const response = await axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${selectedPlaylist.id}`, {
+      const response = await axios.put(`/api/playlists/${selectedPlaylist.id}`, {
         name: selectedPlaylist.name,
         entries: updatedEntries
       });
@@ -169,7 +169,7 @@ const Playlists = () => {
 
   const exportPlaylist = async (playlistId) => {
     try {
-      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}/export`, {
+      const response = await axios.get(`/api/playlists/${playlistId}/export`, {
         responseType: 'blob'
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -187,7 +187,7 @@ const Playlists = () => {
   const scanMusic = async () => {
     setIsScanning(true);
     try {
-      await axios.get(`${import.meta.env.VITE_API_URL}/api/scan`);
+      await axios.get(`/api/scan`);
       fetchSongs(); // Reload the tracks data
     } catch (error) {
       console.error('Error scanning music:', error);
@@ -200,7 +200,7 @@ const Playlists = () => {
   const fullScanMusic = async () => {
     setIsScanning(true);
     try {
-      await axios.get(`${import.meta.env.VITE_API_URL}/api/fullscan`);
+      await axios.get(`/api/fullscan`);
       fetchSongs(); // Reload the tracks data
     } catch (error) {
       console.error('Error performing full scan:', error);
@@ -223,7 +223,7 @@ const Playlists = () => {
 
   const handleCreateNewPlaylist = async () => {
     try {
-      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/playlists`, {
+      const response = await axios.post(`/api/playlists`, {
         name: newPlaylistNameModal,
         entries: [{ order: 0, music_file_id: songToAdd.id }]
       });
@@ -245,7 +245,7 @@ const Playlists = () => {
       };
       
       const response = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/playlists`, 
+        `/api/playlists`, 
         playlistData
       );
       
@@ -279,7 +279,7 @@ const Playlists = () => {
       }));
 
       try {
-        await axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${selectedPlaylist.id}`, {
+        await axios.put(`/api/playlists/${selectedPlaylist.id}`, {
           name: selectedPlaylist.name,
           entries: updatedEntries,
         });
@@ -341,7 +341,7 @@ const Playlists = () => {
       }));
 
       const response = await axios.put(
-        `${import.meta.env.VITE_API_URL}/api/playlists/${selectedPlaylist.id}`,
+        `/api/playlists/${selectedPlaylist.id}`,
         {
           name: selectedPlaylist.name,
           entries: remainingEntries
