@@ -1,0 +1,57 @@
+# Version control
+.git
+.gitignore
+**/.gitkeep
+
+# Environment files
+.env
+**/.env
+
+# Logs
+*.log
+logs/
+**/npm-debug.log*
+
+# Dependencies
+**/node_modules
+**/.venv
+**/__pycache__
+**/*.pyc
+
+# Build outputs
+**/dist
+**/dist-ssr
+**/build
+**/*.local
+
+# Test files
+**/.pytest_cache
+**/coverage
+
+# IDE files
+.vscode
+.idea
+**/*.suo
+**/*.ntvs*
+**/*.njsproj
+**/*.sln
+**/*.sw?
+
+# OS files
+.DS_Store
+**/Thumbs.db
+
+# Database files
+**/*.sqlite3
+**/*.db
+data/
+
+# Documentation
+**/README.md
+**/CHANGELOG.md
+**/LICENSE
+
+# Docker files
+Dockerfile
+.dockerignore
+compose.yml

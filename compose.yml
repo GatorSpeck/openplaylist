@@ -9,6 +9,7 @@ services:
     build: ./backend
     volumes:
       - ${MUSIC_PATH}:/music:ro
+      - ./data:/data:rw
     restart: unless-stopped
     networks:
       - playlist
