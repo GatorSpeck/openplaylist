@@ -360,8 +360,9 @@ def export_playlist(playlist_id: int):
 
         # Generate the .m3u content
         m3u_content = "#EXTM3U\n"
-        for music_file in playlist.entries:
-            m3u_content += f"#EXTINF:-1,{music_file.title} - {music_file.artist}\n"
+        for entry in playlist.entries:
+            music_file = entry.music_file
+            m3u_content += f"#EXTINF:{entry.order},{music_file.title} - {music_file.artist}\n"
             m3u_content += f"{music_file.path}\n"
 
         # Create a StreamingResponse to return the .m3u file
@@ -373,8 +374,6 @@ def export_playlist(playlist_id: int):
         raise HTTPException(status_code=500, detail="Failed to export playlist")
     finally:
         db.close()
-
-# Further endpoints for playlists would go here.
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

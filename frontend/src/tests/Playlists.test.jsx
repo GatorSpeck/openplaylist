@@ -101,7 +101,7 @@ describe('Playlists', () => {
 
     expect(axios.put).toHaveBeenCalledWith(
       expect.stringContaining('/api/playlists/1'),
-      { id: 1, name: 'Playlist 1', entries: [{"music_file_id": 2, "order": 0}] }
+      { name: 'Playlist 1', entries: [{"music_file_id": 2, "order": 0}] }
     );
   });
 });
