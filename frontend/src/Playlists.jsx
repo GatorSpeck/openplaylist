@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { ClipLoader } from 'react-spinners';
 import PlaylistModal from './PlaylistModal';
 import './Playlists.css'; // Import the CSS file for styling
-
-console.log('API URL:', import.meta.env.VITE_API_URL);
 
 const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
@@ -13,9 +12,9 @@ const Playlists = () => {
   const [tracks, setTracks] = useState([]);
   const [songs, setSongs] = useState([]);
   const [filterQuery, setFilterQuery] = useState('');
-  const [selectedPlaylistForTrack, setSelectedPlaylistForTrack] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [songToAdd, setSongToAdd] = useState(null);
+  const [isScanning, setIsScanning] = useState(false);
 
   useEffect(() => {
     fetchPlaylists();
@@ -155,24 +154,28 @@ const Playlists = () => {
   };
 
   const scanMusic = async () => {
+    setIsScanning(true);
     try {
       await axios.get(`${import.meta.env.VITE_API_URL}/api/scan`);
-      alert('Music scan completed successfully.');
       fetchSongs(); // Reload the tracks data
     } catch (error) {
       console.error('Error scanning music:', error);
       alert('Error scanning music.');
+    } finally {
+      setIsScanning(false);
     }
   };
 
   const fullScanMusic = async () => {
+    setIsScanning(true);
     try {
       await axios.get(`${import.meta.env.VITE_API_URL}/api/fullscan`);
-      alert('Full music scan completed successfully.');
       fetchSongs(); // Reload the tracks data
     } catch (error) {
       console.error('Error performing full scan:', error);
       alert('Error performing full scan.');
+    } finally {
+      setIsScanning(false);
     }
   };
 
@@ -242,8 +245,16 @@ const Playlists = () => {
         />
         <button onClick={createPlaylist}>Create Playlist</button>
 
-        <button onClick={scanMusic}>Scan Music</button>
-        <button onClick={fullScanMusic}>Full Scan Music</button>
+        {isScanning ? (
+          <div className="spinner-container">
+            <ClipLoader size={50} color={"#123abc"} loading={isScanning} />
+          </div>
+        ) : (
+          <div>
+            <button onClick={scanMusic}>Scan Music</button>
+            <button onClick={fullScanMusic}>Full Scan Music</button>
+          </div>
+        )}
       </div>
       <div className="editor-panel">
         {selectedPlaylist && (
@@ -254,8 +265,10 @@ const Playlists = () => {
                 {(provided) => (
                   <div className="playlist-grid" {...provided.droppableProps} ref={provided.innerRef}>
                     <div className="playlist-grid-header">#</div>
-                    <div className="playlist-grid-header">Title</div>
                     <div className="playlist-grid-header">Artist</div>
+                    <div className="playlist-grid-header">Album</div>
+                    <div className="playlist-grid-header">Title</div>
+                    <div className="playlist-grid-header">Genres</div>
                     <div className="playlist-grid-header">Actions</div>
                     
                     {tracks && tracks.map((track, index) => (
@@ -263,8 +276,10 @@ const Playlists = () => {
                         {(provided) => (
                           <React.Fragment key={index}>
                             <div className="playlist-grid-item" ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps}>{index + 1}</div>
-                            <div className="playlist-grid-item">{track.music_file_details?.title || 'Unknown Title'}</div>
                             <div className="playlist-grid-item">{track.music_file_details?.artist || 'Unknown Artist'}</div>
+                            <div className="playlist-grid-item">{track.music_file_details?.album || 'Unknown Album'}</div>
+                            <div className="playlist-grid-item">{track.music_file_details?.title || 'Unknown Title'}</div>
+                            <div className="playlist-grid-item">{track.music_file_details?.genres?.join(', ') || 'Unknown Genres'}</div>
                             <div className="playlist-grid-item">
                               <button onClick={() => removeSongFromPlaylist(index)}>Remove</button>
                             </div>
@@ -289,15 +304,19 @@ const Playlists = () => {
         />
         <div className="playlist-grid">
           <div className="playlist-grid-header">ID</div>
-          <div className="playlist-grid-header">Title</div>
           <div className="playlist-grid-header">Artist</div>
+          <div className="playlist-grid-header">Album</div>
+          <div className="playlist-grid-header">Title</div>
+          <div className="playlist-grid-header">Genres</div>
           <div className="playlist-grid-header">Actions</div>
           
           {filteredSongs.map((song) => (
             <React.Fragment key={song.id}>
               <div className="playlist-grid-item">{song.id}</div>
-              <div className="playlist-grid-item">{song.title || 'Unknown Title'}</div>
               <div className="playlist-grid-item">{song.artist || 'Unknown Artist'}</div>
+              <div className="playlist-grid-item">{song.album || 'Unknown Album'}</div>
+              <div className="playlist-grid-item">{song.title || 'Unknown Title'}</div>
+              <div className="playlist-grid-item">{song.genres?.join(', ') || 'Unknown Genres'}</div>
               <div className="playlist-grid-item">
                 <button onClick={() => handleAddToPlaylist(song)}>Add to Playlist</button>
               </div>

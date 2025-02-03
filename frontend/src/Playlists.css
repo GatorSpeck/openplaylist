@@ -3,13 +3,13 @@
 }
 
 .playlists-panel {
-  width: 30%;
+  width: 20%;
   padding: 20px;
   border-right: 1px solid #ccc;
 }
 
 .editor-panel {
-  width: 70%;
+  width: 80%;
   padding: 20px;
 }
 
@@ -28,7 +28,7 @@ button {
 
 .playlist-grid {
   display: grid;
-  grid-template-columns: 50px 300px 200px 150px;
+  grid-template-columns: 50px 300px 300px 300px 300px 150px;
   gap: 10px;
   margin: 20px 0;
 }
