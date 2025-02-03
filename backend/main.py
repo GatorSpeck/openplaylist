@@ -7,8 +7,7 @@ import uvicorn
 from mutagen.easyid3 import EasyID3
 from mutagen.flac import FLAC
 from sqlalchemy import create_engine, Column, String, DateTime, or_, JSON, Table, ForeignKey, Integer
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.orm import sessionmaker, relationship, declarative_base
 import dotenv
 from typing import Optional, List
 import time
@@ -23,7 +22,7 @@ from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
 import io
 from database import Database
-
+from models import MusicFileDB, PlaylistDB, PlaylistEntryDB, Base
 
 app = FastAPI()
 
@@ -40,39 +39,6 @@ dotenv.load_dotenv(override=True)
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
-
-Base = declarative_base()
-
-# SQLAlchemy model for a music file
-class MusicFileDB(Base):
-    __tablename__ = "music_files"
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    path = Column(String, index=True)
-    title = Column(String, index=True)
-    artist = Column(String, index=True)
-    album = Column(String, index=True)
-    last_modified = Column(DateTime, index=True)
-    genres = Column(JSON, nullable=True)  # list of genres of the music file
-
-class PlaylistDB(Base):
-    __tablename__ = "playlists"
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    name = Column(String, unique=True, index=True)
-    entries = relationship("PlaylistEntryDB", back_populates="playlist")
-
-
-# Association table for many-to-many relationship with an order field
-class PlaylistEntryDB(Base):
-    __tablename__ = 'playlist_music_file'
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    playlist_id = Column(Integer, ForeignKey('playlists.id'))
-    music_file_id = Column(Integer, ForeignKey('music_files.id'))
-    order = Column(Integer)
-
-    music_file = relationship("MusicFileDB", back_populates="playlists")
-    playlist = relationship("PlaylistDB", back_populates="entries")
-
-MusicFileDB.playlists = relationship("PlaylistEntryDB", back_populates="music_file")
 
 # Create the database tables
 Base.metadata.create_all(bind=Database.get_engine())
