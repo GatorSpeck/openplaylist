@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { ClipLoader } from 'react-spinners';
 import PlaylistModal from './PlaylistModal';
 import './Playlists.css'; // Import the CSS file for styling
+import debounce from 'lodash/debounce';
 
 const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
@@ -19,6 +20,7 @@ const Playlists = () => {
   const [newPlaylistNameModal, setNewPlaylistNameModal] = useState('');
   const [selectedSongs, setSelectedSongs] = useState([]);
   const [selectedTracks, setSelectedTracks] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     fetchPlaylists();
@@ -34,13 +36,38 @@ const Playlists = () => {
     }
   };
 
-  const fetchSongs = async () => {
+  const fetchSongs = async (query = '') => {
+    if (query.length < 3) {
+      return;
+    }
+
+    setIsLoading(true);
     try {
-      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/music`);
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/search`, {
+        params: { 
+          query: encodeURIComponent(query),
+          limit: 50  // Optional: limit results
+        }
+      });
       setSongs(response.data);
     } catch (error) {
       console.error('Error fetching songs:', error);
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  // Create debounced version of fetchSongs
+  const debouncedFetchSongs = useCallback(
+    debounce((query) => fetchSongs(query), 300),
+    []
+  );
+
+  // Update filter handler
+  const handleFilterChange = (e) => {
+    const query = e.target.value;
+    setFilterQuery(query);
+    debouncedFetchSongs(query);
   };
 
   const fetchPlaylistDetails = async (playlistId) => {
@@ -205,11 +232,7 @@ const Playlists = () => {
     }
   };
 
-  const filteredSongs = songs.filter(song =>
-    song.title.toLowerCase().includes(filterQuery.toLowerCase()) ||
-    song.artist.toLowerCase().includes(filterQuery.toLowerCase()) ||
-    song.album.toLowerCase().includes(filterQuery.toLowerCase())
-  );
+  const filteredSongs = songs;
 
   const onDragEnd = async (result) => {
     if (!result.destination) return;
@@ -353,7 +376,7 @@ const Playlists = () => {
                   </button>
                 </div>
               )}
-              
+
               <Droppable droppableId="playlist">
                 {(provided) => (
                   <div className="playlist-grid" {...provided.droppableProps} ref={provided.innerRef}>
@@ -400,12 +423,12 @@ const Playlists = () => {
             </div>
           )}
 
-          <h2>Songs</h2>
+          <h2>Add Songs</h2>
           <input
             type="text"
-            placeholder="Filter songs"
+            placeholder="Search..."
             value={filterQuery}
-            onChange={(e) => setFilterQuery(e.target.value)}
+            onChange={handleFilterChange}
           />
 
           {selectedSongs.length > 0 && (
@@ -418,52 +441,59 @@ const Playlists = () => {
               </button>
             </div>
           )}
-          
-          <Droppable droppableId="songs">
-            {(provided) => (
-              <div {...provided.droppableProps} ref={provided.innerRef} className="playlist-grid">
-                <div className="playlist-grid-header">ID</div>
-                <div className="playlist-grid-header">Artist</div>
-                <div className="playlist-grid-header">Album</div>
-                <div className="playlist-grid-header">Title</div>
-                <div className="playlist-grid-header">Genres</div>
-                <div className="playlist-grid-header">Actions</div>
-                
-                {filteredSongs.map((song, index) => (
-                  <Draggable 
-                    key={song.id} 
-                    draggableId={`song-${song.id}`} 
-                    index={index}
-                  >
-                    {(provided) => (
-                      <React.Fragment>
-                        <div 
-                          {...provided.draggableProps}
-                          {...provided.dragHandleProps}
-                          ref={provided.innerRef}
-                          className="playlist-grid-item"
-                        >
-                          <input 
-                            type="checkbox"
-                            checked={selectedSongs.some(s => s.id === song.id)}
-                            onChange={() => toggleSongSelection(song)}
-                          />
-                        </div>
-                        <div className="playlist-grid-item">{song.artist || 'Unknown Artist'}</div>
-                        <div className="playlist-grid-item">{song.album || 'Unknown Album'}</div>
-                        <div className="playlist-grid-item">{song.title || 'Unknown Title'}</div>
-                        <div className="playlist-grid-item">{song.genres?.join(', ') || 'Unknown Genres'}</div>
-                        <div className="playlist-grid-item">
-                          <button onClick={() => handleAddToPlaylist(song)}>Add to Playlist</button>
-                        </div>
-                      </React.Fragment>
-                    )}
-                  </Draggable>
-                ))}
-                {provided.placeholder}
-              </div>
-            )}
-          </Droppable>
+
+          {isLoading ? (
+            <div className="spinner-container">
+              <ClipLoader size={30} color={"#123abc"} />
+            </div>
+          ) : (
+            <Droppable droppableId="songs">
+              {(provided) => (
+                <div {...provided.droppableProps} ref={provided.innerRef} className="playlist-grid">
+                  <div className="playlist-grid-header">ID</div>
+                  <div className="playlist-grid-header">Artist</div>
+                  <div className="playlist-grid-header">Album</div>
+                  <div className="playlist-grid-header">Title</div>
+                  <div className="playlist-grid-header">Genres</div>
+                  <div className="playlist-grid-header">Actions</div>
+                  
+                  {filteredSongs.map((song, index) => (
+                    <Draggable 
+                      key={song.id} 
+                      draggableId={`song-${song.id}`} 
+                      index={index}
+                    >
+                      {(provided) => (
+                        <React.Fragment>
+                          <div 
+                            {...provided.draggableProps}
+                            {...provided.dragHandleProps}
+                            ref={provided.innerRef}
+                            className="playlist-grid-item"
+                          >
+                            <input 
+                              type="checkbox"
+                              checked={selectedSongs.some(s => s.id === song.id)}
+                              onChange={() => toggleSongSelection(song)}
+                            />
+                          </div>
+                          <div className="playlist-grid-item">{song.artist || 'Unknown Artist'}</div>
+                          <div className="playlist-grid-item">{song.album || 'Unknown Album'}</div>
+                          <div className="playlist-grid-item">{song.title || 'Unknown Title'}</div>
+                          <div className="playlist-grid-item">{song.genres?.join(', ') || 'Unknown Genres'}</div>
+                          <div className="playlist-grid-item">
+                            <button onClick={() => handleAddToPlaylist(song)}>Add to Playlist</button>
+                          </div>
+                        </React.Fragment>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
+          )}
+
         </DragDropContext>
       </div>
       {showModal && (

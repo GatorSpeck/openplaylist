@@ -16,7 +16,7 @@ describe('Playlists', () => {
       else if (url.includes('/api/playlists')) {
         return Promise.resolve({ data: mockPlaylists });
       }
-      else if (url.includes('/api/music')) {
+      else if (url.includes('/api/search')) {
         return Promise.resolve({ data: mockSongs });
       }
       return Promise.reject(new Error('not found'));
@@ -80,6 +80,11 @@ describe('Playlists', () => {
     });
 
     render(<Playlists />);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Search...')).toBeInTheDocument();
+      fireEvent.change(screen.getByPlaceholderText('Search...'), { target: { value: 'Song' } });
+    });
 
     // Simulate fetching playlist details
     await waitFor(() => {
