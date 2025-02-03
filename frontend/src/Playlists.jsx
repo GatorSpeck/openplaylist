@@ -90,12 +90,10 @@ const Playlists = () => {
     console.log(song);
 
     const updatedTracks = [...tracks, { order: tracks.length, music_file_id: song.id }];
-    console.log(updatedTracks);
     setTracks(updatedTracks);
 
     const playlist = playlists.find(playlist => playlist.id === playlistId);
     playlist.entries = updatedTracks;
-    console.log(playlist);
 
     try {
       await axios.put(`${import.meta.env.VITE_API_URL}/api/playlists/${playlistId}`, playlist );
