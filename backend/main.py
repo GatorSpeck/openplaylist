@@ -23,6 +23,7 @@ from fastapi.responses import StreamingResponse
 import io
 from database import Database
 from models import MusicFileDB, PlaylistDB, PlaylistEntryDB, Base
+import urllib
 
 app = FastAPI()
 
@@ -38,7 +39,7 @@ app.add_middleware(
 dotenv.load_dotenv(override=True)
 
 # Set up logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 # Create the database tables
 Base.metadata.create_all(bind=Database.get_engine())
@@ -62,7 +63,7 @@ class Playlist(BaseModel):
     name: str
     entries: List[PlaylistEntry] = []
 
-IGNORED_FILETYPES = (".jpg", ".txt", ".db", ".m3u")
+SUPPORTED_FILETYPES = (".mp3", ".flac", ".wav", ".ogg", ".m4a")
 
 def extract_metadata(file_path, extractor):
     try:
@@ -97,6 +98,9 @@ def scan_directory(directory: str, deep=False):
     files_seen = 0
     files_skipped = 0
     for full_path in tqdm(all_files, desc="Scanning files"):
+        if not full_path.lower().endswith(SUPPORTED_FILETYPES):
+            continue
+
         files_seen += 1
         last_modified_time = datetime.fromtimestamp(os.path.getmtime(full_path))
         existing_file = db.query(MusicFileDB).filter(MusicFileDB.path == full_path).first()
@@ -106,9 +110,6 @@ def scan_directory(directory: str, deep=False):
             continue  # Skip files that have not changed
         
         metadata = {}
-
-        if full_path.lower().endswith(IGNORED_FILETYPES):
-            continue
 
         if full_path.lower().endswith('.mp3'):
             metadata = extract_metadata(full_path, EasyID3)
@@ -136,7 +137,7 @@ def scan_directory(directory: str, deep=False):
                 last_modified=last_modified_time
             ))
 
-    logging.info(f"Scanned {len(music_files)} music files ({files_skipped} existing, {new_adds} new) in {time.time() - start_time:.2f} seconds")
+    logging.info(f"Scanned {files_skipped + new_adds} music files ({files_skipped} existing, {new_adds} new) in {time.time() - start_time:.2f} seconds")
 
     db.commit()
     db.close()   
@@ -179,27 +180,25 @@ def prune_music_files():
     db.commit()
     db.close()
 
-@router.get("/music", response_model=List[MusicFile])
-def get_music_files():
+@router.get("/search", response_model=List[MusicFile])
+def search_music_files(query: str = Query(..., min_length=1), limit: int = 50):
     db = Database.get_session()
-    try:
-        music_files = db.query(MusicFileDB).all()
-    except Exception as e:
-        logging.error(f"Failed to get music files: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to get music files")
-    finally:
-        db.close()
-    return music_files
-
-@router.get("/search")
-def search_music_files(query: str = Query(..., min_length=1)):
-    db = Database.get_session()
-    search_query = f"%{query}%"
-    results = db.query(MusicFileDB).filter(
-        (MusicFileDB.title.ilike(search_query)) |
-        (MusicFileDB.artist.ilike(search_query)) |
-        (MusicFileDB.album.ilike(search_query))
-    ).all()
+    search_query = urllib.parse.unquote(query)
+    search_query = f"%{search_query}%"
+    tokens = search_query.split()
+    query = db.query(MusicFileDB)
+    
+    for token in tokens:
+        token = f"%{token}%"
+        query = query.filter(
+            or_(
+                MusicFileDB.title.ilike(token),
+                MusicFileDB.artist.ilike(token),
+                MusicFileDB.album.ilike(token)
+            )
+        )
+    
+    results = query.limit(limit).all()
 
     return results
 
@@ -238,13 +237,38 @@ def create_playlist(playlist: Playlist):
 def read_playlists(skip: int = 0, limit: int = 10):
     db = Database.get_session()
     try:
-        playlists = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries))
+        playlists = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).all()
+        filtered_playlists = []
+        for playlist in playlists:
+            filtered_entries = [
+                entry for entry in playlist.entries if entry.music_file_id is not None
+            ]
+            filtered_playlists.append(
+                Playlist(
+                    id=playlist.id,
+                    name=playlist.name,
+                    entries=[
+                        PlaylistEntry(
+                            order=entry.order,
+                            music_file_id=entry.music_file_id,
+                            music_file_details=MusicFile(
+                                id=entry.music_file.id,
+                                path=entry.music_file.path,
+                                title=entry.music_file.title,
+                                artist=entry.music_file.artist,
+                                album=entry.music_file.album,
+                                genres=entry.music_file.genres
+                            )
+                        ) for entry in filtered_entries
+                    ]
+                )
+            )
     except Exception as e:
         logging.error(f"Failed to read playlists: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to read playlists")
     finally:
         db.close()
-    return playlists
+    return filtered_playlists
 
 @router.get("/playlists/{playlist_id}", response_model=Playlist)
 def read_playlist(playlist_id: int):
