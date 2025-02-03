@@ -6,8 +6,7 @@ from fastapi import FastAPI, Query, APIRouter, Request
 import uvicorn
 from mutagen.easyid3 import EasyID3
 from mutagen.flac import FLAC
-from sqlalchemy import create_engine, Column, String, DateTime, or_, JSON, Table, ForeignKey, Integer, text
-from sqlalchemy.orm import sessionmaker, relationship, declarative_base
+from sqlalchemy import text, or_
 import dotenv
 from typing import Optional, List
 import time
@@ -17,7 +16,6 @@ from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
 import io
@@ -233,6 +231,8 @@ def search_music_files(query: str = Query(..., min_length=1), limit: int = 50):
     results = query.order_by(text("relevance DESC")).limit(limit).all()
     
     logging.info(f"Search query: {search_query} returned {len(results)} results in {time.time() - start_time:.2f} seconds")
+
+    db.close()
     
     # Extract just the MusicFileDB objects from results
     return [r[0] for r in results]
