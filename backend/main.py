@@ -22,6 +22,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
 import io
+from database import Database
 
 
 app = FastAPI()
@@ -40,10 +41,6 @@ dotenv.load_dotenv(override=True)
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
 
-# SQLAlchemy setup
-DATABASE_URL = "sqlite:///./music_files.db"
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 # SQLAlchemy model for a music file
@@ -78,7 +75,7 @@ class PlaylistEntryDB(Base):
 MusicFileDB.playlists = relationship("PlaylistEntryDB", back_populates="music_file")
 
 # Create the database tables
-Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=Database.get_engine())
 
 # Simple model for a music file
 class MusicFile(BaseModel):
@@ -129,7 +126,8 @@ def scan_directory(directory: str, deep=False):
     # Get a list of all files in the directory
     all_files = [os.path.join(root, file) for root, _, files in os.walk(directory) for file in files]
 
-    db = SessionLocal()
+    db = Database.get_session()
+
     files_seen = 0
     files_skipped = 0
     for full_path in tqdm(all_files, desc="Scanning files"):
@@ -190,7 +188,7 @@ def full_scan():
     prune_music_files()
 
 def drop_music_files():
-    db = SessionLocal()
+    db = Database.get_session()
     files = db.query(MusicFileDB).all()
     for f in files:
         db.delete(f)
@@ -199,7 +197,7 @@ def drop_music_files():
     db.close()
 
 def prune_music_files():
-    db = SessionLocal()
+    db = Database.get_session()
     existing_files = db.query(MusicFileDB).all()
 
     prunes = 0
@@ -217,7 +215,7 @@ def prune_music_files():
 
 @router.get("/music", response_model=List[MusicFile])
 def get_music_files():
-    db = SessionLocal()
+    db = Database.get_session()
     try:
         music_files = db.query(MusicFileDB).all()
     except Exception as e:
@@ -229,7 +227,7 @@ def get_music_files():
 
 @router.get("/search")
 def search_music_files(query: str = Query(..., min_length=1)):
-    db = SessionLocal()
+    db = Database.get_session()
     search_query = f"%{query}%"
     results = db.query(MusicFileDB).filter(
         (MusicFileDB.title.ilike(search_query)) |
@@ -241,7 +239,7 @@ def search_music_files(query: str = Query(..., min_length=1)):
 
 @router.post("/playlists", response_model=Playlist)
 def create_playlist(playlist: Playlist):
-    db = SessionLocal()
+    db = Database.get_session()
     try:
         # Create a new PlaylistDB instance
         db_playlist = PlaylistDB(name=playlist.name, entries=[])
@@ -270,7 +268,7 @@ def create_playlist(playlist: Playlist):
 
 @router.get("/playlists", response_model=List[Playlist])
 def read_playlists(skip: int = 0, limit: int = 10):
-    db = SessionLocal()
+    db = Database.get_session()
     try:
         playlists = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries))
     except Exception as e:
@@ -282,7 +280,7 @@ def read_playlists(skip: int = 0, limit: int = 10):
 
 @router.get("/playlists/{playlist_id}", response_model=Playlist)
 def read_playlist(playlist_id: int):
-    db = SessionLocal()
+    db = Database.get_session()
     try:
         playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).filter(PlaylistDB.id == playlist_id).first()
         if playlist is None:
@@ -316,9 +314,7 @@ def read_playlist(playlist_id: int):
 
 @router.put("/playlists/{playlist_id}", response_model=Playlist)
 def update_playlist(playlist_id: int, playlist: Playlist):
-    db = SessionLocal()
-    # logging.info(f"Updating playlist {playlist_id}")
-    # logging.debug(f"Playlist: {playlist}")
+    db = Database.get_session()
     try:
         db_playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).filter(PlaylistDB.id == playlist_id).first()
         if db_playlist is None:
@@ -371,7 +367,7 @@ def update_playlist(playlist_id: int, playlist: Playlist):
 
 @router.delete("/playlists/{playlist_id}")
 def delete_playlist(playlist_id: int):
-    db = SessionLocal()
+    db = Database.get_session()
     try:
         playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).filter(PlaylistDB.id == playlist_id).first()
         if playlist is None:
@@ -388,7 +384,7 @@ def delete_playlist(playlist_id: int):
 
 @router.get("/playlists/{playlist_id}/export", response_class=StreamingResponse)
 def export_playlist(playlist_id: int):
-    db = SessionLocal()
+    db = Database.get_session()
     try:
         playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).filter(PlaylistDB.id == playlist_id).first()
         if playlist is None:
