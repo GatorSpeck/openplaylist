@@ -6,6 +6,7 @@ import PlaylistModal from './PlaylistModal';
 import './Playlists.css'; // Import the CSS file for styling
 import debounce from 'lodash/debounce';
 import TrackDetailsModal from './components/TrackDetailsModal';
+import LastFMSearch from './components/LastFMSearch';
 
 const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
@@ -30,6 +31,7 @@ const Playlists = () => {
   const [selectedTrack, setSelectedTrack] = useState(null);
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, track: null });
+  const [showLastFMSearch, setShowLastFMSearch] = useState(false);
 
   useEffect(() => {
     fetchPlaylists();
@@ -679,6 +681,19 @@ const Playlists = () => {
           )}
 
         </DragDropContext>
+        <button onClick={() => setShowLastFMSearch(true)}>
+          Search Last.FM
+        </button>
+
+        {showLastFMSearch && (
+          <LastFMSearch
+            onClose={() => setShowLastFMSearch(false)}
+            onSelect={(track) => {
+              console.log('Selected track:', track);
+              setShowLastFMSearch(false);
+            }}
+          />
+        )}
       </div>
       {showPlaylistSelectModal && (
         <PlaylistModal
