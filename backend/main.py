@@ -2,7 +2,6 @@ import os
 import pathlib
 import logging
 import urllib.parse
-from pydantic import BaseModel
 from fastapi import FastAPI, Query, APIRouter, Request
 import uvicorn
 from mutagen.easyid3 import EasyID3
@@ -21,10 +20,10 @@ from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
 import io
 from database import Database
-from models import MusicFileDB, PlaylistDB, PlaylistEntryDB, Base
+from models import *
 import urllib
-import requests
 import requests_cache
+from response_models import *
 
 app = FastAPI()
 
@@ -48,43 +47,7 @@ log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=log_level)
 
 # Create the database tables
-Base.metadata.create_all(bind=Database.get_engine())
-
-# Simple model for a music file
-class MusicFile(BaseModel):
-    id: Optional[int] = None
-    path: str
-    title: str
-    artist: Optional[str] = None
-    album_artist: Optional[str] = None
-    album: Optional[str] = None
-    year: Optional[str] = None
-    length: Optional[int] = None
-    publisher: Optional[str] = None
-    kind: Optional[str] = None
-    genres: List[str] = []
-
-class PlaylistEntry(BaseModel):
-    order: int
-    music_file_id: int
-    music_file_details: Optional[MusicFile] = None
-
-class Playlist(BaseModel):
-    id: Optional[int] = None
-    name: str
-    entries: List[PlaylistEntry] = []
-
-class SearchQuery(BaseModel):
-    full_search: Optional[str] = None  # title, artist, and album are scored
-    album: Optional[str] = None
-    title: Optional[str] = None
-    artist: Optional[str] = None
-    limit: Optional[int] = 50
-
-class LastFMTrack(BaseModel):
-    name: str
-    artist: str
-    url: str | None = None
+Base.metadata.create_all(bind=Database.get_engine())    
 
 SUPPORTED_FILETYPES = (".mp3", ".flac", ".wav", ".ogg", ".m4a")
 
@@ -156,12 +119,13 @@ def scan_directory(directory: str):
             files_skipped += 1
         else:
             new_adds += 1
+
             db.add(MusicFileDB(
                 path=full_path,
                 title=metadata.get('title'),
                 artist=metadata.get('artist'),
                 album=metadata.get('album'),
-                genres=metadata.get("genres"),
+                genres=[TrackGenre(parent_type="music_file", genre=genre) for genre in metadata.get("genres", [])],
                 album_artist=metadata.get('album_artist'),
                 year=metadata.get('year'),
                 length=metadata.get('length'),
@@ -176,6 +140,12 @@ def scan_directory(directory: str):
     db.close()   
 
 router = APIRouter()
+
+@router.get("/purge")
+def purge_data():
+    engine = Database.get_engine()
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
 
 @router.get("/scan")
 def scan():
@@ -225,7 +195,8 @@ def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
         length=music_file_db.length,
         publisher=music_file_db.publisher,
         kind=music_file_db.kind,
-        genres=music_file_db.genres or []
+        genres=[g.genre for g in music_file_db.genres] or [],
+        last_scanned=music_file_db.last_scanned
     )
 
 @router.get("/filter", response_model=List[MusicFile])
@@ -308,103 +279,212 @@ def search_music_files(query: str = Query(..., min_length=1), limit: int = 50):
     results = query.order_by(text("relevance DESC")).limit(query_package.limit).all()
     
     logging.info(f"Search query: {search_query} returned {len(results)} results in {time.time() - start_time:.2f} seconds")
-
-    db.close()
     
     # Extract just the MusicFileDB objects from results
-    return [r[0] for r in results]
+    return [to_music_file(r.MusicFileDB) for r in results]
 
 @router.post("/playlists", response_model=Playlist)
 def create_playlist(playlist: Playlist):
     db = Database.get_session()
     try:
         # Create a new PlaylistDB instance
-        db_playlist = PlaylistDB(name=playlist.name, entries=[])
-        
-        # Add music files to the playlist
-        for entry in playlist.entries:
-            music_file = db.query(MusicFileDB).filter(MusicFileDB.id == entry.music_file_id).first()
-            if music_file:
-                db_playlist.entries.append(PlaylistEntryDB(playlist_id=db_playlist.id, music_file_id=music_file.id, order=entry.order))
-            else:
-                logging.warning(f"Music file {entry.music_file_id} not found")
-        
-        # Add the new playlist to the database
+        db_playlist = PlaylistDB(name=playlist.name)
         db.add(db_playlist)
-        db.commit()
-        db.refresh(db_playlist)
+        db.flush()  # Flush to get the playlist ID
         
-        # Eagerly load the entries relationship
-        db_playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).filter(PlaylistDB.id == db_playlist.id).first()
+        # Add entries to the playlist
+        for entry in playlist.entries:
+            entry.entry_type = to_entry_type(entry.entry_type)
+            
+            if entry.entry_type == EntryType.MUSIC_FILE:
+                music_file = db.query(MusicFileDB).filter(MusicFileDB.id == entry.music_file_id).first()
+                if music_file:
+                    db_playlist.entries.append(
+                        MusicFileEntryDB(
+                            playlist_id=db_playlist.id,
+                            music_file_id=music_file.id,
+                            order=entry.order,
+                            entry_type=EntryType.MUSIC_FILE
+                        )
+                    )
+                else:
+                    logging.warning(f"Music file {entry.music_file_id} not found")
+                    
+            elif entry.entry_type == EntryType.LASTFM:
+                last_fm_track = db.query(LastFMTrackDB).filter(LastFMTrackDB.url == entry.url).first()
+                if not last_fm_track:
+                    last_fm_track = LastFMTrackDB(
+                        title=entry.details.title,
+                        artist=entry.details.artist,
+                        album=entry.details.album,
+                        url=entry.url
+                    )
+                    db.add(last_fm_track)
+                    db.flush()
+                
+                db_playlist.entries.append(
+                    LastFMEntryDB(
+                        playlist_id=db_playlist.id,
+                        lastfm_track_id=last_fm_track.id,
+                        order=entry.order,
+                        entry_type=EntryType.LASTFM
+                    )
+                )
+                
+            elif entry.entry_type == EntryType.NESTED_PLAYLIST:
+                nested_playlist = db.query(PlaylistDB).filter(PlaylistDB.id == entry.playlist_id).first()
+                if nested_playlist:
+                    db_playlist.entries.append(
+                        NestedPlaylistEntryDB(
+                            playlist_id=db_playlist.id,
+                            nested_playlist_id=nested_playlist.id,
+                            order=entry.order,
+                            entry_type=EntryType.NESTED_PLAYLIST
+                        )
+                    )
+                else:
+                    logging.warning(f"Nested playlist {entry.playlist_id} not found")
+        
+        db.commit()
+        
+        # Reload the playlist with all relationships for response
+        db_playlist = db.query(PlaylistDB).options(
+            joinedload(PlaylistDB.entries.of_type(MusicFileEntryDB)).joinedload(MusicFileEntryDB.music_file),
+            joinedload(PlaylistDB.entries.of_type(NestedPlaylistEntryDB)).joinedload(NestedPlaylistEntryDB.nested_playlist),
+            joinedload(PlaylistDB.entries.of_type(LastFMEntryDB)).joinedload(LastFMEntryDB.details)
+        ).filter(PlaylistDB.id == db_playlist.id).first()
+        
+        return Playlist(
+            id=db_playlist.id,
+            name=db_playlist.name,
+            entries=[convert_entry_to_response(entry) for entry in db_playlist.entries]
+        )
+        
     except Exception as e:
         db.rollback()
         logging.error(f"Failed to create playlist: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to create playlist")
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
+
+def to_entry_type(entry_type: str) -> EntryType:
+    if entry_type == "music_file":
+        return EntryType.MUSIC_FILE
+    elif entry_type == "nested_playlist":
+        return EntryType.NESTED_PLAYLIST
+    elif entry_type == "lastfm":
+        return EntryType.LASTFM
+    elif entry_type == "requested":
+        return EntryType.REQUESTED
+    else:
+        raise ValueError(f"Unknown entry type: {entry_type}")
+
+def convert_entry_to_response(entry: PlaylistEntryDB) -> PlaylistEntry:
+    entry.entry_type = to_entry_type(entry.entry_type)
+
+    base_entry = {
+        "id": entry.id,
+        "order": entry.order,
+        "entry_type": entry.entry_type
+    }
     
-    return db_playlist
+    if entry.entry_type == EntryType.MUSIC_FILE:
+        return MusicFileEntry(
+            **base_entry,
+            music_file_id=entry.music_file_id,
+            details=MusicFile(
+                id=entry.music_file.id,
+                path=entry.music_file.path,
+                kind=entry.music_file.kind,
+                last_scanned=entry.music_file.last_scanned,
+                title=entry.music_file.title,
+                artist=entry.music_file.artist,
+                album_artist=entry.music_file.album_artist,
+                album=entry.music_file.album,
+                year=entry.music_file.year,
+                length=entry.music_file.length,
+                publisher=entry.music_file.publisher,
+                genres=entry.music_file.genres or []
+            ) if entry.music_file else None
+        )
+    elif entry.entry_type == EntryType.NESTED_PLAYLIST:
+        return NestedPlaylistEntry(
+            **base_entry,
+            playlist_id=entry.nested_playlist_id,
+            details=PlaylistBase(
+                id=entry.nested_playlist.id,
+                name=entry.nested_playlist.name
+            ) if entry.nested_playlist else None
+        )
+    elif entry.entry_type == EntryType.LASTFM:
+        return LastFMEntry(
+            **base_entry,
+            url=entry.details.url,
+            details=LastFMTrack(
+                title=entry.details.title,
+                artist=entry.details.artist,
+                album=entry.details.album,
+                url=entry.details.url
+            ) if entry.details.url else None
+        )
+    elif entry.entry_type == EntryType.REQUESTED:
+        return RequestedTrackEntry(
+            **base_entry,
+            details=TrackDetails(
+                title=entry.requested_title,
+                artist=entry.requested_artist,
+                album=entry.requested_album
+            )
+        )
+    else:
+        raise ValueError(f"Unsupported entry type: {entry.entry_type}")
+        
 
 @router.get("/playlists", response_model=List[Playlist])
 def read_playlists(skip: int = 0, limit: int = 10):
     db = Database.get_session()
     try:
-        playlists = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).all()
-        filtered_playlists = []
-        for playlist in playlists:
-            filtered_entries = [
-                entry for entry in playlist.entries if entry.music_file_id is not None
-            ]
-            filtered_playlists.append(
-                Playlist(
-                    id=playlist.id,
-                    name=playlist.name,
-                    entries=[
-                        PlaylistEntry(
-                            order=entry.order,
-                            music_file_id=entry.music_file_id,
-                            music_file_details=to_music_file(entry.music_file)
-                        ) for entry in filtered_entries
-                    ]
-                )
-            )
+        playlists = db.query(PlaylistDB).options(
+            joinedload(PlaylistDB.entries.of_type(MusicFileEntryDB)).joinedload(MusicFileEntryDB.music_file),
+            joinedload(PlaylistDB.entries.of_type(NestedPlaylistEntryDB)).joinedload(NestedPlaylistEntryDB.nested_playlist),
+            joinedload(PlaylistDB.entries.of_type(RequestedTrackEntryDB))
+        ).offset(skip).limit(limit).all()
+        
+        return [
+            Playlist(
+                id=playlist.id,
+                name=playlist.name,
+                entries=[convert_entry_to_response(entry) for entry in playlist.entries]
+            ) 
+            for playlist in playlists
+        ]
     except Exception as e:
         logging.error(f"Failed to read playlists: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to read playlists")
     finally:
         db.close()
-    return filtered_playlists
 
 @router.get("/playlists/{playlist_id}", response_model=Playlist)
-def get_playlist(playlist_id: int):
+async def get_playlist(playlist_id: int):
     db = Database.get_session()
     try:
-        # Load playlist with all related data
         playlist = db.query(PlaylistDB).options(
-            joinedload(PlaylistDB.entries)
-            .joinedload(PlaylistEntryDB.music_file)
+            joinedload(PlaylistDB.entries.of_type(MusicFileEntryDB)).joinedload(MusicFileEntryDB.music_file),
+            joinedload(PlaylistDB.entries.of_type(NestedPlaylistEntryDB)).joinedload(NestedPlaylistEntryDB.nested_playlist),
+            joinedload(PlaylistDB.entries.of_type(RequestedTrackEntryDB))
         ).filter(PlaylistDB.id == playlist_id).first()
         
-        if playlist is None:
+        if not playlist:
             raise HTTPException(status_code=404, detail="Playlist not found")
-
-        # Map all fields to response
-        playlist_entries = [
-            PlaylistEntry(
-                order=entry.order,
-                music_file_id=entry.music_file.id,
-                music_file_details=to_music_file(entry.music_file)
-            ) for entry in playlist.entries
-        ]
-        
+            
         return Playlist(
             id=playlist.id,
             name=playlist.name,
-            entries=playlist_entries
+            entries=[convert_entry_to_response(entry) for entry in playlist.entries]
         )
     except Exception as e:
-        logging.error(f"Failed to fetch playlist: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to fetch playlist")
+        logging.error(f"Failed to get playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get playlist")
     finally:
         db.close()
 
@@ -421,13 +501,18 @@ def update_playlist(playlist_id: int, playlist: Playlist):
 
         # Add new associations with updated order
         for entry in playlist.entries:
-            logging.debug(entry)
-            music_file = db.query(MusicFileDB).filter(MusicFileDB.id == entry.music_file_id).first()
-            if music_file:
-                association = PlaylistEntryDB(playlist_id=playlist_id, music_file_id=music_file.id, order=entry.order)
+            if to_entry_type(entry.entry_type) == EntryType.MUSIC_FILE:
+                music_file = db.query(MusicFileDB).filter(MusicFileDB.id == entry.music_file_id).first()
+                if music_file:
+                    association = MusicFileEntryDB(playlist_id=playlist_id, music_file_id=music_file.id, order=entry.order, details=entry.details)
+                    db.add(association)
+                else:
+                    logging.warning(f"Music file {entry.music_file_id} not found")
+            elif to_entry_type(entry.entry_type) == EntryType.LASTFM:
+                association = LastFMEntryDB(playlist_id=playlist_id, lastfm_url=entry.url, order=entry.order, requested_title=entry.title, requested_artist=entry.artist, requested_album=entry.album)
                 db.add(association)
             else:
-                logging.warning(f"Music file {entry.music_file_id} not found")
+                logging.warning(f"Unsupported entry type: {entry.entry_type}")
 
         db.commit()
         db.refresh(db_playlist)
@@ -501,7 +586,9 @@ def get_playlist(playlist_id: int):
     db = Database.get_session()
     try:
         playlist = db.query(PlaylistDB).options(
-            joinedload(PlaylistDB.entries).joinedload(PlaylistEntryDB.music_file)
+            joinedload(PlaylistDB.entries.of_type(MusicFileEntryDB)).joinedload(MusicFileEntryDB.music_file),
+            joinedload(PlaylistDB.entries.of_type(NestedPlaylistEntryDB)).joinedload(NestedPlaylistEntryDB.nested_playlist),
+            joinedload(PlaylistDB.entries.of_type(RequestedTrackEntryDB))
         ).filter(PlaylistDB.id == playlist_id).first()
         
         if playlist is None:
@@ -539,7 +626,7 @@ def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
     if tracks:
         track = tracks[0]
         return LastFMTrack(
-            name=track.get('name', ''),
+            title=track.get('name', ''),
             artist=track.get('artist', ''),
             url=track.get('url')
         )
