@@ -4,7 +4,9 @@ import './TrackDetailsModal.css';
 const TrackDetailsModal = ({ track, onClose }) => {
   if (!track) return null;
 
-  const details = track.music_file_details || track;
+  console.log(track);
+
+  const details = track.details || track;
 
   const formatDuration = (seconds) => {
     const minutes = Math.floor(seconds / 60);

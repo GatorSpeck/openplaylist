@@ -98,17 +98,18 @@ const Playlists = () => {
     try {
       const response = await axios.get(`/api/playlists/${playlistId}`);
       setSelectedPlaylist(response.data);
-      setPlaylistEntries(response.data.entries.map(entry => mapToTrackModel(entry.music_file_details)));
+      setPlaylistEntries(response.data.entries.map(entry => mapToTrackModel(entry.details)));
     } catch (error) {
       console.error('Error fetching playlist details:', error);
     }
   };
 
   const createPlaylist = async () => {
+    console.log(songToAdd);
     try {
       const response = await axios.post(`/api/playlists`, {
         name: newPlaylistName,
-        entries: []
+        entries: [...songToAdd]
       });
       setPlaylists([...playlists, response.data]);
       setNewPlaylistName('');
@@ -133,13 +134,20 @@ const Playlists = () => {
   };
 
   const addSongToPlaylist = async (songs, playlistId) => {
+    playlistId = selectedPlaylist.id;
+
     const songsArray = Array.isArray(songs) ? songs : [songs];
     
     const updatedTracks = [
       ...playlistEntries,
       ...songsArray.map((song, idx) => ({
         order: playlistEntries.length + idx,
-        music_file_id: song.id
+        music_file_id: song.id,
+        entry_type: song.entry_type,
+        url: song.url,
+        title: song.title,
+        artist: song.artist,
+        album: song.album
       }))
     ];
   
@@ -229,6 +237,18 @@ const Playlists = () => {
     }
   };
 
+  const purgeData = async () => {
+    if (!window.confirm('Are you sure you want to purge all data?')) {
+      return;
+    }
+
+    try {
+      await axios.get(`/api/purge`);
+    } catch (error) {
+      console.error('Error purging data:', error);
+    }
+  };
+
   const handleAddToPlaylist = (song) => {
     setSongToAdd(song);
     setShowPlaylistSelectModal(true);
@@ -242,10 +262,11 @@ const Playlists = () => {
 
   const handleCreateNewPlaylist = async () => {
     const songList = Array.isArray(songToAdd) ? songToAdd : [songToAdd];
+    console.log(songList);
     try {
       const response = await axios.post(`/api/playlists`, {
         name: newPlaylistNameModal,
-        entries: songList.map((s, idx) => ({ order: idx, music_file_id: s.id }))
+        entries: songList.map((s, idx) => ({ order: idx, music_file_id: s.id, entry_type: s.entry_type, url: songToAdd.url, details: songToAdd }))
       });
       setPlaylists([...playlists, response.data]);
       setNewPlaylistNameModal('');
@@ -524,6 +545,7 @@ const Playlists = () => {
           <div>
             <button onClick={scanMusic}>Scan Music</button>
             <button onClick={fullScanMusic}>Full Scan Music</button>
+            <button onClick={purgeData}>Purge Data</button>
           </div>
         )}
       </div>
@@ -688,8 +710,9 @@ const Playlists = () => {
         {showLastFMSearch && (
           <LastFMSearch
             onClose={() => setShowLastFMSearch(false)}
-            onSelect={(track) => {
-              console.log('Selected track:', track);
+            onAddToPlaylist={(track) => {
+              setSongToAdd(track);
+              setShowPlaylistSelectModal(true);
               setShowLastFMSearch(false);
             }}
           />
