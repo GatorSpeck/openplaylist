@@ -66,6 +66,13 @@ class Playlist(BaseModel):
     name: str
     entries: List[PlaylistEntry] = []
 
+class SearchQuery(BaseModel):
+    full_search: Optional[str] = None  # title, artist, and album are scored
+    album: Optional[str] = None
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    limit: Optional[int] = 50
+
 SUPPORTED_FILETYPES = (".mp3", ".flac", ".wav", ".ogg", ".m4a")
 
 def extract_metadata(file_path, extractor):
@@ -193,12 +200,53 @@ def prune_music_files():
     db.commit()
     db.close()
 
+def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
+    return MusicFile(
+        id=music_file_db.id,
+        path=music_file_db.path,
+        title=music_file_db.title,
+        artist=music_file_db.artist,
+        album_artist=music_file_db.album_artist,
+        album=music_file_db.album,
+        year=music_file_db.year,
+        length=music_file_db.length,
+        publisher=music_file_db.publisher,
+        kind=music_file_db.kind,
+        genres=music_file_db.genres or []
+    )
+
+@router.get("/filter", response_model=List[MusicFile])
+def filter_music_files(
+    title: Optional[str] = None,
+    artist: Optional[str] = None,
+    album: Optional[str] = None,
+    genre: Optional[str] = None,
+    limit: int = 50
+):
+    db = Database.get_session()
+    query = db.query(MusicFileDB)
+
+    if title:
+        query = query.filter(MusicFileDB.title.ilike(f"%{title}%"))
+    if artist:
+        query = query.filter(MusicFileDB.artist.ilike(f"%{artist}%"))
+    if album:
+        query = query.filter(MusicFileDB.album.ilike(f"%{album}%"))
+    if genre:
+        query = query.filter(MusicFileDB.genres.any(genre))
+
+    results = query.limit(limit).all()
+    db.close()
+    
+    return [to_music_file(music_file) for music_file in results]
+
 @router.get("/search", response_model=List[MusicFile])
 def search_music_files(query: str = Query(..., min_length=1), limit: int = 50):
+    query_package = SearchQuery(full_search=query, limit=limit)
     db = Database.get_session()
     start_time = time.time()
     
-    search_query = urllib.parse.unquote(query)
+    search_query = urllib.parse.unquote(query_package.full_search or "")
     tokens = search_query.split()
     
     # Build scoring expression
@@ -244,7 +292,7 @@ def search_music_files(query: str = Query(..., min_length=1), limit: int = 50):
         ))
     
     # Order by relevance score
-    results = query.order_by(text("relevance DESC")).limit(limit).all()
+    results = query.order_by(text("relevance DESC")).limit(query_package.limit).all()
     
     logging.info(f"Search query: {search_query} returned {len(results)} results in {time.time() - start_time:.2f} seconds")
 
@@ -302,14 +350,7 @@ def read_playlists(skip: int = 0, limit: int = 10):
                         PlaylistEntry(
                             order=entry.order,
                             music_file_id=entry.music_file_id,
-                            music_file_details=MusicFile(
-                                id=entry.music_file.id,
-                                path=entry.music_file.path,
-                                title=entry.music_file.title,
-                                artist=entry.music_file.artist,
-                                album=entry.music_file.album,
-                                genres=entry.music_file.genres
-                            )
+                            music_file_details=to_music_file(entry.music_file)
                         ) for entry in filtered_entries
                     ]
                 )
@@ -339,19 +380,7 @@ def get_playlist(playlist_id: int):
             PlaylistEntry(
                 order=entry.order,
                 music_file_id=entry.music_file.id,
-                music_file_details=MusicFile(
-                    id=entry.music_file.id,
-                    path=entry.music_file.path,
-                    title=entry.music_file.title,
-                    artist=entry.music_file.artist,
-                    album=entry.music_file.album,
-                    album_artist=entry.music_file.album_artist,
-                    year=entry.music_file.year,
-                    length=entry.music_file.length,
-                    publisher=entry.music_file.publisher,
-                    kind=entry.music_file.kind,
-                    genres=entry.music_file.genres or []
-                )
+                music_file_details=to_music_file(entry.music_file)
             ) for entry in playlist.entries
         ]
         
@@ -398,19 +427,7 @@ def update_playlist(playlist_id: int, playlist: Playlist):
             PlaylistEntry(
                 order=entry.order,
                 music_file_id=entry.music_file_id,
-                music_file_details=MusicFile(
-                    id=entry.music_file.id,
-                    path=entry.music_file.path,
-                    title=entry.music_file.title,
-                    artist=entry.music_file.artist,
-                    album=entry.music_file.album,
-                    genres=entry.music_file.genres,
-                    album_artist=entry.music_file.album_artist,
-                    year=entry.music_file.year,
-                    length=entry.music_file.length,
-                    publisher=entry.music_file.publisher,
-                    kind=entry.music_file.kind
-                )
+                music_file_details=to_music_file(entry.music_file)
             ) for entry in entries
         ]
     except Exception as e:
@@ -480,18 +497,7 @@ def get_playlist(playlist_id: int):
         return {
             "id": playlist.id,
             "name": playlist.name,
-            "entries": [{
-                "id": entry.music_file.id,
-                "path": entry.music_file.path,
-                "title": entry.music_file.title,
-                "artist": entry.music_file.artist,
-                "album": entry.music_file.album,
-                "album_artist": entry.music_file.album_artist,
-                "year": entry.music_file.year,
-                "length": entry.music_file.length,
-                "genres": entry.music_file.genres,
-                "order": entry.order
-            } for entry in playlist.entries]
+            "entries": [to_music_file(entry.music_file) for entry in playlist.entries]
         }
     finally:
         db.close()
