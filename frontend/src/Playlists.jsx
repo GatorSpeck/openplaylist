@@ -5,6 +5,7 @@ import { ClipLoader } from 'react-spinners';
 import PlaylistModal from './PlaylistModal';
 import './Playlists.css'; // Import the CSS file for styling
 import debounce from 'lodash/debounce';
+import TrackDetailsModal from './components/TrackDetailsModal';
 
 const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
@@ -26,6 +27,8 @@ const Playlists = () => {
   const [cloneModalVisible, setCloneModalVisible] = useState(false);
   const [clonePlaylistName, setClonePlaylistName] = useState('');
   const [playlistToClone, setPlaylistToClone] = useState(null);
+  const [selectedTrack, setSelectedTrack] = useState(null);
+  const [showTrackDetails, setShowTrackDetails] = useState(false);
 
   useEffect(() => {
     fetchPlaylists();
@@ -79,7 +82,17 @@ const Playlists = () => {
     try {
       const response = await axios.get(`/api/playlists/${playlistId}`);
       setSelectedPlaylist(response.data);
-      setTracks(response.data.entries);
+      setTracks(response.data.entries.map(entry => ({
+        ...entry,
+        id: entry.id,
+        title: entry.title || 'Unknown Title',
+        artist: entry.artist || 'Unknown Artist',
+        album: entry.album || 'Unknown Album',
+        album_artist: entry.album_artist || 'Unknown Album Artist',
+        year: entry.year || '',
+        length: entry.length || 0,
+        genres: entry.genres || []
+      })));
     } catch (error) {
       console.error('Error fetching playlist details:', error);
     }
@@ -374,6 +387,11 @@ const Playlists = () => {
     setAllTracksSelected(!allTracksSelected);
   };
 
+  const handleShowTrackDetails = (track) => {
+    setSelectedTrack(track);
+    setShowTrackDetails(true);
+  };
+
   return (
     <div className="playlists-container">
       <div className="playlists-panel">
@@ -466,7 +484,12 @@ const Playlists = () => {
                             </div>
                             <div className="playlist-grid-item">{track.music_file_details?.artist || 'Unknown Artist'}</div>
                             <div className="playlist-grid-item">{track.music_file_details?.album || 'Unknown Album'}</div>
-                            <div className="playlist-grid-item">{track.music_file_details?.title || 'Unknown Title'}</div>
+                            <div 
+                              className="playlist-grid-item clickable" 
+                              onClick={() => handleShowTrackDetails(track)}
+                            >
+                              {track.music_file_details?.title || 'Unknown Title'}
+                            </div>
                             <div className="playlist-grid-item">{track.music_file_details?.genres?.join(', ') || 'Unknown Genres'}</div>
                             <div className="playlist-grid-item">
                               <button onClick={() => removeSongFromPlaylist(index)}>Remove</button>
@@ -544,7 +567,7 @@ const Playlists = () => {
                           </div>
                           <div className="playlist-grid-item">{song.artist || 'Unknown Artist'}</div>
                           <div className="playlist-grid-item">{song.album || 'Unknown Album'}</div>
-                          <div className="playlist-grid-item">{song.title || 'Unknown Title'}</div>
+                          <div className="playlist-grid-item" onClick={() => handleShowTrackDetails(song)}>{song.title || 'Unknown Title'}</div>
                           <div className="playlist-grid-item">{song.genres?.join(', ') || 'Unknown Genres'}</div>
                           <div className="playlist-grid-item">
                             <button onClick={() => handleAddToPlaylist(song)}>Add to Playlist</button>
@@ -602,6 +625,12 @@ const Playlists = () => {
             }}>Cancel</button>
           </div>
         </div>
+      )}
+      {showTrackDetails && (
+        <TrackDetailsModal
+          track={selectedTrack}
+          onClose={() => setShowTrackDetails(false)}
+        />
       )}
     </div>
   );
