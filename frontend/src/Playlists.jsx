@@ -235,10 +235,11 @@ const Playlists = () => {
   };
 
   const handleCreateNewPlaylist = async () => {
+    const songList = Array.isArray(songToAdd) ? songToAdd : [songToAdd];
     try {
       const response = await axios.post(`/api/playlists`, {
         name: newPlaylistNameModal,
-        entries: [{ order: 0, music_file_id: songToAdd.id }]
+        entries: songList.map((s, idx) => ({ order: idx, music_file_id: s.id }))
       });
       setPlaylists([...playlists, response.data]);
       setNewPlaylistNameModal('');
