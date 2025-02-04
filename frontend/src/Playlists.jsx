@@ -11,19 +11,19 @@ const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
-  const [tracks, setTracks] = useState([]);
-  const [songs, setSongs] = useState([]);
+  const [playlistEntries, setPlaylistEntries] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
   const [filterQuery, setFilterQuery] = useState('');
-  const [showModal, setShowModal] = useState(false);
+  const [showPlaylistSelectModal, setShowPlaylistSelectModal] = useState(false);
   const [songToAdd, setSongToAdd] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
   const [newPlaylistModalVisible, setNewPlaylistModalVisible] = useState(false);
   const [newPlaylistNameModal, setNewPlaylistNameModal] = useState('');
-  const [selectedSongs, setSelectedSongs] = useState([]);
-  const [selectedTracks, setSelectedTracks] = useState([]);
+  const [selectedSearchResults, setSelectedSearchResults] = useState([]);
+  const [selectedPlaylistEntries, setSelectedPlaylistEntries] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [allSongsSelected, setAllSongsSelected] = useState(false);
-  const [allTracksSelected, setAllTracksSelected] = useState(false);
+  const [allSearchResultsSelected, setAllSongsSelected] = useState(false);
+  const [allPlaylistEntriesSelected, setAllTracksSelected] = useState(false);
   const [cloneModalVisible, setCloneModalVisible] = useState(false);
   const [clonePlaylistName, setClonePlaylistName] = useState('');
   const [playlistToClone, setPlaylistToClone] = useState(null);
@@ -44,11 +44,24 @@ const Playlists = () => {
     }
   };
 
+  const mapToTrackModel = (item) => ({
+    id: item.id,
+    title: item.title || 'Unknown Title',
+    artist: item.artist || 'Unknown Artist',
+    album: item.album || 'Unknown Album',
+    album_artist: item.album_artist || null,
+    year: item.year || '',
+    length: item.length || 0,
+    genres: item.genres || [],
+    path: item.path,
+    publisher: item.publisher || 'Unknown Publisher',
+    kind: item.kind
+  });
+
   const fetchSongs = async (query = '') => {
     if (query.length < 3) {
       return;
     }
-
     setIsLoading(true);
     try {
       const response = await axios.get(`/api/search`, {
@@ -57,7 +70,7 @@ const Playlists = () => {
           limit: 50  // Optional: limit results
         }
       });
-      setSongs(response.data);
+      setSearchResults(response.data.map(mapToTrackModel));
     } catch (error) {
       console.error('Error fetching songs:', error);
     } finally {
@@ -82,17 +95,7 @@ const Playlists = () => {
     try {
       const response = await axios.get(`/api/playlists/${playlistId}`);
       setSelectedPlaylist(response.data);
-      setTracks(response.data.entries.map(entry => ({
-        ...entry,
-        id: entry.id,
-        title: entry.title || 'Unknown Title',
-        artist: entry.artist || 'Unknown Artist',
-        album: entry.album || 'Unknown Album',
-        album_artist: entry.album_artist || 'Unknown Album Artist',
-        year: entry.year || '',
-        length: entry.length || 0,
-        genres: entry.genres || []
-      })));
+      setPlaylistEntries(response.data.entries.map(entry => mapToTrackModel(entry.music_file_details)));
     } catch (error) {
       console.error('Error fetching playlist details:', error);
     }
@@ -118,7 +121,7 @@ const Playlists = () => {
         setPlaylists(playlists.filter(playlist => playlist.id !== playlistId));
         if (selectedPlaylist && selectedPlaylist.id === playlistId) {
           setSelectedPlaylist(null);
-          setTracks([]);
+          setPlaylistEntries([]);
         }
       } catch (error) {
         console.error('Error deleting playlist:', error);
@@ -130,9 +133,9 @@ const Playlists = () => {
     const songsArray = Array.isArray(songs) ? songs : [songs];
     
     const updatedTracks = [
-      ...tracks,
+      ...playlistEntries,
       ...songsArray.map((song, idx) => ({
-        order: tracks.length + idx,
+        order: playlistEntries.length + idx,
         music_file_id: song.id
       }))
     ];
@@ -174,7 +177,7 @@ const Playlists = () => {
 
       // Update the selected playlist and tracks
       setSelectedPlaylist(response.data);
-      setTracks(response.data.entries);
+      setPlaylistEntries(response.data.entries);
     } catch (error) {
       console.error('Error removing song from playlist:', error);
     }
@@ -225,12 +228,12 @@ const Playlists = () => {
 
   const handleAddToPlaylist = (song) => {
     setSongToAdd(song);
-    setShowModal(true);
+    setShowPlaylistSelectModal(true);
   };
 
   const handleSelectPlaylist = (playlistId) => {
     addSongToPlaylist(songToAdd, playlistId);
-    setShowModal(false);
+    setShowPlaylistSelectModal(false);
     setSongToAdd(null);
   };
 
@@ -243,7 +246,7 @@ const Playlists = () => {
       });
       setPlaylists([...playlists, response.data]);
       setNewPlaylistNameModal('');
-      setShowModal(false);
+      setShowPlaylistSelectModal(false);
       setSongToAdd(null);
       setNewPlaylistModalVisible(false);
     } catch (error) {
@@ -272,7 +275,7 @@ const Playlists = () => {
     }
   };
 
-  const filteredSongs = songs;
+  const filteredSongs = searchResults;
 
   const onDragEnd = async (result) => {
     if (!result.destination) return;
@@ -281,11 +284,11 @@ const Playlists = () => {
 
     // If dragging within playlist
     if (source.droppableId === 'playlist' && destination.droppableId === 'playlist') {
-      const updatedTracks = Array.from(tracks);
+      const updatedTracks = Array.from(playlistEntries);
       const [movedTrack] = updatedTracks.splice(source.index, 1);
       updatedTracks.splice(destination.index, 0, movedTrack);
       
-      setTracks(updatedTracks);
+      setPlaylistEntries(updatedTracks);
       
       const updatedEntries = updatedTracks.map((track, index) => ({
         ...track,
@@ -311,44 +314,44 @@ const Playlists = () => {
   };
 
   const toggleSongSelection = (song) => {
-    setSelectedSongs(prev => {
+    setSelectedSearchResults(prev => {
       const newSelection = prev.some(s => s.id === song.id)
         ? prev.filter(s => s.id !== song.id)
         : [...prev, song];
-      setAllSongsSelected(newSelection.length === songs.length);
+      setAllSongsSelected(newSelection.length === searchResults.length);
       return newSelection;
     });
   };
 
   const clearSelectedSongs = () => {
-    setSelectedSongs([]);
+    setSelectedSearchResults([]);
   };
 
   const handleAddSelectedToPlaylist = () => {
-    setSongToAdd(selectedSongs);
-    setShowModal(true);
+    setSongToAdd(selectedSearchResults);
+    setShowPlaylistSelectModal(true);
   };
 
   const toggleTrackSelection = (index) => {
-    setSelectedTracks(prev => {
+    setSelectedPlaylistEntries(prev => {
       const newSelection = prev.includes(index)
         ? prev.filter(i => i !== index)
         : [...prev, index];
-      setAllTracksSelected(newSelection.length === tracks.length);
+      setAllTracksSelected(newSelection.length === playlistEntries.length);
       return newSelection;
     });
   };
 
   const clearTrackSelection = () => {
-    setSelectedTracks([]);
+    setSelectedPlaylistEntries([]);
   };
 
   const removeSelectedTracks = async () => {
-    if (!selectedPlaylist || selectedTracks.length === 0) return;
+    if (!selectedPlaylist || selectedPlaylistEntries.length === 0) return;
 
     try {
       const remainingEntries = selectedPlaylist.entries.filter((_, index) => 
-        !selectedTracks.includes(index)
+        !selectedPlaylistEntries.includes(index)
       ).map((entry, index) => ({
         ...entry,
         order: index
@@ -363,7 +366,7 @@ const Playlists = () => {
       );
 
       setSelectedPlaylist(response.data);
-      setTracks(response.data.entries);
+      setPlaylistEntries(response.data.entries);
       clearTrackSelection();
     } catch (error) {
       console.error('Error removing tracks:', error);
@@ -371,27 +374,40 @@ const Playlists = () => {
   };
 
   const toggleAllSongs = () => {
-    if (allSongsSelected) {
-      setSelectedSongs([]);
+    if (allSearchResultsSelected) {
+      setSelectedSearchResults([]);
     } else {
-      setSelectedSongs(songs);
+      setSelectedSearchResults(searchResults);
     }
-    setAllSongsSelected(!allSongsSelected);
+    setAllSongsSelected(!allSearchResultsSelected);
   };
 
   const toggleAllTracks = () => {
-    if (allTracksSelected) {
-      setSelectedTracks([]);
+    if (allPlaylistEntriesSelected) {
+      setSelectedPlaylistEntries([]);
     } else {
-      setSelectedTracks(tracks.map((_, index) => index));
+      setSelectedPlaylistEntries(playlistEntries.map((_, index) => index));
     }
-    setAllTracksSelected(!allTracksSelected);
+    setAllTracksSelected(!allPlaylistEntriesSelected);
   };
 
   const handleShowTrackDetails = (track) => {
     setSelectedTrack(track);
     setShowTrackDetails(true);
   };
+
+  const TrackItem = ({ track, onSelect, actions }) => (
+    <div className="track-item">
+      <div className="track-info" onClick={() => onSelect(track)}>
+        <span>{track.title}</span>
+        <span>{track.artist}</span>
+        <span>{track.album}</span>
+      </div>
+      <div className="track-actions">
+        {actions}
+      </div>
+    </div>
+  );
 
   return (
     <div className="playlists-container">
@@ -438,10 +454,10 @@ const Playlists = () => {
             <div>
               <h2>{selectedPlaylist.name}</h2>
 
-              {selectedTracks.length > 0 && (
+              {selectedPlaylistEntries.length > 0 && (
                 <div className="batch-actions">
                   <button onClick={removeSelectedTracks}>
-                    Remove {selectedTracks.length} Selected Tracks
+                    Remove {selectedPlaylistEntries.length} Selected Tracks
                   </button>
                   <button onClick={clearTrackSelection}>
                     Clear Selection
@@ -455,7 +471,7 @@ const Playlists = () => {
                     <div className="playlist-grid-header">
                       <input
                         type="checkbox"
-                        checked={allTracksSelected}
+                        checked={allPlaylistEntriesSelected}
                         onChange={toggleAllTracks}
                       />
                     </div>
@@ -465,7 +481,7 @@ const Playlists = () => {
                     <div className="playlist-grid-header">Genres</div>
                     <div className="playlist-grid-header">Actions</div>
 
-                    {tracks.map((track, index) => (
+                    {playlistEntries.map((track, index) => (
                       <Draggable 
                         key={index} 
                         draggableId={index.toString()} 
@@ -479,19 +495,19 @@ const Playlists = () => {
                               {...provided.dragHandleProps}>
                               <input
                                 type="checkbox"
-                                checked={selectedTracks.includes(index)}
+                                checked={selectedPlaylistEntries.includes(index)}
                                 onChange={() => toggleTrackSelection(index)}
                               />
                             </div>
-                            <div className="playlist-grid-item">{track.music_file_details?.artist || 'Unknown Artist'}</div>
-                            <div className="playlist-grid-item">{track.music_file_details?.album || 'Unknown Album'}</div>
+                            <div className="playlist-grid-item">{track.artist ? track.artist : track.album_artist}</div>
+                            <div className="playlist-grid-item">{track.album}</div>
                             <div 
                               className="playlist-grid-item clickable" 
                               onClick={() => handleShowTrackDetails(track)}
                             >
-                              {track.music_file_details?.title || 'Unknown Title'}
+                              {track.title}
                             </div>
-                            <div className="playlist-grid-item">{track.music_file_details?.genres?.join(', ') || 'Unknown Genres'}</div>
+                            <div className="playlist-grid-item">{track.genres?.join(', ')}</div>
                             <div className="playlist-grid-item">
                               <button onClick={() => removeSongFromPlaylist(index)}>Remove</button>
                             </div>
@@ -514,10 +530,10 @@ const Playlists = () => {
             onChange={handleFilterChange}
           />
 
-          {selectedSongs.length > 0 && (
+          {selectedSearchResults.length > 0 && (
             <div className="batch-actions">
               <button onClick={handleAddSelectedToPlaylist}>
-                Add {selectedSongs.length} Selected to Playlist
+                Add {selectedSearchResults.length} Selected to Playlist
               </button>
               <button onClick={clearSelectedSongs}>
                 Clear Selection
@@ -536,7 +552,7 @@ const Playlists = () => {
                   <div className="playlist-grid-header">
                     <input
                       type="checkbox"
-                      checked={allSongsSelected}
+                      checked={allSearchResultsSelected}
                       onChange={toggleAllSongs}
                     />
                   </div>
@@ -562,14 +578,14 @@ const Playlists = () => {
                           >
                             <input 
                               type="checkbox"
-                              checked={selectedSongs.some(s => s.id === song.id)}
+                              checked={selectedSearchResults.some(s => s.id === song.id)}
                               onChange={() => toggleSongSelection(song)}
                             />
                           </div>
-                          <div className="playlist-grid-item">{song.artist || 'Unknown Artist'}</div>
-                          <div className="playlist-grid-item">{song.album || 'Unknown Album'}</div>
-                          <div className="playlist-grid-item" onClick={() => handleShowTrackDetails(song)}>{song.title || 'Unknown Title'}</div>
-                          <div className="playlist-grid-item">{song.genres?.join(', ') || 'Unknown Genres'}</div>
+                          <div className="playlist-grid-item">{song.artist ? song.artist : song.album_artist}</div>
+                          <div className="playlist-grid-item">{song.album}</div>
+                          <div className="playlist-grid-item" onClick={() => handleShowTrackDetails(song)}>{song.title}</div>
+                          <div className="playlist-grid-item">{song.genres?.join(', ')}</div>
                           <div className="playlist-grid-item">
                             <button onClick={() => handleAddToPlaylist(song)}>Add to Playlist</button>
                           </div>
@@ -585,10 +601,10 @@ const Playlists = () => {
 
         </DragDropContext>
       </div>
-      {showModal && (
+      {showPlaylistSelectModal && (
         <PlaylistModal
           playlists={playlists}
-          onClose={() => setShowModal(false)}
+          onClose={() => setShowPlaylistSelectModal(false)}
           onSelect={handleSelectPlaylist}
           onCreateNewPlaylist={() => setNewPlaylistModalVisible(true)}
         />
