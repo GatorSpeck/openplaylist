@@ -1,6 +1,7 @@
 import os
 import pathlib
 import logging
+import urllib.parse
 from pydantic import BaseModel
 from fastapi import FastAPI, Query, APIRouter, Request
 import uvicorn
@@ -22,8 +23,12 @@ import io
 from database import Database
 from models import MusicFileDB, PlaylistDB, PlaylistEntryDB, Base
 import urllib
+import requests
+import requests_cache
 
 app = FastAPI()
+
+requests_cache_session = requests_cache.CachedSession("lastfm_cache", backend="memory", expire_after=3600)
 
 # Configure CORS
 app.add_middleware(
@@ -36,8 +41,11 @@ app.add_middleware(
 
 dotenv.load_dotenv(override=True)
 
+# read log level from environment variable
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=log_level)
 
 # Create the database tables
 Base.metadata.create_all(bind=Database.get_engine())
@@ -72,6 +80,11 @@ class SearchQuery(BaseModel):
     title: Optional[str] = None
     artist: Optional[str] = None
     limit: Optional[int] = 50
+
+class LastFMTrack(BaseModel):
+    name: str
+    artist: str
+    url: str | None = None
 
 SUPPORTED_FILETYPES = (".mp3", ".flac", ".wav", ".ogg", ".m4a")
 
@@ -501,6 +514,37 @@ def get_playlist(playlist_id: int):
         }
     finally:
         db.close()
+
+@router.get("/lastfm", response_model=LastFMTrack | None)
+def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
+    api_key = os.getenv("LASTFM_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Last.FM API key not configured")
+
+    # URL encode parameters
+    encoded_title = urllib.parse.quote(title)
+    encoded_artist = urllib.parse.quote(artist)
+
+    # Make request to Last.FM API
+    url = f"http://ws.audioscrobbler.com/2.0/?method=track.search&track={encoded_title}&artist={encoded_artist}&api_key={api_key}&format=json&limit=1"
+    response = requests_cache_session.get(url)
+    
+    if response.status_code != 200:
+        raise HTTPException(status_code=500, detail="Failed to fetch data from Last.FM")
+
+    data = response.json()
+    tracks = data.get('results', {}).get('trackmatches', {}).get('track', [])
+    
+    # Return first matching track
+    if tracks:
+        track = tracks[0]
+        return LastFMTrack(
+            name=track.get('name', ''),
+            artist=track.get('artist', ''),
+            url=track.get('url')
+        )
+    
+    return None
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
