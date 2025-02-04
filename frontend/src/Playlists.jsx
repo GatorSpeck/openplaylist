@@ -29,6 +29,7 @@ const Playlists = () => {
   const [playlistToClone, setPlaylistToClone] = useState(null);
   const [selectedTrack, setSelectedTrack] = useState(null);
   const [showTrackDetails, setShowTrackDetails] = useState(false);
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, track: null });
 
   useEffect(() => {
     fetchPlaylists();
@@ -396,6 +397,42 @@ const Playlists = () => {
     setShowTrackDetails(true);
   };
 
+  const handleContextMenu = (e, track) => {
+    e.preventDefault();
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      track
+    });
+  };
+
+  const handleFilterByAlbum = async (album) => {
+    setContextMenu({ visible: false });
+    setFilterQuery("");
+    try {
+      const response = await axios.get(`/api/filter`, {
+        params: { album }
+      });
+      setSearchResults(response.data.map(mapToTrackModel));
+    } catch (error) {
+      console.error('Error filtering by album:', error);
+    }
+  };
+
+  const handleFilterByArtist = async (artist) => {
+    setContextMenu({ visible: false });
+    setFilterQuery("");
+    try {
+      const response = await axios.get(`/api/filter`, {
+        params: { artist }
+      });
+      setSearchResults(response.data.map(mapToTrackModel));
+    } catch (error) {
+      console.error('Error filtering by artist:', error);
+    }
+  };
+
   const TrackItem = ({ track, onSelect, actions }) => (
     <div className="track-item">
       <div className="track-info" onClick={() => onSelect(track)}>
@@ -409,8 +446,48 @@ const Playlists = () => {
     </div>
   );
 
+  const ContextMenu = ({ x, y, track, onClose }) => {
+    if (!track) return null;
+
+    return (
+      <div 
+        className="context-menu"
+        style={{ 
+          position: 'fixed',
+          left: x,
+          top: y,
+          zIndex: 1000
+        }}
+      >
+        <div onClick={() => {
+          handleFilterByAlbum(track.album);
+          onClose();
+        }}>
+          Filter by Album: {track.album}
+        </div>
+        <div onClick={() => {
+          handleFilterByArtist(track.artist);
+          onClose();
+        }}>
+          Filter by Artist: {track.artist}
+        </div>
+      </div>
+    );
+  };
+
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setContextMenu({ visible: false });
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, []);
+
   return (
-    <div className="playlists-container">
+    <div className="playlists-container" onClick={() => setContextMenu({ visible: false })}>
       <div className="playlists-panel">
         <h1>Playlists</h1>
         <ul>
@@ -504,6 +581,7 @@ const Playlists = () => {
                             <div 
                               className="playlist-grid-item clickable" 
                               onClick={() => handleShowTrackDetails(track)}
+                              onContextMenu={(e) => handleContextMenu(e, track)}
                             >
                               {track.title}
                             </div>
@@ -584,10 +662,11 @@ const Playlists = () => {
                           </div>
                           <div className="playlist-grid-item">{song.artist ? song.artist : song.album_artist}</div>
                           <div className="playlist-grid-item">{song.album}</div>
-                          <div className="playlist-grid-item" onClick={() => handleShowTrackDetails(song)}>{song.title}</div>
+                          <div className="playlist-grid-item" onClick={() => handleShowTrackDetails(song)} onContextMenu={(e) => handleContextMenu(e, song)}>{song.title}</div>
                           <div className="playlist-grid-item">{song.genres?.join(', ')}</div>
                           <div className="playlist-grid-item">
                             <button onClick={() => handleAddToPlaylist(song)}>Add to Playlist</button>
+                            <button onClick={(e) => handleContextMenu(e, song)}>More</button>
                           </div>
                         </React.Fragment>
                       )}
@@ -647,6 +726,14 @@ const Playlists = () => {
         <TrackDetailsModal
           track={selectedTrack}
           onClose={() => setShowTrackDetails(false)}
+        />
+      )}
+      {contextMenu.visible && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          track={contextMenu.track}
+          onClose={() => setContextMenu({ visible: false })}
         />
       )}
     </div>

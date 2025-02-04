@@ -49,3 +49,23 @@ button {
   background-color: #f9f9f9;
   color: #333;
 }
+
+.context-menu {
+  position: absolute;
+  background: white;
+  color: black;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 8px;
+  box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+  z-index: 1000;
+}
+
+.context-menu div {
+  padding: 8px;
+  cursor: pointer;
+}
+
+.context-menu div:hover {
+  background: #f0f0f0;
+}
