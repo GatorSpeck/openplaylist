@@ -48,7 +48,12 @@ class MusicFile(BaseModel):
     path: str
     title: str
     artist: Optional[str] = None
+    album_artist: Optional[str] = None
     album: Optional[str] = None
+    year: Optional[str] = None
+    length: Optional[int] = None
+    publisher: Optional[str] = None
+    kind: Optional[str] = None
     genres: List[str] = []
 
 class PlaylistEntry(BaseModel):
@@ -66,12 +71,18 @@ SUPPORTED_FILETYPES = (".mp3", ".flac", ".wav", ".ogg", ".m4a")
 def extract_metadata(file_path, extractor):
     try:
         audio = extractor(file_path)
-        return {
+        result = {
             'title': audio.get('title', [None])[0],
             'artist': audio.get('artist', [None])[0],
             'album': audio.get('album', [None])[0],
+            'album_artist': audio.get('albumartist', [None])[0],
+            'year': audio.get('date', [None])[0],
+            'length': int(audio.info.length),
+            'publisher': audio.get('organization', [None])[0],
+            'kind': audio.mime[0] if hasattr(audio, 'mime') else None,
             'genres': audio.get('genre', list())
         }
+        return result
     except Exception as e:
         logging.error(f"Failed to read metadata for {file_path}: {e}")
 
@@ -102,7 +113,7 @@ def scan_directory(directory: str):
         last_modified_time = datetime.fromtimestamp(os.path.getmtime(full_path))
         existing_file = db.query(MusicFileDB).filter(MusicFileDB.path == full_path).first()
 
-        if existing_file and existing_file.last_modified >= last_modified_time:
+        if existing_file and existing_file.last_scanned >= last_modified_time:
             files_skipped += 1
             continue  # Skip files that have not changed
         
@@ -131,7 +142,12 @@ def scan_directory(directory: str):
                 artist=metadata.get('artist'),
                 album=metadata.get('album'),
                 genres=metadata.get("genres"),
-                last_modified=last_modified_time
+                album_artist=metadata.get('album_artist'),
+                year=metadata.get('year'),
+                length=metadata.get('length'),
+                publisher=metadata.get('publisher'),
+                kind=metadata.get('kind'),
+                last_scanned=last_modified_time
             ))
 
     logging.info(f"Scanned {files_skipped + new_adds} music files ({files_skipped} existing, {new_adds} new) in {time.time() - start_time:.2f} seconds")
@@ -306,38 +322,49 @@ def read_playlists(skip: int = 0, limit: int = 10):
     return filtered_playlists
 
 @router.get("/playlists/{playlist_id}", response_model=Playlist)
-def read_playlist(playlist_id: int):
+def get_playlist(playlist_id: int):
     db = Database.get_session()
     try:
-        playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).filter(PlaylistDB.id == playlist_id).first()
+        # Load playlist with all related data
+        playlist = db.query(PlaylistDB).options(
+            joinedload(PlaylistDB.entries)
+            .joinedload(PlaylistEntryDB.music_file)
+        ).filter(PlaylistDB.id == playlist_id).first()
+        
         if playlist is None:
             raise HTTPException(status_code=404, detail="Playlist not found")
-        
-        entries = db.query(PlaylistEntryDB).join(MusicFileDB).filter(PlaylistEntryDB.playlist_id == playlist_id).all()
+
+        # Map all fields to response
         playlist_entries = [
             PlaylistEntry(
                 order=entry.order,
-                music_file_id=entry.music_file_id,
+                music_file_id=entry.music_file.id,
                 music_file_details=MusicFile(
                     id=entry.music_file.id,
                     path=entry.music_file.path,
                     title=entry.music_file.title,
                     artist=entry.music_file.artist,
                     album=entry.music_file.album,
-                    genres=entry.music_file.genres
+                    album_artist=entry.music_file.album_artist,
+                    year=entry.music_file.year,
+                    length=entry.music_file.length,
+                    publisher=entry.music_file.publisher,
+                    kind=entry.music_file.kind,
+                    genres=entry.music_file.genres or []
                 )
-            ) for entry in entries
+            ) for entry in playlist.entries
         ]
+        
+        return Playlist(
+            id=playlist.id,
+            name=playlist.name,
+            entries=playlist_entries
+        )
     except Exception as e:
-        logging.error(f"Failed to read playlist: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to read playlist")
+        logging.error(f"Failed to fetch playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch playlist")
     finally:
         db.close()
-    return Playlist(
-        id=playlist.id,
-        name=playlist.name,
-        entries=playlist_entries
-    )
 
 @router.put("/playlists/{playlist_id}", response_model=Playlist)
 def update_playlist(playlist_id: int, playlist: Playlist):
@@ -377,7 +404,12 @@ def update_playlist(playlist_id: int, playlist: Playlist):
                     title=entry.music_file.title,
                     artist=entry.music_file.artist,
                     album=entry.music_file.album,
-                    genres=entry.music_file.genres
+                    genres=entry.music_file.genres,
+                    album_artist=entry.music_file.album_artist,
+                    year=entry.music_file.year,
+                    length=entry.music_file.length,
+                    publisher=entry.music_file.publisher,
+                    kind=entry.music_file.kind
                 )
             ) for entry in entries
         ]
@@ -431,6 +463,36 @@ def export_playlist(playlist_id: int):
     except Exception as e:
         logging.error(f"Failed to export playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to export playlist")
+    finally:
+        db.close()
+
+@router.get("/api/playlists/{playlist_id}")
+def get_playlist(playlist_id: int):
+    db = Database.get_session()
+    try:
+        playlist = db.query(PlaylistDB).options(
+            joinedload(PlaylistDB.entries).joinedload(PlaylistEntryDB.music_file)
+        ).filter(PlaylistDB.id == playlist_id).first()
+        
+        if playlist is None:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+            
+        return {
+            "id": playlist.id,
+            "name": playlist.name,
+            "entries": [{
+                "id": entry.music_file.id,
+                "path": entry.music_file.path,
+                "title": entry.music_file.title,
+                "artist": entry.music_file.artist,
+                "album": entry.music_file.album,
+                "album_artist": entry.music_file.album_artist,
+                "year": entry.music_file.year,
+                "length": entry.music_file.length,
+                "genres": entry.music_file.genres,
+                "order": entry.order
+            } for entry in playlist.entries]
+        }
     finally:
         db.close()
 

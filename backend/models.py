@@ -11,8 +11,13 @@ class MusicFileDB(Base):
     title = Column(String, index=True)
     artist = Column(String, index=True)
     album = Column(String, index=True)
-    last_modified = Column(DateTime, index=True)
+    last_scanned = Column(DateTime, index=True)
     genres = Column(JSON, nullable=True)  # list of genres of the music file
+    album_artist = Column(String, index=True)
+    year = Column(String, index=True)
+    length = Column(Integer, index=True)
+    publisher = Column(String, index=True)
+    kind = Column(String, index=True)
 
 class PlaylistDB(Base):
     __tablename__ = "playlists"
