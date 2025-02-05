@@ -1,10 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import './TrackDetailsModal.css';
 
 const TrackDetailsModal = ({ track, onClose }) => {
   if (!track) return null;
-
-  console.log(track);
 
   const details = track.details || track;
 
@@ -27,7 +25,9 @@ const TrackDetailsModal = ({ track, onClose }) => {
           <p><strong>Year:</strong> {details.year}</p>
           <p><strong>Path:</strong> {details.path}</p>
         </div>
-        <button onClick={onClose}>Close</button>
+        <div className="modal-actions">
+          <button onClick={onClose}>Close</button>
+        </div>
       </div>
     </div>
   );
