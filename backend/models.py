@@ -1,7 +1,6 @@
 from __future__ import annotations
 from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Enum, Text
 from sqlalchemy.orm import relationship, declarative_base, declared_attr, Mapped, mapped_column
-import enum
 from typing import List, Optional
 
 Base = declarative_base()
@@ -85,12 +84,6 @@ class RequestedTrackDB(BaseNode, TrackDetailsMixin):
         cascade="all, delete-orphan"
     )
 
-class EntryType(str, enum.Enum):
-    MUSIC_FILE = "music_file"
-    NESTED_PLAYLIST = "nested_playlist"
-    LASTFM = "lastfm"
-    REQUESTED = "requested"
-
 class PlaylistDB(Base):
     __tablename__ = "playlists"
     id = Column(Integer, primary_key=True, index=True)
@@ -110,7 +103,7 @@ class PlaylistEntryDB(Base):
     nested_playlist_id = Column(Integer, ForeignKey('nested_playlists.id'), nullable=True)
     requested_track_id = Column(Integer, ForeignKey('requested_tracks.id'), nullable=True)
 
-    playlist_id = Column(Integer, ForeignKey('playlists.id'))
+    playlist_id = Column(Integer, ForeignKey('playlists.id', ondelete="CASCADE"))
     playlist = relationship("PlaylistDB", back_populates="entries")
 
     music_file = relationship("MusicFileDB", foreign_keys=[music_file_id])
@@ -149,7 +142,7 @@ class LastFMEntryDB(PlaylistEntryDB):
     __tablename__ = 'lastfm_entries'
     
     __mapper_args__ = {
-        'polymorphic_identity': EntryType.LASTFM
+        'polymorphic_identity': "lastfm"
     }
 
     id = Column(Integer, ForeignKey('playlist_entries.id'), primary_key=True)

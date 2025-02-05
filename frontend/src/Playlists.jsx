@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, {
+   useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { ClipLoader } from 'react-spinners';
@@ -7,6 +8,8 @@ import './Playlists.css'; // Import the CSS file for styling
 import debounce from 'lodash/debounce';
 import TrackDetailsModal from './components/TrackDetailsModal';
 import LastFMSearch from './components/LastFMSearch';
+import ContextMenu from './components/ContextMenu';
+import Snackbar from './components/Snackbar';
 
 const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
@@ -32,6 +35,15 @@ const Playlists = () => {
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, track: null });
   const [showLastFMSearch, setShowLastFMSearch] = useState(false);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'info'
+  });
+
+  const handleSnackbarClose = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
 
   useEffect(() => {
     fetchPlaylists();
@@ -98,18 +110,18 @@ const Playlists = () => {
     try {
       const response = await axios.get(`/api/playlists/${playlistId}`);
       setSelectedPlaylist(response.data);
-      setPlaylistEntries(response.data.entries.map(entry => mapToTrackModel(entry.details)));
+      setPlaylistEntries(response.data.entries.map(entry => mapToTrackModel(entry.details)) || []);
     } catch (error) {
       console.error('Error fetching playlist details:', error);
     }
   };
 
   const createPlaylist = async () => {
-    console.log(songToAdd);
+    const songs = songToAdd || [];
     try {
       const response = await axios.post(`/api/playlists`, {
         name: newPlaylistName,
-        entries: [...songToAdd]
+        entries: songs
       });
       setPlaylists([...playlists, response.data]);
       setNewPlaylistName('');
@@ -134,28 +146,9 @@ const Playlists = () => {
   };
 
   const addSongToPlaylist = async (songs, playlistId) => {
-    playlistId = selectedPlaylist.id;
-
     const songsArray = Array.isArray(songs) ? songs : [songs];
-    
-    const updatedTracks = [
-      ...playlistEntries,
-      ...songsArray.map((song, idx) => ({
-        order: playlistEntries.length + idx,
-        music_file_id: song.id,
-        entry_type: song.entry_type,
-        url: song.url,
-        title: song.title,
-        artist: song.artist,
-        album: song.album
-      }))
-    ];
-  
     try {
-      await axios.put(`/api/playlists/${playlistId}`, {
-        name: selectedPlaylist.name,
-        entries: updatedTracks
-      });
+      await addTracksToPlaylist(playlistId, songsArray);
       fetchPlaylistDetails(playlistId);
       clearSelectedSongs();
     } catch (error) {
@@ -173,22 +166,12 @@ const Playlists = () => {
 
     try {
       // Remove the song from the list of entries
-      console.log(selectedPlaylist.entries);
       let updatedEntries = selectedPlaylist.entries.filter((_, i) => i !== index);
-      console.log(updatedEntries);
 
       // Update the order of the remaining tracks
       updatedEntries = updatedEntries.map((entry, i) => ({ ...entry, order: i }));
 
-      // Update the playlist with the new list of entries
-      const response = await axios.put(`/api/playlists/${selectedPlaylist.id}`, {
-        name: selectedPlaylist.name,
-        entries: updatedEntries
-      });
-
-      // Update the selected playlist and tracks
-      setSelectedPlaylist(response.data);
-      setPlaylistEntries(response.data.entries);
+      setPlaylistTracks(selectedPlaylist.id, updatedEntries);
     } catch (error) {
       console.error('Error removing song from playlist:', error);
     }
@@ -249,13 +232,12 @@ const Playlists = () => {
     }
   };
 
-  const handleAddToPlaylist = (song) => {
-    setSongToAdd(song);
-    setShowPlaylistSelectModal(true);
+  const handleAddToPlaylist = async (selectedTracks) => {
+    await addTracksToPlaylist(selectedPlaylist.id, selectedTracks);
   };
 
-  const handleSelectPlaylist = (playlistId) => {
-    addSongToPlaylist(songToAdd, playlistId);
+  const handleSelectPlaylist = (playlistName) => {
+    addSongToPlaylist(songToAdd, playlistName);
     setShowPlaylistSelectModal(false);
     setSongToAdd(null);
   };
@@ -319,21 +301,13 @@ const Playlists = () => {
         order: index,
       }));
 
-      try {
-        await axios.put(`/api/playlists/${selectedPlaylist.id}`, {
-          name: selectedPlaylist.name,
-          entries: updatedEntries,
-        });
-        fetchPlaylistDetails(selectedPlaylist.id);
-      } catch (error) {
-        console.error('Error updating playlist order:', error);
-      }
+      setPlaylistTracks(selectedPlaylist.id, updatedEntries);
     }
     
     // If dragging from songs to playlist
     if (source.droppableId === 'songs' && destination.droppableId === 'playlist') {
       const song = filteredSongs[source.index];
-      addSongToPlaylist(song, selectedPlaylist.id);
+      addSongToPlaylist(song, selectedPlaylist.name);
     }
   };
 
@@ -381,17 +355,18 @@ const Playlists = () => {
         order: index
       }));
 
-      const response = await axios.put(
-        `/api/playlists/${selectedPlaylist.id}`,
-        {
-          name: selectedPlaylist.name,
-          entries: remainingEntries
-        }
-      );
+      setPlaylistTracks(selectedPlaylist.id, remainingEntries);
 
-      setSelectedPlaylist(response.data);
-      setPlaylistEntries(response.data.entries);
-      clearTrackSelection();
+      const playlistName = playlists.find(p => p.id === playlistID)?.name || 'the playlist';
+      
+      // Show success message
+      setSnackbar({
+        open: true,
+        message: `Removed ${selectedPlaylistEntries.length} tracks from ${playlistName}`,
+        severity: 'success'
+      });
+
+      setSelectedPlaylistEntries([]);
     } catch (error) {
       console.error('Error removing tracks:', error);
     }
@@ -456,48 +431,6 @@ const Playlists = () => {
     }
   };
 
-  const TrackItem = ({ track, onSelect, actions }) => (
-    <div className="track-item">
-      <div className="track-info" onClick={() => onSelect(track)}>
-        <span>{track.title}</span>
-        <span>{track.artist}</span>
-        <span>{track.album}</span>
-      </div>
-      <div className="track-actions">
-        {actions}
-      </div>
-    </div>
-  );
-
-  const ContextMenu = ({ x, y, track, onClose }) => {
-    if (!track) return null;
-
-    return (
-      <div 
-        className="context-menu"
-        style={{ 
-          position: 'fixed',
-          left: x,
-          top: y,
-          zIndex: 1000
-        }}
-      >
-        <div onClick={() => {
-          handleFilterByAlbum(track.album);
-          onClose();
-        }}>
-          Filter by Album: {track.album}
-        </div>
-        <div onClick={() => {
-          handleFilterByArtist(track.artist);
-          onClose();
-        }}>
-          Filter by Artist: {track.artist}
-        </div>
-      </div>
-    );
-  };
-
   useEffect(() => {
     const handleClickOutside = () => {
       setContextMenu({ visible: false });
@@ -508,6 +441,48 @@ const Playlists = () => {
       document.removeEventListener('click', handleClickOutside);
     };
   }, []);
+
+  const setPlaylistTracks = async (playlistID, tracks) => {
+    try {
+      await fetchPlaylistDetails(playlistID);
+
+      const response = await axios.put(`/api/playlists/${playlistID}`, {
+        name: "", // Playlist name is not needed for update
+        entries: tracks
+      });
+      
+      // Refresh playlist data
+      await fetchPlaylists();
+      await fetchPlaylistDetails(playlistID);
+    } catch (error) {
+      console.error('Error adding tracks:', error);
+      setSnackbar({
+        open: true, 
+        message: `Failed to add tracks: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  };
+
+  const addTracksToPlaylist = async (playlistID, tracks) => {
+    await fetchPlaylistDetails(playlistID);
+
+    const tracksToAdd = Array.isArray(tracks) ? tracks : [tracks];
+
+    // add tracks to entries
+    const entries = [...selectedPlaylist.entries, ...tracksToAdd.map((s, idx) => ({ order: idx, music_file_id: s.id, entry_type: s.entry_type, url: s.url, details: s }))]
+
+    setPlaylistTracks(playlistID, entries);
+
+    const playlistName = playlists.find(p => p.id === playlistID)?.name || 'the playlist';
+      
+    // Show success message
+    setSnackbar({
+      open: true,
+      message: `Added ${tracksToAdd.length} tracks to ${playlistName}`,
+      severity: 'success'
+    });
+  };
 
   return (
     <div className="playlists-container" onClick={() => setContextMenu({ visible: false })}>
@@ -689,7 +664,7 @@ const Playlists = () => {
                           <div className="playlist-grid-item" onClick={() => handleShowTrackDetails(song)} onContextMenu={(e) => handleContextMenu(e, song)}>{song.title}</div>
                           <div className="playlist-grid-item">{song.genres?.join(', ')}</div>
                           <div className="playlist-grid-item">
-                            <button onClick={() => handleAddToPlaylist(song)}>Add to Playlist</button>
+                            <button onClick={(e) => handleAddToPlaylist(song)}>Add to Playlist</button>
                             <button onClick={(e) => handleContextMenu(e, song)}>More</button>
                           </div>
                         </React.Fragment>
@@ -772,8 +747,17 @@ const Playlists = () => {
           y={contextMenu.y}
           track={contextMenu.track}
           onClose={() => setContextMenu({ visible: false })}
+          onFilterByAlbum={handleFilterByAlbum}
+          onFilterByArtist={handleFilterByArtist}
+          onAddTracks={(tracks) => addTracksToPlaylist(selectedPlaylist.id, tracks)}
         />
       )}
+      <Snackbar
+        open={snackbar.open}
+        message={snackbar.message}
+        severity={snackbar.severity}
+        onClose={handleSnackbarClose}
+      />
     </div>
   );
 };
