@@ -10,6 +10,7 @@ import TrackDetailsModal from './components/TrackDetailsModal';
 import LastFMSearch from './components/LastFMSearch';
 import ContextMenu from './components/ContextMenu';
 import Snackbar from './components/Snackbar';
+import EntryTypeBadge from './components/EntryTypeBadge';
 
 const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
@@ -60,17 +61,18 @@ const Playlists = () => {
   };
 
   const mapToTrackModel = (item) => ({
-    id: item.id,
-    title: item.title || 'Unknown Title',
-    artist: item.artist || 'Unknown Artist',
-    album: item.album || 'Unknown Album',
-    album_artist: item.album_artist || null,
-    year: item.year || '',
-    length: item.length || 0,
-    genres: item.genres || [],
-    path: item.path,
-    publisher: item.publisher || 'Unknown Publisher',
-    kind: item.kind
+    id: item.details.id,
+    title: item.details.title || 'Unknown Title',
+    artist: item.details.artist || 'Unknown Artist',
+    album: item.details.album || 'Unknown Album',
+    album_artist: item.details.album_artist || null,
+    year: item.details.year || '',
+    length: item.details.length || 0,
+    genres: item.details.genres || [],
+    path: item.details.path,
+    publisher: item.details.publisher || 'Unknown Publisher',
+    kind: item.details.kind,
+    entry_type: item.entry_type,
   });
 
   const fetchSongs = async (query = '') => {
@@ -110,7 +112,7 @@ const Playlists = () => {
     try {
       const response = await axios.get(`/api/playlists/${playlistId}`);
       setSelectedPlaylist(response.data);
-      setPlaylistEntries(response.data.entries.map(entry => mapToTrackModel(entry.details)) || []);
+      setPlaylistEntries(response.data.entries.map(entry => mapToTrackModel(entry)) || []);
     } catch (error) {
       console.error('Error fetching playlist details:', error);
     }
@@ -172,6 +174,7 @@ const Playlists = () => {
       updatedEntries = updatedEntries.map((entry, i) => ({ ...entry, order: i }));
 
       setPlaylistTracks(selectedPlaylist.id, updatedEntries);
+      clearTrackSelection()
     } catch (error) {
       console.error('Error removing song from playlist:', error);
     }
@@ -366,7 +369,8 @@ const Playlists = () => {
         severity: 'success'
       });
 
-      setSelectedPlaylistEntries([]);
+      clearSelectedSongs();
+      clearTrackSelection();
     } catch (error) {
       console.error('Error removing tracks:', error);
     }
@@ -470,7 +474,7 @@ const Playlists = () => {
     const tracksToAdd = Array.isArray(tracks) ? tracks : [tracks];
 
     // add tracks to entries
-    const entries = [...selectedPlaylist.entries, ...tracksToAdd.map((s, idx) => ({ order: idx, music_file_id: s.id, entry_type: s.entry_type, url: s.url, details: s }))]
+    const entries = [...selectedPlaylist.entries, ...tracksToAdd.map((s, idx) => ({ order: idx + selectedPlaylist.entries.length, music_file_id: s.id, entry_type: s.entry_type, url: s.url, details: s }))]
 
     setPlaylistTracks(playlistID, entries);
 
@@ -551,6 +555,7 @@ const Playlists = () => {
                         onChange={toggleAllTracks}
                       />
                     </div>
+                    <div className="playlist-grid-header">Source</div>
                     <div className="playlist-grid-header">Artist</div>
                     <div className="playlist-grid-header">Album</div>
                     <div className="playlist-grid-header">Title</div>
@@ -575,6 +580,7 @@ const Playlists = () => {
                                 onChange={() => toggleTrackSelection(index)}
                               />
                             </div>
+                            <EntryTypeBadge className="playlist-grid-item" type={track.entry_type} />
                             <div className="playlist-grid-item">{track.artist ? track.artist : track.album_artist}</div>
                             <div className="playlist-grid-item">{track.album}</div>
                             <div 
@@ -626,7 +632,7 @@ const Playlists = () => {
             <Droppable droppableId="songs">
               {(provided) => (
                 <div {...provided.droppableProps} ref={provided.innerRef} className="playlist-grid">
-                  <div className="playlist-grid-header">
+                  <div className="search-result-grid-header">
                     <input
                       type="checkbox"
                       checked={allSearchResultsSelected}
@@ -667,6 +673,7 @@ const Playlists = () => {
                             <button onClick={(e) => handleAddToPlaylist(song)}>Add to Playlist</button>
                             <button onClick={(e) => handleContextMenu(e, song)}>More</button>
                           </div>
+                          <EntryTypeBadge type={song.entry_type} />
                         </React.Fragment>
                       )}
                     </Draggable>

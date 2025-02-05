@@ -229,8 +229,6 @@ def convert_entry_to_response(entry: PlaylistEntryDB) -> PlaylistEntry:
         "order": entry.order,
         "entry_type": entry.entry_type
     }
-
-    logging.info(entry.__dict__)
     
     if entry.entry_type == EntryType.MUSIC_FILE:
         return MusicFileEntry(
