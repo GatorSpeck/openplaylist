@@ -60,20 +60,31 @@ const Playlists = () => {
     }
   };
 
-  const mapToTrackModel = (item) => ({
-    id: item.details.id,
-    title: item.details.title || 'Unknown Title',
-    artist: item.details.artist || 'Unknown Artist',
-    album: item.details.album || 'Unknown Album',
-    album_artist: item.details.album_artist || null,
-    year: item.details.year || '',
-    length: item.details.length || 0,
-    genres: item.details.genres || [],
-    path: item.details.path,
-    publisher: item.details.publisher || 'Unknown Publisher',
-    kind: item.details.kind,
-    entry_type: item.entry_type,
-  });
+  const mapToTrackModel = (item) => {
+    const detailsToUse = item.details || item;
+    return {
+      id: detailsToUse.id,
+      title: detailsToUse.title || 'Unknown Title',
+      artist: detailsToUse.artist || 'Unknown Artist',
+      album: detailsToUse.album || 'Unknown Album',
+      album_artist: detailsToUse.album_artist || null,
+      year: detailsToUse.year || '',
+      length: detailsToUse.length || 0,
+      genres: detailsToUse.genres || [],
+      path: detailsToUse.path,
+      publisher: detailsToUse.publisher || 'Unknown Publisher',
+      kind: detailsToUse.kind,
+      music_file_id: item.music_file_id || null,
+      entry_type: item.entry_type,
+      order: item.order || null
+    }
+  };
+
+  const extractSearchResults = (response) => {
+    const results = response.data.map(s => mapToTrackModel({...s, music_file_id: s.id, entry_type: "music_file"}));
+    console.log(results);
+    return results;
+  }
 
   const fetchSongs = async (query = '') => {
     if (query.length < 3) {
@@ -87,7 +98,9 @@ const Playlists = () => {
           limit: 50  // Optional: limit results
         }
       });
-      setSearchResults(response.data.map(mapToTrackModel));
+
+      setSearchResults(extractSearchResults(response));
+      
     } catch (error) {
       console.error('Error fetching songs:', error);
     } finally {
@@ -120,11 +133,13 @@ const Playlists = () => {
 
   const createPlaylist = async () => {
     const songs = songToAdd || [];
+    console.log(songs);
     try {
       const response = await axios.post(`/api/playlists`, {
         name: newPlaylistName,
-        entries: songs
+        entries: songs.map(s => mapToTrackModel(s))
       });
+
       setPlaylists([...playlists, response.data]);
       setNewPlaylistName('');
     } catch (error) {
@@ -235,10 +250,6 @@ const Playlists = () => {
     }
   };
 
-  const handleAddToPlaylist = async (selectedTracks) => {
-    await addTracksToPlaylist(selectedPlaylist.id, selectedTracks);
-  };
-
   const handleSelectPlaylist = (playlistName) => {
     addSongToPlaylist(songToAdd, playlistName);
     setShowPlaylistSelectModal(false);
@@ -251,9 +262,11 @@ const Playlists = () => {
     try {
       const response = await axios.post(`/api/playlists`, {
         name: newPlaylistNameModal,
-        entries: songList.map((s, idx) => ({ order: idx, music_file_id: s.id, entry_type: s.entry_type, url: songToAdd.url, details: songToAdd }))
+        entries: songList.map((s, idx) => ({ order: idx, ...mapToTrackModel(s)}))
       });
+
       setPlaylists([...playlists, response.data]);
+
       setNewPlaylistNameModal('');
       setShowPlaylistSelectModal(false);
       setSongToAdd(null);
@@ -332,6 +345,11 @@ const Playlists = () => {
     setSongToAdd(selectedSearchResults);
     setShowPlaylistSelectModal(true);
   };
+
+  const handleAddSongToPlaylist = (song) => {
+    setSongToAdd([song]);
+    setShowPlaylistSelectModal(true);
+  }
 
   const toggleTrackSelection = (index) => {
     setSelectedPlaylistEntries(prev => {
@@ -416,7 +434,9 @@ const Playlists = () => {
       const response = await axios.get(`/api/filter`, {
         params: { album }
       });
-      setSearchResults(response.data.map(mapToTrackModel));
+      
+      setSearchResults(extractSearchResults(response));
+
     } catch (error) {
       console.error('Error filtering by album:', error);
     }
@@ -425,11 +445,13 @@ const Playlists = () => {
   const handleFilterByArtist = async (artist) => {
     setContextMenu({ visible: false });
     setFilterQuery("");
+    
     try {
       const response = await axios.get(`/api/filter`, {
         params: { artist }
       });
-      setSearchResults(response.data.map(mapToTrackModel));
+
+      setSearchResults(extractSearchResults(response));
     } catch (error) {
       console.error('Error filtering by artist:', error);
     }
@@ -474,7 +496,12 @@ const Playlists = () => {
     const tracksToAdd = Array.isArray(tracks) ? tracks : [tracks];
 
     // add tracks to entries
-    const entries = [...selectedPlaylist.entries, ...tracksToAdd.map((s, idx) => ({ order: idx + selectedPlaylist.entries.length, music_file_id: s.id, entry_type: s.entry_type, url: s.url, details: s }))]
+    const entries = [
+      ...selectedPlaylist.entries, 
+      ...tracksToAdd.map((s, idx) => ({
+        order: idx + selectedPlaylist.entries.length, music_file_id: s.id, 
+        entry_type: s.entry_type, url: s.url, details: s
+      }))]
 
     setPlaylistTracks(playlistID, entries);
 
@@ -631,8 +658,8 @@ const Playlists = () => {
           ) : (
             <Droppable droppableId="songs">
               {(provided) => (
-                <div {...provided.droppableProps} ref={provided.innerRef} className="playlist-grid">
-                  <div className="search-result-grid-header">
+                <div {...provided.droppableProps} ref={provided.innerRef} className="search-result-grid">
+                  <div className="playlist-grid">
                     <input
                       type="checkbox"
                       checked={allSearchResultsSelected}
@@ -670,10 +697,9 @@ const Playlists = () => {
                           <div className="playlist-grid-item" onClick={() => handleShowTrackDetails(song)} onContextMenu={(e) => handleContextMenu(e, song)}>{song.title}</div>
                           <div className="playlist-grid-item">{song.genres?.join(', ')}</div>
                           <div className="playlist-grid-item">
-                            <button onClick={(e) => handleAddToPlaylist(song)}>Add to Playlist</button>
+                            <button onClick={(e) => handleAddSongToPlaylist(song)}>Add to Playlist</button>
                             <button onClick={(e) => handleContextMenu(e, song)}>More</button>
                           </div>
-                          <EntryTypeBadge type={song.entry_type} />
                         </React.Fragment>
                       )}
                     </Draggable>

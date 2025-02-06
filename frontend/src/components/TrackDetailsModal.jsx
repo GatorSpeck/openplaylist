@@ -17,6 +17,7 @@ const TrackDetailsModal = ({ track, onClose }) => {
       <div className="modal-content">
         <h2>Track Details</h2>
         <div className="track-details">
+          <p><strong>ID:</strong> {details.id}</p>
           <p><strong>Title:</strong> {details.title}</p>
           <p><strong>Artist:</strong> {details.artist}</p>
           <p><strong>Album:</strong> {details.album}</p>

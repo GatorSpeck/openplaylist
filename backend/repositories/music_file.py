@@ -1,5 +1,5 @@
 from .base import BaseRepository
-from models import MusicFileDB
+from models import MusicFileDB, TrackGenreDB
 from typing import Optional
 from response_models import MusicFile, SearchQuery
 from sqlalchemy import text, or_
@@ -106,3 +106,29 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         results = query.limit(limit).all()
         
         return [to_music_file(music_file) for music_file in results]
+    
+    def add(self, music_file: MusicFile) -> MusicFile:
+        music_file_db = MusicFileDB(
+            path=music_file.path,
+            title=music_file.title,
+            artist=music_file.artist,
+            album_artist=music_file.album_artist,
+            album=music_file.album,
+            year=music_file.year,
+            length=music_file.length,
+            publisher=music_file.publisher,
+            kind=music_file.kind,
+            last_scanned=music_file.last_scanned
+        )
+        
+        self.session.add(music_file_db)
+        self.session.commit()
+        
+        # Add genres
+        for genre in music_file.genres:
+            music_file_db.genres.append(TrackGenreDB(genre=genre))
+        
+        self.session.commit()
+        self.session.refresh(music_file_db)
+        
+        return to_music_file(music_file_db)

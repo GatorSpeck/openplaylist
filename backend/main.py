@@ -127,7 +127,7 @@ def scan_directory(directory: str):
                 title=metadata.get('title'),
                 artist=metadata.get('artist'),
                 album=metadata.get('album'),
-                genres=[TrackGenre(parent_type="music_file", genre=genre) for genre in metadata.get("genres", [])],
+                genres=[TrackGenreDB(parent_type="music_file", genre=genre) for genre in metadata.get("genres", [])],
                 album_artist=metadata.get('album_artist'),
                 year=metadata.get('year'),
                 length=metadata.get('length'),
@@ -208,79 +208,6 @@ def create_playlist(playlist: Playlist, repo: PlaylistRepository = Depends(get_p
     except Exception as e:
         logging.error(f"Failed to create playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
-def to_entry_type(entry_type: str) -> EntryType:
-    if entry_type == "music_file":
-        return EntryType.MUSIC_FILE
-    elif entry_type == "nested_playlist":
-        return EntryType.NESTED_PLAYLIST
-    elif entry_type == "lastfm":
-        return EntryType.LASTFM
-    elif entry_type == "requested":
-        return EntryType.REQUESTED
-    else:
-        raise ValueError(f"Unknown entry type: {entry_type}")
-
-def convert_entry_to_response(entry: PlaylistEntryDB) -> PlaylistEntry:
-    entry.entry_type = to_entry_type(entry.entry_type)
-
-    base_entry = {
-        "id": entry.id,
-        "order": entry.order,
-        "entry_type": entry.entry_type
-    }
-    
-    if entry.entry_type == EntryType.MUSIC_FILE:
-        return MusicFileEntry(
-            **base_entry,
-            music_file_id=entry.music_file_id,
-            details=MusicFile(
-                id=entry.music_file.id,
-                path=entry.music_file.path,
-                kind=entry.music_file.kind,
-                last_scanned=entry.music_file.last_scanned,
-                title=entry.music_file.title,
-                artist=entry.music_file.artist,
-                album_artist=entry.music_file.album_artist,
-                album=entry.music_file.album,
-                year=entry.music_file.year,
-                length=entry.music_file.length,
-                publisher=entry.music_file.publisher,
-                genres=entry.music_file.genres or []
-            ) if entry.music_file else None
-        )
-    elif entry.entry_type == EntryType.NESTED_PLAYLIST:
-        return NestedPlaylistEntry(
-            **base_entry,
-            playlist_id=entry.nested_playlist_id,
-            details=PlaylistBase(
-                id=entry.nested_playlist.id,
-                name=entry.nested_playlist.name
-            ) if entry.nested_playlist else None
-        )
-    elif entry.entry_type == EntryType.LASTFM:
-        return LastFMEntry(
-            **base_entry,
-            url=entry.lastfm_track_url,
-            details=LastFMTrack(
-                title=entry.details.title,
-                artist=entry.details.artist,
-                album=entry.details.album,
-                url=entry.lastfm_track_url
-            ) if entry.lastfm_track_url else None
-        )
-    elif entry.entry_type == EntryType.REQUESTED:
-        return RequestedTrackEntry(
-            **base_entry,
-            details=TrackDetails(
-                title=entry.requested_title,
-                artist=entry.requested_artist,
-                album=entry.requested_album
-            )
-        )
-    else:
-        raise ValueError(f"Unsupported entry type: {entry.entry_type}")
-        
 
 @router.get("/playlists", response_model=List[Playlist])
 def read_playlists(repo: PlaylistRepository = Depends(get_playlist_repository)):
