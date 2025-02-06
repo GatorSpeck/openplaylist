@@ -16,7 +16,10 @@ const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
       const response = await axios.get('/api/lastfm', {
         params: { title, artist }
       });
-      response.data.entry_type = "lastfm";
+
+      const search_results = response.data.entry_type = 'lastfm';
+      console.log(response.data);
+      
       setSearchResult(response.data);
     } catch (error) {
       setError('Failed to fetch track information');
