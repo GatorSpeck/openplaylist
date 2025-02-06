@@ -29,7 +29,9 @@ from repositories.playlist import PlaylistRepository
 
 app = FastAPI()
 
-requests_cache_session = requests_cache.CachedSession("lastfm_cache", backend="memory", expire_after=3600)
+requests_cache_session = requests_cache.CachedSession(
+    "lastfm_cache", backend="memory", expire_after=3600
+)
 
 # Configure CORS
 app.add_middleware(
@@ -49,29 +51,31 @@ log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=log_level)
 
 # Create the database tables
-Base.metadata.create_all(bind=Database.get_engine())    
+Base.metadata.create_all(bind=Database.get_engine())
 
 SUPPORTED_FILETYPES = (".mp3", ".flac", ".wav", ".ogg", ".m4a")
+
 
 def extract_metadata(file_path, extractor):
     try:
         audio = extractor(file_path)
         result = {
-            'title': audio.get('title', [None])[0],
-            'artist': audio.get('artist', [None])[0],
-            'album': audio.get('album', [None])[0],
-            'album_artist': audio.get('albumartist', [None])[0],
-            'year': audio.get('date', [None])[0],
-            'length': int(audio.info.length),
-            'publisher': audio.get('organization', [None])[0],
-            'kind': audio.mime[0] if hasattr(audio, 'mime') else None,
-            'genres': audio.get('genre', list())
+            "title": audio.get("title", [None])[0],
+            "artist": audio.get("artist", [None])[0],
+            "album": audio.get("album", [None])[0],
+            "album_artist": audio.get("albumartist", [None])[0],
+            "year": audio.get("date", [None])[0],
+            "length": int(audio.info.length),
+            "publisher": audio.get("organization", [None])[0],
+            "kind": audio.mime[0] if hasattr(audio, "mime") else None,
+            "genres": audio.get("genre", list()),
         }
         return result
     except Exception as e:
         logging.error(f"Failed to read metadata for {file_path}: {e}")
 
     return {}
+
 
 def scan_directory(directory: str):
     directory = pathlib.Path(directory)
@@ -84,7 +88,11 @@ def scan_directory(directory: str):
     new_adds = 0
 
     # Get a list of all files in the directory
-    all_files = [os.path.join(root, file) for root, _, files in os.walk(directory) for file in files]
+    all_files = [
+        os.path.join(root, file)
+        for root, _, files in os.walk(directory)
+        for file in files
+    ]
 
     db = Database.get_session()
 
@@ -96,17 +104,19 @@ def scan_directory(directory: str):
 
         files_seen += 1
         last_modified_time = datetime.fromtimestamp(os.path.getmtime(full_path))
-        existing_file = db.query(MusicFileDB).filter(MusicFileDB.path == full_path).first()
+        existing_file = (
+            db.query(MusicFileDB).filter(MusicFileDB.path == full_path).first()
+        )
 
         if existing_file and existing_file.last_scanned >= last_modified_time:
             files_skipped += 1
             continue  # Skip files that have not changed
-        
+
         metadata = {}
 
-        if full_path.lower().endswith('.mp3'):
+        if full_path.lower().endswith(".mp3"):
             metadata = extract_metadata(full_path, EasyID3)
-        elif full_path.lower().endswith('.flac'):
+        elif full_path.lower().endswith(".flac"):
             metadata = extract_metadata(full_path, FLAC)
         else:
             logging.debug(f"Skipping file {full_path} with unsupported file type")
@@ -122,26 +132,35 @@ def scan_directory(directory: str):
         else:
             new_adds += 1
 
-            db.add(MusicFileDB(
-                path=full_path,
-                title=metadata.get('title'),
-                artist=metadata.get('artist'),
-                album=metadata.get('album'),
-                genres=[TrackGenreDB(parent_type="music_file", genre=genre) for genre in metadata.get("genres", [])],
-                album_artist=metadata.get('album_artist'),
-                year=metadata.get('year'),
-                length=metadata.get('length'),
-                publisher=metadata.get('publisher'),
-                kind=metadata.get('kind'),
-                last_scanned=last_modified_time
-            ))
+            db.add(
+                MusicFileDB(
+                    path=full_path,
+                    title=metadata.get("title"),
+                    artist=metadata.get("artist"),
+                    album=metadata.get("album"),
+                    genres=[
+                        TrackGenreDB(parent_type="music_file", genre=genre)
+                        for genre in metadata.get("genres", [])
+                    ],
+                    album_artist=metadata.get("album_artist"),
+                    year=metadata.get("year"),
+                    length=metadata.get("length"),
+                    publisher=metadata.get("publisher"),
+                    kind=metadata.get("kind"),
+                    last_scanned=last_modified_time,
+                )
+            )
 
-    logging.info(f"Scanned {files_skipped + new_adds} music files ({files_skipped} existing, {new_adds} new) in {time.time() - start_time:.2f} seconds")
+    logging.info(
+        f"Scanned {files_skipped + new_adds} music files ({files_skipped} existing, {new_adds} new) in {time.time() - start_time:.2f} seconds"
+    )
 
     db.commit()
-    db.close()   
+    db.close()
+
 
 router = APIRouter()
+
 
 @router.get("/purge")
 def purge_data():
@@ -149,15 +168,18 @@ def purge_data():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
 
+
 @router.get("/scan")
 def scan():
     scan_directory(os.getenv("MUSIC_PATH", "/music"))
+
 
 @router.get("/fullscan")
 def full_scan():
     drop_music_files()
     scan_directory(os.getenv("MUSIC_PATH", "/music"))
     prune_music_files()
+
 
 def drop_music_files():
     db = Database.get_session()
@@ -168,6 +190,7 @@ def drop_music_files():
     db.commit()
     db.close()
 
+
 def prune_music_files():
     db = Database.get_session()
     existing_files = db.query(MusicFileDB).all()
@@ -176,14 +199,17 @@ def prune_music_files():
     for existing_file in existing_files:
         if not pathlib.Path(existing_file.path).exists():
             prunes += 1
-            logging.debug(f"Removing nonexistent music file {existing_file.path} from the database")
+            logging.debug(
+                f"Removing nonexistent music file {existing_file.path} from the database"
+            )
             db.delete(existing_file)
-    
+
     if prunes:
         logging.info(f"Pruned {prunes} music files from the database")
 
     db.commit()
     db.close()
+
 
 @router.get("/filter", response_model=List[MusicFile])
 def filter_music_files(
@@ -192,22 +218,33 @@ def filter_music_files(
     album: Optional[str] = None,
     genre: Optional[str] = None,
     limit: int = 50,
-    repo: MusicFileRepository = Depends(get_music_file_repository)
+    repo: MusicFileRepository = Depends(get_music_file_repository),
 ):
-    return repo.filter(title=title, artist=artist, album=album, genre=genre, limit=limit)
+    return repo.filter(
+        title=title, artist=artist, album=album, genre=genre, limit=limit
+    )
+
 
 @router.get("/search", response_model=List[MusicFile])
-def search_music_files(query: str = Query(..., min_length=1), limit: int = 50, repo: MusicFileRepository = Depends(get_music_file_repository)):
+def search_music_files(
+    query: str = Query(..., min_length=1),
+    limit: int = 50,
+    repo: MusicFileRepository = Depends(get_music_file_repository),
+):
     return repo.search(query=query, limit=limit)
 
+
 @router.post("/playlists", response_model=Playlist)
-def create_playlist(playlist: Playlist, repo: PlaylistRepository = Depends(get_playlist_repository)):
+def create_playlist(
+    playlist: Playlist, repo: PlaylistRepository = Depends(get_playlist_repository)
+):
     try:
         return repo.create(playlist)
-        
+
     except Exception as e:
         logging.error(f"Failed to create playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/playlists", response_model=List[Playlist])
 def read_playlists(repo: PlaylistRepository = Depends(get_playlist_repository)):
@@ -218,8 +255,11 @@ def read_playlists(repo: PlaylistRepository = Depends(get_playlist_repository)):
         logging.error(f"Failed to read playlists: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to read playlists")
 
+
 @router.get("/playlists/{playlist_id}", response_model=Playlist)
-async def get_playlist(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
+async def get_playlist(
+    playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)
+):
     db = Database.get_session()
     try:
         playlist = repo.get_with_entries(playlist_id)
@@ -230,19 +270,30 @@ async def get_playlist(playlist_id: int, repo: PlaylistRepository = Depends(get_
     finally:
         db.close()
 
+
 @router.put("/playlists/{playlist_id}", response_model=Playlist)
-def update_playlist(playlist_id: int, playlist: Playlist, repo: PlaylistRepository = Depends(get_playlist_repository)):
+def update_playlist(
+    playlist_id: int,
+    playlist: Playlist,
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+):
     try:
         return repo.replace_entries(playlist_id, playlist.entries)
     except Exception as e:
         logging.error(f"Failed to update playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update playlist")
 
+
 @router.delete("/playlists/{playlist_id}")
 def delete_playlist(playlist_id: int):
     db = Database.get_session()
     try:
-        playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).filter(PlaylistDB.id == playlist_id).first()
+        playlist = (
+            db.query(PlaylistDB)
+            .options(joinedload(PlaylistDB.entries))
+            .filter(PlaylistDB.id == playlist_id)
+            .first()
+        )
         if playlist is None:
             raise HTTPException(status_code=404, detail="Playlist not found")
         db.delete(playlist)
@@ -255,11 +306,17 @@ def delete_playlist(playlist_id: int):
         db.close()
     return {"detail": "Playlist deleted successfully"}
 
+
 @router.get("/playlists/{playlist_id}/export", response_class=StreamingResponse)
 def export_playlist(playlist_id: int):
     db = Database.get_session()
     try:
-        playlist = db.query(PlaylistDB).options(joinedload(PlaylistDB.entries)).filter(PlaylistDB.id == playlist_id).first()
+        playlist = (
+            db.query(PlaylistDB)
+            .options(joinedload(PlaylistDB.entries))
+            .filter(PlaylistDB.id == playlist_id)
+            .first()
+        )
         if playlist is None:
             raise HTTPException(status_code=404, detail="Playlist not found")
 
@@ -267,12 +324,18 @@ def export_playlist(playlist_id: int):
         m3u_content = "#EXTM3U\n"
         for entry in playlist.entries:
             music_file = entry.music_file
-            m3u_content += f"#EXTINF:{entry.order},{music_file.title} - {music_file.artist}\n"
+            m3u_content += (
+                f"#EXTINF:{entry.order},{music_file.title} - {music_file.artist}\n"
+            )
             m3u_content += f"{music_file.path}\n"
 
         # Create a StreamingResponse to return the .m3u file
-        response = StreamingResponse(io.StringIO(m3u_content), media_type="audio/x-mpegurl")
-        response.headers["Content-Disposition"] = f"attachment; filename={playlist.name}.m3u"
+        response = StreamingResponse(
+            io.StringIO(m3u_content), media_type="audio/x-mpegurl"
+        )
+        response.headers["Content-Disposition"] = (
+            f"attachment; filename={playlist.name}.m3u"
+        )
         return response
     except Exception as e:
         logging.error(f"Failed to export playlist: {e}", exc_info=True)
@@ -280,26 +343,6 @@ def export_playlist(playlist_id: int):
     finally:
         db.close()
 
-@router.get("/api/playlists/{playlist_id}")
-def get_playlist(playlist_id: int):
-    db = Database.get_session()
-    try:
-        playlist = db.query(PlaylistDB).options(
-            joinedload(PlaylistDB.entries.of_type(MusicFileEntryDB)).joinedload(MusicFileEntryDB.music_file),
-            joinedload(PlaylistDB.entries.of_type(NestedPlaylistEntryDB)).joinedload(NestedPlaylistEntryDB.nested_playlist),
-            joinedload(PlaylistDB.entries.of_type(RequestedTrackEntryDB))
-        ).filter(PlaylistDB.id == playlist_id).first()
-        
-        if playlist is None:
-            raise HTTPException(status_code=404, detail="Playlist not found")
-            
-        return {
-            "id": playlist.id,
-            "name": playlist.name,
-            "entries": [to_music_file(entry.music_file) for entry in playlist.entries]
-        }
-    finally:
-        db.close()
 
 @router.get("/lastfm", response_model=LastFMTrack | None)
 def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
@@ -314,23 +357,24 @@ def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
     # Make request to Last.FM API
     url = f"http://ws.audioscrobbler.com/2.0/?method=track.search&track={encoded_title}&artist={encoded_artist}&api_key={api_key}&format=json&limit=1"
     response = requests_cache_session.get(url)
-    
+
     if response.status_code != 200:
         raise HTTPException(status_code=500, detail="Failed to fetch data from Last.FM")
 
     data = response.json()
-    tracks = data.get('results', {}).get('trackmatches', {}).get('track', [])
-    
+    tracks = data.get("results", {}).get("trackmatches", {}).get("track", [])
+
     # Return first matching track
     if tracks:
         track = tracks[0]
         return LastFMTrack(
-            title=track.get('name', ''),
-            artist=track.get('artist', ''),
-            url=track.get('url')
+            title=track.get("name", ""),
+            artist=track.get("artist", ""),
+            url=track.get("url"),
         )
-    
+
     return None
+
 
 # get similar tracks using last.fm API
 @router.get("/lastfm/similar", response_model=List[LastFMTrack])
@@ -345,33 +389,38 @@ def get_similar_tracks(title: str = Query(...), artist: str = Query(...)):
 
     similar_url = f"http://ws.audioscrobbler.com/2.0/?method=track.getsimilar&artist={encoded_artist}&track={encoded_title}&api_key={api_key}&format=json&limit=10"
     similar_response = requests_cache_session.get(similar_url)
-    
+
     if similar_response.status_code != 200:
-        raise HTTPException(status_code=500, detail="Failed to fetch similar tracks from Last.FM")
+        raise HTTPException(
+            status_code=500, detail="Failed to fetch similar tracks from Last.FM"
+        )
 
     similar_data = similar_response.json()
-    similar_tracks = similar_data.get('similartracks', {}).get('track', [])
-    
+    similar_tracks = similar_data.get("similartracks", {}).get("track", [])
+
     return [
         LastFMTrack(
-            title=t.get('name', ''),
-            artist=t.get('artist', {}).get('name', ''),
-            url=t.get('url')
-        ) for t in similar_tracks
+            title=t.get("name", ""),
+            artist=t.get("artist", {}).get("name", ""),
+            url=t.get("url"),
+        )
+        for t in similar_tracks
     ]
+
 
 @app.get("/api/music-files")
 async def get_music_files(
-    repo: MusicFileRepository = Depends(get_music_file_repository)
+    repo: MusicFileRepository = Depends(get_music_file_repository),
 ):
     return repo.get_all()
 
+
 @app.get("/api/playlists/{playlist_id}")
 async def get_playlist(
-    playlist_id: int,
-    repo: PlaylistRepository = Depends(get_playlist_repository)
+    playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)
 ):
     return repo.get_with_entries(playlist_id)
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -381,6 +430,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": "Internal server error"},
     )
 
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     logging.error(f"Validation error: {exc}", exc_info=True)
@@ -388,6 +438,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         status_code=422,
         content=jsonable_encoder({"detail": exc.errors()}),
     )
+
 
 app.include_router(router, prefix="/api")
 

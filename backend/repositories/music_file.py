@@ -7,6 +7,7 @@ import time
 import urllib
 import logging
 
+
 def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
     return MusicFile(
         id=music_file_db.id,
@@ -20,8 +21,9 @@ def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
         publisher=music_file_db.publisher,
         kind=music_file_db.kind,
         genres=[g.genre for g in music_file_db.genres] or [],
-        last_scanned=music_file_db.last_scanned
+        last_scanned=music_file_db.last_scanned,
     )
+
 
 class MusicFileRepository(BaseRepository[MusicFileDB]):
     def __init__(self, session):
@@ -30,10 +32,10 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
     def search(self, query: str, limit: int = 50) -> list[MusicFile]:
         query_package = SearchQuery(full_search=query, limit=limit)
         start_time = time.time()
-        
+
         search_query = urllib.parse.unquote(query_package.full_search or "")
         tokens = search_query.split()
-        
+
         # Build scoring expression
         scoring = """
             CASE
@@ -54,43 +56,47 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
                 ELSE 0
             END
         """
-        
+
         # Add score for each token
-        score_sum = "+".join([scoring.replace(":token", f":token{i}") 
-                            for i in range(len(tokens))])
-        
-        # Build query with scoring
-        query = self.session.query(
-            MusicFileDB,
-            text(f"({score_sum}) as relevance")
+        score_sum = "+".join(
+            [scoring.replace(":token", f":token{i}") for i in range(len(tokens))]
         )
-        
+
+        # Build query with scoring
+        query = self.session.query(MusicFileDB, text(f"({score_sum}) as relevance"))
+
         # Add token parameters
         for i, token in enumerate(tokens):
             query = query.params({f"token{i}": token})
-            
+
             # Filter to only include results matching at least one token
-            query = query.filter(or_(
-                MusicFileDB.title.ilike(f"%{token}%"),
-                MusicFileDB.artist.ilike(f"%{token}%"), 
-                MusicFileDB.album.ilike(f"%{token}%")
-            ))
-        
+            query = query.filter(
+                or_(
+                    MusicFileDB.title.ilike(f"%{token}%"),
+                    MusicFileDB.artist.ilike(f"%{token}%"),
+                    MusicFileDB.album.ilike(f"%{token}%"),
+                )
+            )
+
         # Order by relevance score
-        results = query.order_by(text("relevance DESC")).limit(query_package.limit).all()
-        
-        logging.info(f"Search query: {search_query} returned {len(results)} results in {time.time() - start_time:.2f} seconds")
-        
+        results = (
+            query.order_by(text("relevance DESC")).limit(query_package.limit).all()
+        )
+
+        logging.info(
+            f"Search query: {search_query} returned {len(results)} results in {time.time() - start_time:.2f} seconds"
+        )
+
         # Extract just the MusicFileDB objects from results
         return [to_music_file(r.MusicFileDB) for r in results]
-    
+
     def filter(
         self,
         title: Optional[str] = None,
         artist: Optional[str] = None,
         album: Optional[str] = None,
         genre: Optional[str] = None,
-        limit: int = 50
+        limit: int = 50,
     ) -> list[MusicFile]:
         query = self.session.query(MusicFileDB)
 
@@ -104,9 +110,9 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             query = query.filter(MusicFileDB.genres.any(genre))
 
         results = query.limit(limit).all()
-        
+
         return [to_music_file(music_file) for music_file in results]
-    
+
     def add(self, music_file: MusicFile) -> MusicFile:
         music_file_db = MusicFileDB(
             path=music_file.path,
@@ -118,17 +124,17 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             length=music_file.length,
             publisher=music_file.publisher,
             kind=music_file.kind,
-            last_scanned=music_file.last_scanned
+            last_scanned=music_file.last_scanned,
         )
-        
+
         self.session.add(music_file_db)
         self.session.commit()
-        
+
         # Add genres
         for genre in music_file.genres:
             music_file_db.genres.append(TrackGenreDB(genre=genre))
-        
+
         self.session.commit()
         self.session.refresh(music_file_db)
-        
+
         return to_music_file(music_file_db)
