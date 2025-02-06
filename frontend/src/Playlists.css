@@ -28,7 +28,7 @@ button {
 
 .playlist-grid {
   display: grid;
-  grid-template-columns: 50px 50px 300px 300px 300px 300px 150px;
+  grid-template-columns: 50px 75px 300px 300px 300px 300px 150px;
   gap: 10px;
   margin: 20px 0;
 }

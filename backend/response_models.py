@@ -1,14 +1,9 @@
-from pydantic import BaseModel
-from typing import List, Optional, Union
+from pydantic import BaseModel, Field
+from typing import List, Optional, Union, Literal
 from enum import Enum
 from datetime import datetime
-from models import (    MusicFileDB,    NestedPlaylistDB,   LastFMTrackDB,    RequestedTrackDB,    PlaylistEntryDB,    MusicFileEntryDB,    NestedPlaylistEntryDB,    LastFMEntryDB,    RequestedTrackEntryDB)
-
-class EntryType(str, Enum):
-    MUSIC_FILE = "music_file"
-    NESTED_PLAYLIST = "nested_playlist"
-    LASTFM = "lastfm"
-    REQUESTED = "requested"
+from models import (  TrackGenreDB,  MusicFileDB,  PlaylistDB,  NestedPlaylistDB,   LastFMTrackDB,    RequestedTrackDB,    PlaylistEntryDB,    MusicFileEntryDB,    NestedPlaylistEntryDB,    LastFMEntryDB,    RequestedTrackEntryDB)
+from abc import ABC, abstractmethod
 
 class TrackDetails(BaseModel):
     title: Optional[str] = None
@@ -21,7 +16,7 @@ class TrackDetails(BaseModel):
     genres: List[str] = []
 
 class MusicFile(TrackDetails):
-    id: int
+    id: Optional[int] = None
     path: str
     kind: Optional[str] = None
     last_scanned: Optional[datetime] = None
@@ -30,17 +25,20 @@ class PlaylistBase(BaseModel):
     id: Optional[int] = None
     name: str
 
-class PlaylistEntryBase(BaseModel):
+class PlaylistEntryBase(BaseModel, ABC):
     id: Optional[int] = None
     order: int
-    entry_type: EntryType
+    
+    @abstractmethod
+    def to_playlist(self, playlist_id):
+        raise NotImplementedError
 
 class MusicFileEntry(PlaylistEntryBase):
-    entry_type: EntryType = EntryType.MUSIC_FILE
+    entry_type: Literal["music_file"]
     music_file_id: int
     details: Optional[MusicFile] = None
 
-    def to_playlist(self, playlist_id) -> PlaylistEntryDB:
+    def to_playlist(self, playlist_id) -> MusicFileEntryDB:
         return MusicFileEntryDB(
             playlist_id=playlist_id,
             entry_type=self.entry_type,
@@ -59,8 +57,8 @@ class MusicFileEntry(PlaylistEntryBase):
     @classmethod
     def from_orm(cls, obj: MusicFileEntryDB):
         return cls(
+            entry_type="music_file",
             id=obj.id, order=obj.order, music_file_id=obj.music_file_id, details=MusicFile(
-                id=obj.details.id,
                 path=obj.details.path,
                 kind=obj.details.kind,
                 last_scanned=obj.details.last_scanned,
@@ -71,12 +69,12 @@ class MusicFileEntry(PlaylistEntryBase):
                 year=obj.details.year,
                 length=obj.details.length,
                 publisher=obj.details.publisher,
-                genres=[s.genre for s in obj.details.genres]
+                genres=[str(s.genre) for s in obj.details.genres]
             )
         )
 
 class NestedPlaylistEntry(PlaylistEntryBase):
-    entry_type: EntryType = EntryType.NESTED_PLAYLIST
+    entry_type: Literal["nested_playlist"]
     playlist_id: int
     details: Optional[PlaylistBase] = None
 
@@ -92,15 +90,26 @@ class NestedPlaylistEntry(PlaylistEntryBase):
             playlist_id=self.playlist_id,
         )
 
+    @classmethod
+    def from_orm(cls, obj: NestedPlaylistEntryDB):
+        return cls(
+            entry_type="nested_playlist",
+            id=obj.id, order=obj.order, playlist_id=obj.playlist_id, details=Playlist(
+                id=obj.details.id,
+                name=obj.details.name,
+                entries=[]
+            )
+        )
+
 class LastFMTrack(TrackDetails):
     url: str
 
 class LastFMEntry(PlaylistEntryBase):
-    entry_type: EntryType = EntryType.LASTFM
+    entry_type: Literal["lastfm"]
     url: str
     details: Optional[LastFMTrack] = None
 
-    def to_playlist(self, playlist_id) -> PlaylistEntryDB:
+    def to_playlist(self, playlist_id) -> LastFMEntryDB:
         return LastFMEntryDB(
             playlist_id=playlist_id,
             entry_type=self.entry_type,
@@ -126,19 +135,22 @@ class LastFMEntry(PlaylistEntryBase):
         if obj.details is not None:
             pass
         return cls(
+            entry_type="lastfm",
             id=obj.id, order=obj.order, url=obj.details.url, details=LastFMTrack(
                 url=obj.details.url,
                 title=obj.details.title,
                 artist=obj.details.artist,
-                album=obj.details.album
+                album=obj.details.album,
+                genres=[]
             )
         )
 
 class RequestedTrackEntry(PlaylistEntryBase):
-    entry_type: EntryType = EntryType.REQUESTED
+    entry_type: Literal["requested"]
     details: Optional[TrackDetails] = None
 
-    def to_playlist(self, playlist_id) -> PlaylistEntryDB:
+    def to_playlist(self, playlist_id) -> RequestedTrackEntryDB:
+        print("bar")
         return RequestedTrackEntryDB(
             playlist_id=playlist_id,
             entry_type=self.entry_type,
@@ -156,10 +168,45 @@ class RequestedTrackEntry(PlaylistEntryBase):
             publisher=self.details.publisher,
         )
 
-PlaylistEntry = Union[MusicFileEntry, NestedPlaylistEntry, LastFMEntry, RequestedTrackEntry]
+    @classmethod
+    def from_orm(cls, obj: RequestedTrackEntryDB):
+        print(obj.__dict__)
+        return cls(
+            id=obj.id, order=obj.order, details=TrackDetails(
+                title=obj.details.title,
+                artist=obj.details.artist,
+                album_artist=obj.details.album_artist,
+                album=obj.details.album,
+                year=obj.details.year,
+                length=obj.details.length,
+                publisher=obj.details.publisher,
+                genres=[]
+            )
+        )
 
 class Playlist(PlaylistBase):
-    entries: List[PlaylistEntry] = []
+    entries: List[Union[MusicFileEntry, NestedPlaylistEntry, LastFMEntry, RequestedTrackEntry]] = [Field(discriminator="entry_type")]
+
+    @classmethod
+    def from_orm(cls, obj: PlaylistDB):
+        entries = []
+        for entry in obj.entries:
+            if entry.entry_type == "music_file":
+                entries.append(MusicFileEntry.from_orm(entry))
+            elif entry.entry_type == "nested_playlist":
+                entries.append(NestedPlaylistEntry.from_orm(entry))
+            elif entry.entry_type == "lastfm":
+                entries.append(LastFMEntry.from_orm(entry))
+            elif entry.entry_type == "requested":
+                entries.append(RequestedTrackEntry.from_orm(entry))
+            else:
+                raise ValueError(f"Unknown entry type: {entry.entry_type}")
+        
+        return cls(
+            id=obj.id,
+            name=obj.name,
+            entries=entries
+        )
 
 class SearchQuery(BaseModel):
     full_search: Optional[str] = None  # title, artist, and album are scored

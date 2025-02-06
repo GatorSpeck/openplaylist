@@ -39,7 +39,7 @@ class BaseNode(Base):
     __tablename__ = "base_elements"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
 
-class TrackGenre(Base):
+class TrackGenreDB(Base):
     __tablename__ = "track_genres"
     id = Column(Integer, primary_key=True, index=True)
     parent_type = Column(String(50), nullable=False)
@@ -55,8 +55,8 @@ class MusicFileDB(BaseNode, TrackDetailsMixin):
     kind = Column(String, index=True)
     last_scanned = Column(DateTime, index=True)
     genres = relationship(
-        "TrackGenre",
-        primaryjoin="and_(TrackGenre.music_file_id==MusicFileDB.id, TrackGenre.parent_type=='music_file')",
+        "TrackGenreDB",
+        primaryjoin="and_(TrackGenreDB.music_file_id==MusicFileDB.id, TrackGenreDB.parent_type=='music_file')",
         cascade="all, delete-orphan"
     )
 
@@ -65,8 +65,8 @@ class LastFMTrackDB(BaseNode, TrackDetailsMixin):
     id = Column(Integer, ForeignKey("base_elements.id"), primary_key=True)
     url = Column(String, unique=True, index=True)
     genres = relationship(
-        "TrackGenre",
-        primaryjoin="and_(TrackGenre.lastfm_track_id==LastFMTrackDB.id, TrackGenre.parent_type=='lastfm')",
+        "TrackGenreDB",
+        primaryjoin="and_(TrackGenreDB.lastfm_track_id==LastFMTrackDB.id, TrackGenreDB.parent_type=='lastfm')",
         cascade="all, delete-orphan"
     )
 
@@ -79,8 +79,8 @@ class RequestedTrackDB(BaseNode, TrackDetailsMixin):
     __tablename__ = "requested_tracks"
     id = Column(Integer, ForeignKey("base_elements.id"), primary_key=True)
     genres = relationship(
-        "TrackGenre",
-        primaryjoin="and_(TrackGenre.requested_track_id==RequestedTrackDB.id, TrackGenre.parent_type=='requested')",
+        "TrackGenreDB",
+        primaryjoin="and_(TrackGenreDB.requested_track_id==RequestedTrackDB.id, TrackGenreDB.parent_type=='requested')",
         cascade="all, delete-orphan"
     )
 

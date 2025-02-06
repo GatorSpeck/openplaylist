@@ -8,22 +8,18 @@ const EntryTypeBadge = ({ type }) => {
   const config = {
     music_file: {
       icon: <MusicNoteIcon />,
-      label: '',
       color: 'primary'
     },
     lastfm: {
       icon: <RadioIcon />,
-      label: '',
       color: 'error'
     },
     nested_playlist: {
       icon: <PlaylistPlayIcon />,
-      label: '',
       color: 'success'
     },
     requested: {
       icon: <SearchIcon />,
-      label: '',
       color: 'warning'
     }
   };

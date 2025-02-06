@@ -86,12 +86,6 @@ describe('Playlists', () => {
       fireEvent.change(screen.getByPlaceholderText('Search...'), { target: { value: 'Song' } });
     });
 
-    // Simulate fetching playlist details
-    await waitFor(() => {
-      expect(screen.getByText('Playlist 1')).toBeInTheDocument();
-      fireEvent.click(screen.getByText('Playlist 1'));
-    });
-
     // add a track to this playlist
     await waitFor(() => {
       expect(screen.getAllByText('Add to Playlist')[1]).toBeInTheDocument();
@@ -99,6 +93,7 @@ describe('Playlists', () => {
     });
 
     await waitFor(() => {
+      expect(screen.getAllByText('Playlist 1')[2]).toBeInTheDocument();
       fireEvent.click(screen.getAllByText('Playlist 1')[2]);
     });
 
