@@ -114,7 +114,7 @@ class LastFMEntry(PlaylistEntryBase):
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             order=self.order,
-            lastfm_track_url=self.url,
+            lastfm_track_id=self.url,
             details=self.details
         )
 
