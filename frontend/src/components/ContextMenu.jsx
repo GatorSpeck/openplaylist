@@ -58,7 +58,10 @@ const ContextMenu = ({ x, y, track, onClose, onFilterByAlbum, onFilterByArtist, 
           title: track.title
         }
       });
-      setSimilarTracks(response.data);
+
+      const search_results = response.data.map((track) => ({...track, entry_type: 'lastfm'}));
+
+      setSimilarTracks(search_results);
       setPopupPosition({ x, y });
     } catch (error) {
       console.error('Error fetching similar tracks:', error);

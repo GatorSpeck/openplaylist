@@ -63,6 +63,7 @@ const Playlists = () => {
   const mapToTrackModel = (item) => {
     const detailsToUse = item.details || item;
     return {
+      ...item,
       id: detailsToUse.id,
       title: detailsToUse.title || 'Unknown Title',
       artist: detailsToUse.artist || 'Unknown Artist',
