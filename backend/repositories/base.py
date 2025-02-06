@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session
 from typing import TypeVar, Generic, Type
 
-T = TypeVar('T')
+T = TypeVar("T")
+
 
 class BaseRepository(Generic[T]):
     def __init__(self, session: Session, model: Type[T]):
