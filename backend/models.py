@@ -96,20 +96,11 @@ class PlaylistEntryDB(Base):
     entry_type = Column(String(50), nullable=False)
     order = Column(Integer)
     details = None
-    
-    # Foreign keys for different entry types
-    music_file_id = Column(Integer, ForeignKey('music_files.id'), nullable=True)
-    lastfm_track_url = Column(String, ForeignKey('lastfm_tracks.id'), nullable=True)
-    nested_playlist_id = Column(Integer, ForeignKey('nested_playlists.id'), nullable=True)
-    requested_track_id = Column(Integer, ForeignKey('requested_tracks.id'), nullable=True)
 
     playlist_id = Column(Integer, ForeignKey('playlists.id', ondelete="CASCADE"))
     playlist = relationship("PlaylistDB", back_populates="entries")
 
-    music_file = relationship("MusicFileDB", foreign_keys=[music_file_id])
-    nested_playlist = relationship("NestedPlaylistDB", foreign_keys=[nested_playlist_id])
-    lastfm_track = relationship("LastFMTrackDB", foreign_keys=[lastfm_track_url])
-    requested_track = relationship("RequestedTrackDB", foreign_keys=[requested_track_id])
+
 
     __mapper_args__ = {
         'polymorphic_on': entry_type,
@@ -121,7 +112,7 @@ class MusicFileEntryDB(PlaylistEntryDB):
     
     id = Column(Integer, ForeignKey('playlist_entries.id'), primary_key=True)
     music_file_id = Column(Integer, ForeignKey('music_files.id'))
-    details = relationship("MusicFileDB")
+    details = relationship("MusicFileDB", foreign_keys=[music_file_id])
     
     __mapper_args__ = {
         'polymorphic_identity': 'music_file'
@@ -131,8 +122,9 @@ class NestedPlaylistEntryDB(PlaylistEntryDB):
     __tablename__ = 'nested_playlist_entries'
     
     id = Column(Integer, ForeignKey('playlist_entries.id'), primary_key=True)
-    nested_playlist_id = Column(Integer, ForeignKey('playlists.id'))
-    details = relationship("PlaylistDB")
+
+    nested_playlist_id = Column(Integer, ForeignKey('nested_playlists.id'))
+    details = relationship("NestedPlaylistDB", foreign_keys=[nested_playlist_id])
     
     __mapper_args__ = {
         'polymorphic_identity': 'nested_playlist'
@@ -147,14 +139,14 @@ class LastFMEntryDB(PlaylistEntryDB):
 
     id = Column(Integer, ForeignKey('playlist_entries.id'), primary_key=True)
     lastfm_track_id = Column(Integer, ForeignKey('lastfm_tracks.id'))
-    details = relationship("LastFMTrackDB")
+    details = relationship("LastFMTrackDB", foreign_keys=[lastfm_track_id])
 
 class RequestedTrackEntryDB(PlaylistEntryDB):
     __tablename__ = 'requested_entries'
     
     id = Column(Integer, ForeignKey('playlist_entries.id'), primary_key=True)
     requested_track_id = Column(Integer, ForeignKey('requested_tracks.id'))
-    details = relationship("RequestedTrackDB")
+    details = relationship("RequestedTrackDB", foreign_keys=[requested_track_id])
     
     __mapper_args__ = {
         'polymorphic_identity': 'requested'
