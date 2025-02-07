@@ -1,0 +1,42 @@
+.playlist-container {
+  max-height: 66vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ddd;
+}
+
+.playlist-grid-header-row {
+  display: grid;
+  grid-template-columns: 50px 100px 1fr 1fr;
+  gap: 8px;
+  padding: 8px;
+  background: #f5f5f5;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  color: black;
+}
+
+.playlist-grid-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.playlist-grid-row {
+  display: grid;
+  grid-template-columns: 50px 100px 1fr 1fr;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.grid-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clickable {
+  cursor: pointer;
+}
