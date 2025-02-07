@@ -1,10 +1,10 @@
-import React from 'react';
-import './TrackDetailsModal.css';
+import React, { useState } from 'react';
+import '../styles/TrackDetailsModal.css';
 
 const TrackDetailsModal = ({ track, onClose }) => {
   if (!track) return null;
 
-  const details = track.music_file_details || track;
+  const details = track.details || track;
 
   const formatDuration = (seconds) => {
     const minutes = Math.floor(seconds / 60);
@@ -17,6 +17,7 @@ const TrackDetailsModal = ({ track, onClose }) => {
       <div className="modal-content">
         <h2>Track Details</h2>
         <div className="track-details">
+          <p><strong>ID:</strong> {details.id}</p>
           <p><strong>Title:</strong> {details.title}</p>
           <p><strong>Artist:</strong> {details.artist}</p>
           <p><strong>Album:</strong> {details.album}</p>
@@ -25,7 +26,9 @@ const TrackDetailsModal = ({ track, onClose }) => {
           <p><strong>Year:</strong> {details.year}</p>
           <p><strong>Path:</strong> {details.path}</p>
         </div>
-        <button onClick={onClose}>Close</button>
+        <div className="modal-actions">
+          <button onClick={onClose}>Close</button>
+        </div>
       </div>
     </div>
   );

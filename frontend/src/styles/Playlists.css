@@ -8,11 +8,6 @@
   border-right: 1px solid #ccc;
 }
 
-.editor-panel {
-  width: 80%;
-  padding: 20px;
-}
-
 ul {
   list-style-type: none;
   padding: 0;
@@ -28,7 +23,20 @@ button {
 
 .playlist-grid {
   display: grid;
-  grid-template-columns: 50px 300px 300px 300px 300px 150px;
+  grid-template-columns: 50px 100px 300px 300px;
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.playlist-scrollable {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.search-result-grid {
+  display: grid;
+  grid-template-columns: 50px 300px 300px;
   gap: 10px;
   margin: 20px 0;
 }
@@ -68,4 +76,5 @@ button {
 
 .context-menu div:hover {
   background: #f0f0f0;
+  color: black;
 }
