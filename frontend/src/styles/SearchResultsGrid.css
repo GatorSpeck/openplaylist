@@ -1,0 +1,48 @@
+.search-results-container {
+  max-height: 66vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.search-grid-header-row {
+  display: grid;
+  grid-template-columns: 50px 1fr 1fr;
+  gap: 8px;
+  padding: 8px;
+  
+  border-bottom: 1px solid #ddd;
+  background: white;
+  color: #333;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.search-grid-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.search-grid-row {
+  display: grid;
+  grid-template-columns: 50px 1fr 1fr;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+  background: #333;
+  color: white;
+}
+
+.grid-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clickable {
+  cursor: pointer;
+}

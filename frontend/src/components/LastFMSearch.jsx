@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import './LastFMSearch.css';
+import '../styles/LastFMSearch.css';
 
-const LastFMSearch = ({ onClose, onSelect }) => {
+const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
   const [searchResult, setSearchResult] = useState(null);
@@ -16,6 +16,10 @@ const LastFMSearch = ({ onClose, onSelect }) => {
       const response = await axios.get('/api/lastfm', {
         params: { title, artist }
       });
+
+      const search_results = response.data.entry_type = 'lastfm';
+      console.log(response.data);
+      
       setSearchResult(response.data);
     } catch (error) {
       setError('Failed to fetch track information');
@@ -52,13 +56,14 @@ const LastFMSearch = ({ onClose, onSelect }) => {
         
         {searchResult && (
           <div className="search-result">
-            <h3>{searchResult.name}</h3>
+            <h3>{searchResult.title}</h3>
             <p>Artist: {searchResult.artist}</p>
             {searchResult.url && (
               <a href={searchResult.url} target="_blank" rel="noopener noreferrer">
                 View on Last.FM
               </a>
             )}
+            <button onClick={() => onAddToPlaylist(searchResult)}>Add to Playlist</button>
           </div>
         )}
 
