@@ -8,11 +8,6 @@
   border-right: 1px solid #ccc;
 }
 
-.editor-panel {
-  width: 80%;
-  padding: 20px;
-}
-
 ul {
   list-style-type: none;
   padding: 0;
@@ -81,4 +76,5 @@ button {
 
 .context-menu div:hover {
   background: #f0f0f0;
+  color: black;
 }

@@ -1,0 +1,69 @@
+.hamburger-menu {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 1000;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.playlist-sidebar {
+  position: fixed;
+  left: -300px;
+  top: 0;
+  bottom: 0;
+  width: 300px;
+  background: white;
+  color: #333;
+  box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+  transition: transform 0.3s ease;
+  z-index: 100;
+}
+
+.playlist-sidebar.open {
+  transform: translateX(300px);
+}
+
+.playlist-sidebar-content {
+  padding: 1rem;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.playlist-item {
+  padding: 0.5rem;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.playlist-item:hover {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.playlist-item.selected {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.playlist-context-menu {
+  position: fixed;
+  background: white;
+  color: black;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px 0;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  z-index: 1000;
+}
+
+.playlist-context-menu div {
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.playlist-context-menu div:hover {
+  background: #f5f5f5;
+}
