@@ -1,16 +1,15 @@
 import React, {
    useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { DragDropContext } from 'react-beautiful-dnd';
 import { ClipLoader } from 'react-spinners';
 import PlaylistModal from './PlaylistModal';
 import './Playlists.css'; // Import the CSS file for styling
 import debounce from 'lodash/debounce';
 import TrackDetailsModal from './components/TrackDetailsModal';
-import LastFMSearch from './components/LastFMSearch';
+import LastFMSearch from './components/LastFMSearch';``
 import ContextMenu from './components/ContextMenu';
 import Snackbar from './components/Snackbar';
-import EntryTypeBadge from './components/EntryTypeBadge';
 import SearchResultsGrid from './components/SearchResultsGrid';
 import PlaylistGrid from './components/PlaylistGrid';
 import PlaylistSidebar from './components/PlaylistSidebar';
@@ -18,8 +17,7 @@ import PlaylistSidebar from './components/PlaylistSidebar';
 const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
   const [newPlaylistName, setNewPlaylistName] = useState('');
-  const [selectedPlaylist, setSelectedPlaylist] = useState(null);
-  const [playlistEntries, setPlaylistEntries] = useState([]);
+  const [selectedPlaylistID, setSelectedPlaylistID] = useState(null);
   const [searchResults, setSearchResults] = useState([]);
   const [filterQuery, setFilterQuery] = useState('');
   const [showPlaylistSelectModal, setShowPlaylistSelectModal] = useState(false);
@@ -129,8 +127,13 @@ const Playlists = () => {
   const fetchPlaylistDetails = async (playlistId) => {
     try {
       const response = await axios.get(`/api/playlists/${playlistId}`);
-      setSelectedPlaylist(response.data);
-      setPlaylistEntries(response.data.entries.map(entry => mapToTrackModel(entry)) || []);
+      const updatedPlaylists = playlists.map(playlist => 
+        playlist.id === playlistId 
+          ? { ...playlist, entries: response.data.entries.map(entry => mapToTrackModel(entry)) }
+          : playlist
+      );
+
+      setPlaylists(updatedPlaylists);
     } catch (error) {
       console.error('Error fetching playlist details:', error);
     }
@@ -157,9 +160,8 @@ const Playlists = () => {
       try {
         await axios.delete(`/api/playlists/${playlistId}`);
         setPlaylists(playlists.filter(playlist => playlist.id !== playlistId));
-        if (selectedPlaylist && selectedPlaylist.id === playlistId) {
-          setSelectedPlaylist(null);
-          setPlaylistEntries([]);
+        if (selectedPlaylistID && selectedPlaylistID === playlistId) {
+          setSelectedPlaylistID(null);
         }
       } catch (error) {
         console.error('Error deleting playlist:', error);
@@ -179,12 +181,14 @@ const Playlists = () => {
   };
 
   const removeSongFromPlaylist = async (index) => {
-    if (!selectedPlaylist) {
+    if (!selectedPlaylistID) {
       alert('Please select a playlist first.');
       return;
     }
 
     console.log("Removing song from playlist at index", index);
+
+    const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistID);
 
     try {
       // Remove the song from the list of entries
@@ -200,6 +204,7 @@ const Playlists = () => {
     }
   };
 
+  // TODO
   const exportPlaylist = async (playlistId) => {
     try {
       const response = await axios.get(`/api/playlists/${playlistId}/export`, {
@@ -217,6 +222,7 @@ const Playlists = () => {
     }
   };
 
+  // TODO
   const scanMusic = async () => {
     setIsScanning(true);
     try {
@@ -230,6 +236,7 @@ const Playlists = () => {
     }
   };
 
+  // TODO
   const fullScanMusic = async () => {
     setIsScanning(true);
     try {
@@ -243,6 +250,7 @@ const Playlists = () => {
     }
   };
 
+  // TODO
   const purgeData = async () => {
     if (!window.confirm('Are you sure you want to purge all data?')) {
       return;
@@ -309,26 +317,26 @@ const Playlists = () => {
 
     const { source, destination } = result;
 
+    let thisPlaylist = playlists.find(p => p.id === selectedPlaylistID);
+
     // If dragging within playlist
     if (source.droppableId === 'playlist' && destination.droppableId === 'playlist') {
-      const updatedTracks = Array.from(playlistEntries);
+      const updatedTracks = Array.from(thisPlaylist.entries);
       const [movedTrack] = updatedTracks.splice(source.index, 1);
       updatedTracks.splice(destination.index, 0, movedTrack);
-      
-      setPlaylistEntries(updatedTracks);
       
       const updatedEntries = updatedTracks.map((track, index) => ({
         ...track,
         order: index,
       }));
 
-      setPlaylistTracks(selectedPlaylist.id, updatedEntries);
+      setPlaylistTracks(selectedPlaylistID, updatedEntries);
     }
     
     // If dragging from songs to playlist
     if (source.droppableId === 'songs' && destination.droppableId === 'playlist') {
       const song = filteredSongs[source.index];
-      addSongToPlaylist(song, selectedPlaylist.name);
+      addSongToPlaylist(song, selectedPlaylistID);
     }
   };
 
@@ -351,27 +359,36 @@ const Playlists = () => {
     setShowPlaylistSelectModal(true);
   };
 
+  // TODO
   const handleAddSongToPlaylist = (song) => {
     setSongToAdd([song]);
     setShowPlaylistSelectModal(true);
   }
 
   const toggleTrackSelection = (index) => {
+    const thisPlaylist = playlists.find(p => p.id === selectedPlaylistID);
     setSelectedPlaylistEntries(prev => {
       const newSelection = prev.includes(index)
         ? prev.filter(i => i !== index)
         : [...prev, index];
-      setAllTracksSelected(newSelection.length === playlistEntries.length);
+      setAllTracksSelected(newSelection.length === thisPlaylist.entries.length);
       return newSelection;
     });
   };
+
+  const showPlaylistDetails = (index) => {
+    setSelectedPlaylistID(index);
+    fetchPlaylistDetails(index);
+  }
 
   const clearTrackSelection = () => {
     setSelectedPlaylistEntries([]);
   };
 
   const removeSelectedTracks = async () => {
-    if (!selectedPlaylist || selectedPlaylistEntries.length === 0) return;
+    if (!selectedPlaylistID || selectedPlaylistEntries.length === 0) return;
+
+    const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistID);
 
     try {
       const remainingEntries = selectedPlaylist.entries.filter((_, index) => 
@@ -383,7 +400,7 @@ const Playlists = () => {
 
       setPlaylistTracks(selectedPlaylist.id, remainingEntries);
 
-      const playlistName = playlists.find(p => p.id === playlistID)?.name || 'the playlist';
+      const playlistName = playlists.find(p => p.id === selectedPlaylistID)?.name || 'the playlist';
       
       // Show success message
       setSnackbar({
@@ -409,10 +426,11 @@ const Playlists = () => {
   };
 
   const toggleAllTracks = () => {
+    const thisPlaylist = playlists.find(p => p.id === selectedPlaylistID);
     if (allPlaylistEntriesSelected) {
       setSelectedPlaylistEntries([]);
     } else {
-      setSelectedPlaylistEntries(playlistEntries.map((_, index) => index));
+      setSelectedPlaylistEntries(thisPlaylist.entries.map((_, index) => index));
     }
     setAllTracksSelected(!allPlaylistEntriesSelected);
   };
@@ -477,7 +495,7 @@ const Playlists = () => {
     try {
       await fetchPlaylistDetails(playlistID);
 
-      const response = await axios.put(`/api/playlists/${playlistID}`, {
+      await axios.put(`/api/playlists/${playlistID}`, {
         name: "", // Playlist name is not needed for update
         entries: tracks
       });
@@ -500,6 +518,8 @@ const Playlists = () => {
 
     const tracksToAdd = Array.isArray(tracks) ? tracks : [tracks];
 
+    const selectedPlaylist = playlists.find(p => p.id === playlistID);
+
     // add tracks to entries
     const entries = [
       ...selectedPlaylist.entries, 
@@ -520,6 +540,8 @@ const Playlists = () => {
     });
   };
 
+  const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistID);
+
   return (
     <div className="playlists-container">
       <PlaylistSidebar
@@ -527,7 +549,7 @@ const Playlists = () => {
         onClose={setSidebarOpen}
         playlists={playlists}
         selectedPlaylist={selectedPlaylist}
-        onPlaylistSelect={(id) => fetchPlaylistDetails(id)}
+        onPlaylistSelect={(id) => showPlaylistDetails(id)}
         onNewPlaylist={() => setNewPlaylistModalVisible(true)}
         onClonePlaylist={handleClonePlaylist}
         onDeletePlaylist={deletePlaylist}
@@ -538,7 +560,7 @@ const Playlists = () => {
           {selectedPlaylist && (
             <PlaylistGrid
               playlist={selectedPlaylist}
-              playlistEntries={playlistEntries}
+              playlistEntries={selectedPlaylist.entries}
               selectedEntries={selectedPlaylistEntries}
               allEntriesSelected={allPlaylistEntriesSelected}
               onToggleAll={toggleAllTracks}
