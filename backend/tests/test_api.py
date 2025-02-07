@@ -7,14 +7,14 @@ from response_models import MusicFile
 @pytest.fixture
 def song_data(test_db):
     repo = get_music_file_repository(test_db)
-    track1 = repo.add(
+    track1 = repo.add_music_file(
         MusicFile(
             id=1,
             path="test.mp3",
         )
     )
 
-    track2 = repo.add(
+    track2 = repo.add_music_file(
         MusicFile(
             id=2,
             path="test2.mp3",

@@ -11,6 +11,8 @@ import LastFMSearch from './components/LastFMSearch';
 import ContextMenu from './components/ContextMenu';
 import Snackbar from './components/Snackbar';
 import EntryTypeBadge from './components/EntryTypeBadge';
+import SearchResultsGrid from './components/SearchResultsGrid';
+import PlaylistGrid from './components/PlaylistGrid';
 
 const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
@@ -77,7 +79,7 @@ const Playlists = () => {
       kind: detailsToUse.kind,
       music_file_id: item.music_file_id || null,
       entry_type: item.entry_type,
-      order: item.order || null
+      order: item.order || 0
     }
   };
 
@@ -138,7 +140,7 @@ const Playlists = () => {
     try {
       const response = await axios.post(`/api/playlists`, {
         name: newPlaylistName,
-        entries: songs.map(s => mapToTrackModel(s))
+        entries: songs.map((s, idx) => mapToTrackModel({...s, order: idx}))
       });
 
       setPlaylists([...playlists, response.data]);
@@ -263,7 +265,7 @@ const Playlists = () => {
     try {
       const response = await axios.post(`/api/playlists`, {
         name: newPlaylistNameModal,
-        entries: songList.map((s, idx) => ({ order: idx, ...mapToTrackModel(s)}))
+        entries: songList.map((s, idx) => mapToTrackModel({...s, order: idx}))
       });
 
       setPlaylists([...playlists, response.data]);
@@ -559,162 +561,57 @@ const Playlists = () => {
       <div className="editor-panel">
         <DragDropContext onDragEnd={onDragEnd}>
           {selectedPlaylist && (
-            <div>
-              <h2>{selectedPlaylist.name}</h2>
-
-              {selectedPlaylistEntries.length > 0 && (
-                <div className="batch-actions">
-                  <button onClick={removeSelectedTracks}>
-                    Remove {selectedPlaylistEntries.length} Selected Tracks
-                  </button>
-                  <button onClick={clearTrackSelection}>
-                    Clear Selection
-                  </button>
-                </div>
-              )}
-
-              <Droppable droppableId="playlist">
-                {(provided) => (
-                  <div className="playlist-grid" {...provided.droppableProps} ref={provided.innerRef}>
-                    <div className="playlist-grid-header">
-                      <input
-                        type="checkbox"
-                        checked={allPlaylistEntriesSelected}
-                        onChange={toggleAllTracks}
-                      />
-                    </div>
-                    <div className="playlist-grid-header">Source</div>
-                    <div className="playlist-grid-header">Artist</div>
-                    <div className="playlist-grid-header">Album</div>
-                    <div className="playlist-grid-header">Title</div>
-                    <div className="playlist-grid-header">Genres</div>
-                    <div className="playlist-grid-header">Actions</div>
-
-                    {playlistEntries.map((track, index) => (
-                      <Draggable 
-                        key={index} 
-                        draggableId={index.toString()} 
-                        index={index}
-
-                      >
-                        {(provided) => (
-                          <React.Fragment>
-                            <div className="playlist-grid-item" ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              {...provided.dragHandleProps}>
-                              <input
-                                type="checkbox"
-                                checked={selectedPlaylistEntries.includes(index)}
-                                onChange={() => toggleTrackSelection(index)}
-                              />
-                            </div>
-                            <EntryTypeBadge className="playlist-grid-item" type={track.entry_type} />
-                            <div className="playlist-grid-item">{track.artist ? track.artist : track.album_artist}</div>
-                            <div className="playlist-grid-item">{track.album}</div>
-                            <div 
-                              className="playlist-grid-item clickable" 
-                              onClick={() => handleShowTrackDetails(track)}
-                              onContextMenu={(e) => handleContextMenu(e, track)}
-                            >
-                              {track.title}
-                            </div>
-                            <div className="playlist-grid-item">{track.genres?.join(', ')}</div>
-                            <div className="playlist-grid-item">
-                              <button onClick={() => removeSongFromPlaylist(index)}>Remove</button>
-                            </div>
-                          </React.Fragment>
-                        )}
-                      </Draggable>
-                    ))}
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
-            </div>
+            <PlaylistGrid
+              playlist={selectedPlaylist}
+              playlistEntries={playlistEntries}
+              selectedEntries={selectedPlaylistEntries}
+              allEntriesSelected={allPlaylistEntriesSelected}
+              onToggleAll={toggleAllTracks}
+              onToggleEntry={toggleTrackSelection}
+              onContextMenu={handleContextMenu}
+              onRemove={removeSelectedTracks}
+              onClear={clearTrackSelection}
+            />
           )}
 
           <h2>Add Songs</h2>
-          <input
-            type="text"
-            placeholder="Search..."
-            value={filterQuery}
-            onChange={handleFilterChange}
+
+          <div>
+          <button onClick={() => setShowLastFMSearch(true)}>
+            Search Last.FM
+          </button>
+          </div>
+
+          <div>
+            <input
+              type="text"
+              placeholder="Search local files..."
+              value={filterQuery}
+              onChange={handleFilterChange}
+            />
+            <button onClick={() => setFilterQuery('')}>Clear</button>
+          </div>
+
+          <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedSearchResults.length > 0 ? 'visible' : 'hidden' }}>
+            <button onClick={handleAddSelectedToPlaylist}>
+              Add {selectedSearchResults.length} Selected to Playlist
+            </button>
+            <button onClick={clearSelectedSongs}>
+              Clear Selection
+            </button>
+          </div>
+
+          <SearchResultsGrid
+            isLoading={isLoading}
+            filteredSongs={filteredSongs}
+            selectedSearchResults={selectedSearchResults}
+            allSearchResultsSelected={allSearchResultsSelected}
+            onToggleAll={toggleAllSongs}
+            onToggleSelection={toggleSongSelection}
+            onContextMenu={handleContextMenu}
           />
 
-          {selectedSearchResults.length > 0 && (
-            <div className="batch-actions">
-              <button onClick={handleAddSelectedToPlaylist}>
-                Add {selectedSearchResults.length} Selected to Playlist
-              </button>
-              <button onClick={clearSelectedSongs}>
-                Clear Selection
-              </button>
-            </div>
-          )}
-
-          {isLoading ? (
-            <div className="spinner-container">
-              <ClipLoader size={30} color={"#123abc"} />
-            </div>
-          ) : (
-            <Droppable droppableId="songs">
-              {(provided) => (
-                <div {...provided.droppableProps} ref={provided.innerRef} className="search-result-grid">
-                  <div className="playlist-grid">
-                    <input
-                      type="checkbox"
-                      checked={allSearchResultsSelected}
-                      onChange={toggleAllSongs}
-                    />
-                  </div>
-                  <div className="playlist-grid-header">Artist</div>
-                  <div className="playlist-grid-header">Album</div>
-                  <div className="playlist-grid-header">Title</div>
-                  <div className="playlist-grid-header">Genres</div>
-                  <div className="playlist-grid-header">Actions</div>
-                  
-                  {filteredSongs.map((song, index) => (
-                    <Draggable 
-                      key={song.id} 
-                      draggableId={`song-${song.id}`} 
-                      index={index}
-                    >
-                      {(provided) => (
-                        <React.Fragment>
-                          <div 
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            ref={provided.innerRef}
-                            className="playlist-grid-item"
-                          >
-                            <input 
-                              type="checkbox"
-                              checked={selectedSearchResults.some(s => s.id === song.id)}
-                              onChange={() => toggleSongSelection(song)}
-                            />
-                          </div>
-                          <div className="playlist-grid-item">{song.artist ? song.artist : song.album_artist}</div>
-                          <div className="playlist-grid-item">{song.album}</div>
-                          <div className="playlist-grid-item" onClick={() => handleShowTrackDetails(song)} onContextMenu={(e) => handleContextMenu(e, song)}>{song.title}</div>
-                          <div className="playlist-grid-item">{song.genres?.join(', ')}</div>
-                          <div className="playlist-grid-item">
-                            <button onClick={(e) => handleAddSongToPlaylist(song)}>Add to Playlist</button>
-                            <button onClick={(e) => handleContextMenu(e, song)}>More</button>
-                          </div>
-                        </React.Fragment>
-                      )}
-                    </Draggable>
-                  ))}
-                  {provided.placeholder}
-                </div>
-              )}
-            </Droppable>
-          )}
-
         </DragDropContext>
-        <button onClick={() => setShowLastFMSearch(true)}>
-          Search Last.FM
-        </button>
 
         {showLastFMSearch && (
           <LastFMSearch
@@ -781,6 +678,7 @@ const Playlists = () => {
           y={contextMenu.y}
           track={contextMenu.track}
           onClose={() => setContextMenu({ visible: false })}
+          onRemove={() => removeSongFromPlaylist(contextMenu.track.order)}
           onFilterByAlbum={handleFilterByAlbum}
           onFilterByArtist={handleFilterByArtist}
           onAddTracks={(tracks) => addTracksToPlaylist(selectedPlaylist.id, tracks)}

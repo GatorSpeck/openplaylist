@@ -1,11 +1,12 @@
 from .base import BaseRepository
 from models import MusicFileDB, TrackGenreDB
 from typing import Optional
-from response_models import MusicFile, SearchQuery
+from response_models import MusicFile, SearchQuery, RequestedTrack, TrackDetails
 from sqlalchemy import text, or_
 import time
 import urllib
 import logging
+from repositories.playlist import PlaylistRepository
 
 
 def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
@@ -113,7 +114,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
 
         return [to_music_file(music_file) for music_file in results]
 
-    def add(self, music_file: MusicFile) -> MusicFile:
+    def add_music_file(self, music_file: MusicFile) -> MusicFile:
         music_file_db = MusicFileDB(
             path=music_file.path,
             title=music_file.title,
@@ -132,9 +133,38 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
 
         # Add genres
         for genre in music_file.genres:
-            music_file_db.genres.append(TrackGenreDB(genre=genre))
+            music_file_db.genres.append(TrackGenreDB(parent_type="music_file", genre=genre))
 
         self.session.commit()
         self.session.refresh(music_file_db)
 
         return to_music_file(music_file_db)
+
+    def delete(self, music_file_id: int):
+        music_file = self.session.query(MusicFileDB).get(music_file_id)
+
+        if music_file is None:
+            return
+
+        self.session.delete(music_file)
+        self.session.commit()
+
+    def mark_music_file_missing(self, music_file_id: int):
+        music_file = self.session.query(MusicFileDB).get(music_file_id)
+
+        if music_file is None:
+            return
+
+        music_file.missing = True
+
+        self.session.commit()
+    
+    def mark_music_file_found(self, music_file_id: int):
+        music_file = self.session.query(MusicFileDB).get(music_file_id)
+
+        if music_file is None:
+            return
+
+        music_file.missing = False
+
+        self.session.commit()

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Enum, Text
+from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Enum, Text, Boolean
 from sqlalchemy.orm import (
     relationship,
     declarative_base,
@@ -72,6 +72,7 @@ class MusicFileDB(BaseNode, TrackDetailsMixin):
         primaryjoin="and_(TrackGenreDB.music_file_id==MusicFileDB.id, TrackGenreDB.parent_type=='music_file')",
         cascade="all, delete-orphan",
     )
+    missing = Column(Boolean, default=False)
 
 
 class LastFMTrackDB(BaseNode, TrackDetailsMixin):

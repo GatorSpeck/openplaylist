@@ -170,15 +170,16 @@ def purge_data():
 
 
 @router.get("/scan")
-def scan():
+def scan(repo: PlaylistRepository = Depends(get_playlist_repository), music_files: MusicFileRepository = Depends(get_music_file_repository)):
     scan_directory(os.getenv("MUSIC_PATH", "/music"))
+    prune_music_files(repo, music_files)
 
 
 @router.get("/fullscan")
-def full_scan():
+def full_scan(repo: PlaylistRepository = Depends(get_playlist_repository), music_files: MusicFileRepository = Depends(get_music_file_repository)):
     drop_music_files()
     scan_directory(os.getenv("MUSIC_PATH", "/music"))
-    prune_music_files()
+    prune_music_files(repo, music_files)
 
 
 def drop_music_files():
@@ -191,7 +192,7 @@ def drop_music_files():
     db.close()
 
 
-def prune_music_files():
+def prune_music_files(playlists: PlaylistRepository, music_files: MusicFileRepository):
     db = Database.get_session()
     existing_files = db.query(MusicFileDB).all()
 
@@ -202,6 +203,13 @@ def prune_music_files():
             logging.debug(
                 f"Removing nonexistent music file {existing_file.path} from the database"
             )
+
+            # change linked playlist entries to requested
+            for entry in existing_file.entries:
+                entry.update({
+                    "entry_type": "requested"
+                })
+
             db.delete(existing_file)
 
     if prunes:
@@ -364,6 +372,8 @@ def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
     data = response.json()
     tracks = data.get("results", {}).get("trackmatches", {}).get("track", [])
 
+    logging.debug(data)
+
     # Return first matching track
     if tracks:
         track = tracks[0]
@@ -396,6 +406,7 @@ def get_similar_tracks(title: str = Query(...), artist: str = Query(...)):
         )
 
     similar_data = similar_response.json()
+    logging.debug(similar_data)
     similar_tracks = similar_data.get("similartracks", {}).get("track", [])
 
     return [
