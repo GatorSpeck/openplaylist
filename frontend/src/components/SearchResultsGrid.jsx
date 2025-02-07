@@ -1,6 +1,6 @@
 import React from 'react';
 import { Droppable, Draggable } from 'react-beautiful-dnd';
-import './SearchResultsGrid.css';
+import '../styles/SearchResultsGrid.css';
 
 const SearchResultsGrid = ({ filteredSongs, selectedSearchResults, allSearchResultsSelected, onToggleAll, onToggleSelection, onContextMenu }) => {
   return (

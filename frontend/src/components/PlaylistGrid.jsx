@@ -1,7 +1,7 @@
 import React from 'react';
 import { Droppable, Draggable } from 'react-beautiful-dnd';
 import EntryTypeBadge from './EntryTypeBadge';
-import './PlaylistGrid.css';  // Add this import
+import '../styles/PlaylistGrid.css';  // Add this import
 
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
