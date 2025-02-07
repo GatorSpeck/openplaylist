@@ -13,6 +13,7 @@ import Snackbar from './components/Snackbar';
 import EntryTypeBadge from './components/EntryTypeBadge';
 import SearchResultsGrid from './components/SearchResultsGrid';
 import PlaylistGrid from './components/PlaylistGrid';
+import PlaylistSidebar from './components/PlaylistSidebar';
 
 const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
@@ -43,6 +44,7 @@ const Playlists = () => {
     message: '',
     severity: 'info'
   });
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleSnackbarClose = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
@@ -260,7 +262,7 @@ const Playlists = () => {
   };
 
   const handleCreateNewPlaylist = async () => {
-    const songList = Array.isArray(songToAdd) ? songToAdd : [songToAdd];
+    const songList = songToAdd ? (Array.isArray(songToAdd) ? songToAdd : [songToAdd]) : [];
     console.log(songList);
     try {
       const response = await axios.post(`/api/playlists`, {
@@ -519,45 +521,18 @@ const Playlists = () => {
   };
 
   return (
-    <div className="playlists-container" onClick={() => setContextMenu({ visible: false })}>
-      <div className="playlists-panel">
-        <h1>Playlists</h1>
-        <ul>
-          {playlists.map(playlist => (
-            <li key={playlist.id}>
-              <span onClick={() => fetchPlaylistDetails(playlist.id)}>{playlist.name}</span>
-              <button onClick={() => deletePlaylist(playlist.id)}>Delete</button>
-              <button onClick={() => exportPlaylist(playlist.id)}>Export</button>
-              <button onClick={() => {
-                setPlaylistToClone(playlist);
-                setClonePlaylistName(`${playlist.name} (Copy)`);
-                setCloneModalVisible(true);
-              }}>Clone</button>
-            </li>
-          ))}
-        </ul>
-
-        <h2>Create New Playlist</h2>
-        <input
-          type="text"
-          placeholder="Playlist Name"
-          value={newPlaylistName}
-          onChange={(e) => setNewPlaylistName(e.target.value)}
-        />
-        <button onClick={createPlaylist}>Create Playlist</button>
-
-        {isScanning ? (
-          <div className="spinner-container">
-            <ClipLoader size={50} color={"#123abc"} loading={isScanning} />
-          </div>
-        ) : (
-          <div>
-            <button onClick={scanMusic}>Scan Music</button>
-            <button onClick={fullScanMusic}>Full Scan Music</button>
-            <button onClick={purgeData}>Purge Data</button>
-          </div>
-        )}
-      </div>
+    <div className="playlists-container">
+      <PlaylistSidebar
+        isOpen={sidebarOpen}
+        onClose={setSidebarOpen}
+        playlists={playlists}
+        selectedPlaylist={selectedPlaylist}
+        onPlaylistSelect={(id) => fetchPlaylistDetails(id)}
+        onNewPlaylist={() => setNewPlaylistModalVisible(true)}
+        onClonePlaylist={handleClonePlaylist}
+        onDeletePlaylist={deletePlaylist}
+      />
+      
       <div className="editor-panel">
         <DragDropContext onDragEnd={onDragEnd}>
           {selectedPlaylist && (
