@@ -28,12 +28,43 @@ class TrackDetails(BaseModel):
     publisher: Optional[str] = None
     genres: List[str] = []
 
-
-class MusicFile(TrackDetails):
+class MusicEntity(BaseModel):
     id: Optional[int] = None
+
+class RequestedTrack(MusicEntity, TrackDetails):
+    missing: Optional[bool] = False  # True if the track was previously scanned and is now missing from the library
+
+    @classmethod
+    def from_orm(cls, obj: RequestedTrackDB):
+        return cls(
+            id=obj.id,
+            title=obj.title,
+            artist=obj.artist,
+            album=obj.album,
+        )
+
+
+class MusicFile(MusicEntity, TrackDetails):
     path: str
     kind: Optional[str] = None
     last_scanned: Optional[datetime] = None
+
+    @classmethod
+    def from_orm(cls, obj: MusicFileDB):
+        return cls(
+            id=obj.id,
+            path=obj.path,
+            kind=obj.kind,
+            last_scanned=obj.last_scanned,
+            title=obj.title,
+            artist=obj.artist,
+            album_artist=obj.album_artist,
+            album=obj.album,
+            year=obj.year,
+            length=obj.length,
+            publisher=obj.publisher,
+            genres=[str(s.genre) for s in obj.genres],
+        )
 
 
 class PlaylistBase(BaseModel):
@@ -122,7 +153,7 @@ class NestedPlaylistEntry(PlaylistEntryBase):
         )
 
 
-class LastFMTrack(TrackDetails):
+class LastFMTrack(MusicEntity, TrackDetails):
     url: str
 
 
