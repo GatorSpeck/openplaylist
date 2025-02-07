@@ -155,6 +155,20 @@ const Playlists = () => {
     }
   };
 
+  const onRemoveByAlbum = async (album) => {
+    const thisPlaylist = playlists.find(p => p.id === selectedPlaylistID);
+    const updatedEntries = thisPlaylist.entries.filter(entry => entry.album === album).map(entry => entry.order);
+
+    removeSongsFromPlaylist(updatedEntries);
+  }
+
+  const onRemoveByArtist = async (artist) => {
+    const thisPlaylist = playlists.find(p => p.id === selectedPlaylistID);
+    const updatedEntries = thisPlaylist.entries.filter(entry => entry.artist === artist).map(entry => entry.order);
+
+    removeSongsFromPlaylist(updatedEntries);
+  }
+
   const deletePlaylist = async (playlistId) => {
     if (window.confirm('Are you sure you want to delete this playlist?')) {
       try {
@@ -180,29 +194,35 @@ const Playlists = () => {
     }
   };
 
-  const removeSongFromPlaylist = async (index) => {
+  const removeSongsFromPlaylist = async (indexes) => {
     if (!selectedPlaylistID) {
       alert('Please select a playlist first.');
       return;
     }
 
-    console.log("Removing song from playlist at index", index);
-
     const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistID);
 
     try {
-      // Remove the song from the list of entries
-      let updatedEntries = selectedPlaylist.entries.filter((_, i) => i !== index);
+      const updatedEntries = selectedPlaylist.entries.filter((e) => !indexes.includes(e.order));
 
-      // Update the order of the remaining tracks
-      updatedEntries = updatedEntries.map((entry, i) => ({ ...entry, order: i }));
+      const entriesToDelete = selectedPlaylist.entries.length - updatedEntries.length;
+      if (!window.confirm(`Are you sure you want to remove ${entriesToDelete} entries from the playlist?`)) {
+        return;
+      }
 
-      setPlaylistTracks(selectedPlaylist.id, updatedEntries);
-      clearTrackSelection()
+      await writePlaylistToDB(selectedPlaylist.id, updatedEntries);
+
+      setSnackbar({
+        open: true,
+        message: `Removed ${entriesToDelete} tracks from ${selectedPlaylist.name}`,
+        severity: 'success'
+      });
+
+      clearTrackSelection();
     } catch (error) {
-      console.error('Error removing song from playlist:', error);
+      console.error('Error removing songs from playlist:', error);
     }
-  };
+  }
 
   // TODO
   const exportPlaylist = async (playlistId) => {
@@ -330,7 +350,7 @@ const Playlists = () => {
         order: index,
       }));
 
-      setPlaylistTracks(selectedPlaylistID, updatedEntries);
+      writePlaylistToDB(selectedPlaylistID, updatedEntries);
     }
     
     // If dragging from songs to playlist
@@ -398,7 +418,7 @@ const Playlists = () => {
         order: index
       }));
 
-      setPlaylistTracks(selectedPlaylist.id, remainingEntries);
+      writePlaylistToDB(selectedPlaylist.id, remainingEntries);
 
       const playlistName = playlists.find(p => p.id === selectedPlaylistID)?.name || 'the playlist';
       
@@ -491,7 +511,7 @@ const Playlists = () => {
     };
   }, []);
 
-  const setPlaylistTracks = async (playlistID, tracks) => {
+  const writePlaylistToDB = async (playlistID, tracks) => {
     try {
       await fetchPlaylistDetails(playlistID);
 
@@ -528,7 +548,7 @@ const Playlists = () => {
         entry_type: s.entry_type, url: s.url, details: s
       }))]
 
-    setPlaylistTracks(playlistID, entries);
+    writePlaylistToDB(playlistID, entries);
 
     const playlistName = playlists.find(p => p.id === playlistID)?.name || 'the playlist';
       
@@ -675,10 +695,12 @@ const Playlists = () => {
           y={contextMenu.y}
           track={contextMenu.track}
           onClose={() => setContextMenu({ visible: false })}
-          onRemove={() => removeSongFromPlaylist(contextMenu.track.order)}
+          onRemove={() => removeSongsFromPlaylist([contextMenu.track.order])}
           onFilterByAlbum={handleFilterByAlbum}
           onFilterByArtist={handleFilterByArtist}
           onAddTracks={(tracks) => addTracksToPlaylist(selectedPlaylist.id, tracks)}
+          onRemoveByAlbum={onRemoveByAlbum}
+          onRemoveByArtist={onRemoveByArtist}
         />
       )}
       <Snackbar

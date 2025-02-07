@@ -105,7 +105,7 @@ const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
   );
 };
 
-const ContextMenu = ({ x, y, track, onClose, onFilterByAlbum, onFilterByArtist, onAddTracks, onRemove }) => {
+const ContextMenu = ({ x, y, track, onClose, onFilterByAlbum, onFilterByArtist, onAddTracks, onRemove, onRemoveByArtist, onRemoveByAlbum }) => {
   const [position, setPosition] = useState({ x, y });
   const [loading, setLoading] = useState(false);
   const [similarTracks, setSimilarTracks] = useState(null);
@@ -171,6 +171,12 @@ const ContextMenu = ({ x, y, track, onClose, onFilterByAlbum, onFilterByArtist, 
         </div>
         <div onClick={() => { onFilterByArtist(track.artist); onClose(); }}>
           Filter by Artist: {track.artist}
+        </div>
+        <div onClick={() => { onRemoveByArtist(track.artist); onClose(); }}>
+          Remove by Artist: {track.artist}
+        </div>
+        <div onClick={() => { onRemoveByAlbum(track.album); onClose(); }}>
+          Remove by Album: {track.album}
         </div>
         <div onClick={findSimilarTracks}>
           {loading ? 'Loading similar tracks...' : 'Find Similar Tracks'}

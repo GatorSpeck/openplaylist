@@ -1,4 +1,4 @@
-import { Chip } from '@mui/material';
+import { Chip, Tooltip } from '@mui/material';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import RadioIcon from '@mui/icons-material/Radio';
 import PlaylistPlayIcon from '@mui/icons-material/PlaylistPlay';
@@ -8,31 +8,36 @@ const EntryTypeBadge = ({ type }) => {
   const config = {
     music_file: {
       icon: <MusicNoteIcon />,
-      color: 'primary'
+      color: 'primary',
+      label: 'Local Music File'
     },
     lastfm: {
       icon: <RadioIcon />,
-      color: 'error'
+      color: 'error',
+      label: 'Last.FM Track'
     },
     nested_playlist: {
       icon: <PlaylistPlayIcon />,
-      color: 'success'
+      color: 'success',
+      label: 'Nested Playlist'
     },
     requested: {
       icon: <SearchIcon />,
-      color: 'warning'
+      color: 'warning',
+      label: 'Requested Track'
     }
   };
 
   const { icon, label, color } = config[type] || config.music_file;
 
   return (
-    <Chip
-      icon={icon}
-      label={label}
-      color={color}
-      size="small"
-    />
+    <Tooltip title={label}>
+      <Chip
+        icon={icon}
+        color={color}
+        size="small"
+      />
+    </Tooltip>
   );
 };
 
