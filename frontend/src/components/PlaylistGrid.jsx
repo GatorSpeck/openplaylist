@@ -1,6 +1,8 @@
 import React from 'react';
 import { Droppable, Draggable } from 'react-beautiful-dnd';
 import EntryTypeBadge from './EntryTypeBadge';
+import './PlaylistGrid.css';  // Add this import
+
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -34,59 +36,55 @@ const PlaylistGrid = ({
         onClear={onClear}
       />
 
-      <Droppable droppableId="playlist">
-        {(provided) => (
-          <div className="playlist-grid" {...provided.droppableProps} ref={provided.innerRef}>
-            <div className="playlist-grid-header">
-              <input
-                type="checkbox"
-                checked={allEntriesSelected}
-                onChange={onToggleAll}
-              />
-            </div>
-            <div className="playlist-grid-header">Source</div>
-            <div className="playlist-grid-header">Artist/Album</div>
-            <div className="playlist-grid-header">Song</div>
+      <div className="playlist-container">
+        <div className="playlist-grid-header-row">
+          <div className="grid-cell">
+            <input type="checkbox" checked={allEntriesSelected} onChange={onToggleAll} />
+          </div>
+          <div className="grid-cell">Source</div>
+          <div className="grid-cell">Artist/Album</div>
+          <div className="grid-cell">Song</div>
+        </div>
 
-            {playlistEntries.map((track, index) => (
-              <Draggable 
-                key={index} 
-                draggableId={index.toString()} 
-                index={index}
-              >
-                {(provided) => (
-                  <React.Fragment>
-                    <div className="playlist-grid-item" 
+        <Droppable droppableId="playlist">
+          {(provided) => (
+            <div className="playlist-grid-content" {...provided.droppableProps} ref={provided.innerRef}>
+              {playlistEntries.map((track, index) => (
+                <Draggable key={index} draggableId={index.toString()} index={index}>
+                  {(provided) => (
+                    <div className="playlist-grid-row"
                       ref={provided.innerRef}
                       {...provided.draggableProps}
                       {...provided.dragHandleProps}
-                      onClick={() => onToggleEntry(index)}
                     >
-                      <input
-                        type="checkbox"
-                        checked={selectedEntries.includes(index)}
-                        onChange={() => onToggleEntry(index)}
-                      />
+                      <div className="grid-cell">
+                        <input
+                          type="checkbox"
+                          checked={selectedEntries.includes(index)}
+                          onChange={() => onToggleEntry(index)}
+                        />
+                      </div>
+                      <div className="grid-cell">
+                        <EntryTypeBadge type={track.entry_type} />
+                      </div>
+                      <div className="grid-cell">
+                        <div>{track.artist || track.album_artist}</div>
+                        <div><i>{track.album}</i></div>
+                      </div>
+                      <div className="grid-cell clickable"
+                        onContextMenu={(e) => onContextMenu(e, track)}
+                      >
+                        {track.title}
+                      </div>
                     </div>
-                    <EntryTypeBadge className="playlist-grid-item" type={track.entry_type} />
-                    <div className="playlist-grid-item">
-                      <div>{track.artist || track.album_artist}</div>
-                      <div><i>{track.album}</i></div>
-                    </div>
-                    <div 
-                      className="playlist-grid-item clickable" 
-                      onContextMenu={(e) => onContextMenu(e, track)}
-                    >
-                      {track.title}
-                    </div>
-                  </React.Fragment>
-                )}
-              </Draggable>
-            ))}
-            {provided.placeholder}
-          </div>
-        )}
-      </Droppable>
+                  )}
+                </Draggable>
+              ))}
+              {provided.placeholder}
+            </div>
+          )}
+        </Droppable>
+      </div>
     </div>
   );
 };
