@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import './PlaylistSidebar.css';
+import '../styles/PlaylistSidebar.css';
 
 const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete }) => (
   <div className="playlist-context-menu" style={{ left: x, top: y }}>

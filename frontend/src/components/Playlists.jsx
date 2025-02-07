@@ -4,15 +4,15 @@ import axios from 'axios';
 import { DragDropContext } from 'react-beautiful-dnd';
 import { ClipLoader } from 'react-spinners';
 import PlaylistModal from './PlaylistModal';
-import './Playlists.css'; // Import the CSS file for styling
+import '../styles/Playlists.css'; // Import the CSS file for styling
 import debounce from 'lodash/debounce';
-import TrackDetailsModal from './components/TrackDetailsModal';
-import LastFMSearch from './components/LastFMSearch';``
-import ContextMenu from './components/ContextMenu';
-import Snackbar from './components/Snackbar';
-import SearchResultsGrid from './components/SearchResultsGrid';
-import PlaylistGrid from './components/PlaylistGrid';
-import PlaylistSidebar from './components/PlaylistSidebar';
+import TrackDetailsModal from './TrackDetailsModal';
+import LastFMSearch from './LastFMSearch';``
+import ContextMenu from './ContextMenu';
+import Snackbar from './Snackbar';
+import SearchResultsGrid from './SearchResultsGrid';
+import PlaylistGrid from './PlaylistGrid';
+import PlaylistSidebar from './PlaylistSidebar';
 
 const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
