@@ -16,8 +16,8 @@ services:
     expose:
       - 3000
     environment:
-      - LASTFM_API_KEY="b71f009e60523e1c055eb8e1b9b6a854"
-      - LASTFM_SHARED_SECRET="6c9c65258db4340d30f35928e5a2c5dc"
+      - LASTFM_API_KEY=${LASTFM_API_KEY}
+      - LASTFM_SHARED_SECRET=${LASTFM_SHARED_SECRET}
       - MUSIC_PATH=/music
 
   frontend:

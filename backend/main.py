@@ -467,14 +467,23 @@ def get_similar_tracks(title: str = Query(...), artist: str = Query(...)):
     logging.debug(similar_data)
     similar_tracks = similar_data.get("similartracks", {}).get("track", [])
 
-    return [
-        LastFMTrack(
-            title=t.get("name", ""),
-            artist=t.get("artist", {}).get("name", ""),
-            url=t.get("url"),
+    db = Database.get_session()
+
+    results = []
+
+    for t in similar_tracks:
+        track = db.query(MusicFileDB).filter(MusicFileDB.title == t.get("name", "")).filter(MusicFileDB.artist == t.get("artist", {}).get("name", "")).first()
+
+        results.append(
+            LastFMTrack(
+                title=t.get("name", ""),
+                artist=t.get("artist", {}).get("name", ""),
+                url=t.get("url"),
+                music_file_id=track.id if track else None
+            )
         )
-        for t in similar_tracks
-    ]
+
+    return results
 
 
 @app.get("/api/music-files")
