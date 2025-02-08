@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import axios from 'axios';
-import Playlists from '../Playlists';
+import Playlists from '../components/Playlists';
 import '@testing-library/jest-dom';
 import {mockSongs, mockPlaylists} from './mockData';
 
@@ -40,22 +40,30 @@ describe('Playlists', () => {
     });
     
     render(<Playlists />);
+
+    fireEvent.click(screen.getByText('☰'));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByText('New Playlist'));
+    });
     
-    const input = screen.getByPlaceholderText('Playlist Name');
-    const button = screen.getByText('Create Playlist');
-    
-    fireEvent.change(input, { target: { value: 'New Playlist' } });
-    fireEvent.click(button);
+    await waitFor(() => {
+      const input = screen.getByPlaceholderText('New Playlist Name');
+      const button = screen.getByText('Create');
+
+      fireEvent.change(input, { target: { value: 'Playlist 1' } });
+      fireEvent.click(button);
+    });
     
     await waitFor(() => {
       expect(axios.post).toHaveBeenCalledWith(
-        expect.stringContaining('/api/playlists'),
-        { name: 'New Playlist', entries: [] }
+        '/api/playlists',
+        { name: 'Playlist 1', entries: [] }
       );
     });
 
     await waitFor(() => {
-      expect(screen.getByText('New Playlist')).toBeInTheDocument();
+      expect(screen.getByText('Playlist 1')).toBeInTheDocument();
     });
   });
 
@@ -82,26 +90,36 @@ describe('Playlists', () => {
     render(<Playlists />);
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('Search...')).toBeInTheDocument();
-      fireEvent.change(screen.getByPlaceholderText('Search...'), { target: { value: 'Song' } });
+      expect(screen.getByPlaceholderText('Search local files...')).toBeInTheDocument();
+      fireEvent.change(screen.getByPlaceholderText('Search local files...'), { target: { value: 'Song' } });
     });
 
     // add a track to this playlist
     await waitFor(() => {
-      expect(screen.getAllByText('Add to Playlist')[1]).toBeInTheDocument();
-      fireEvent.click(screen.getAllByText('Add to Playlist')[1]);
+      const song = screen.getByText('Song 2');
+      expect(song).toBeInTheDocument();
+      song.click();
     });
 
     await waitFor(() => {
-      expect(screen.getAllByText('Playlist 1')[2]).toBeInTheDocument();
-      fireEvent.click(screen.getAllByText('Playlist 1')[2]);
+      const addButton = screen.getByText('Add 1 Selected to Playlist');
+      expect(addButton).toBeInTheDocument();
+      addButton.click();
     });
+
+    await waitFor(() => {
+      const playlist = screen.getAllByText('Playlist 1')[1];
+      expect(playlist).toBeInTheDocument();
+      playlist.click();
+    })
 
     await waitFor(() => expect(axios.put).toHaveBeenCalled());
 
     expect(axios.put).toHaveBeenCalledWith(
-      expect.stringContaining('/api/playlists/1'),
-      { name: 'Playlist 1', entries: [{"music_file_id": 2, "order": 0}] }
+      '/api/playlists/1',
+      expect.objectContaining({ entries: [
+        expect.objectContaining({"music_file_id": 2, "order": 0})
+      ] })
     );
   });
 });
