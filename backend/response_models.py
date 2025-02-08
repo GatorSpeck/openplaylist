@@ -283,3 +283,10 @@ class ScanResults(BaseModel):
     new_files_added: int
     files_updated: int
     files_missing: int
+
+class LibraryStats(BaseModel):
+    trackCount: int
+    albumCount: int
+    artistCount: int
+    totalLength: int
+    missingTracks: int
