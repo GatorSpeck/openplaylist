@@ -24,7 +24,9 @@ const TrackDetailsModal = ({ track, onClose }) => {
           <p><strong>Album Artist:</strong> {details.album_artist}</p>
           <p><strong>Length:</strong> {formatDuration(details.length)}</p>
           <p><strong>Year:</strong> {details.year}</p>
-          <p><strong>Path:</strong> {details.path}</p>
+          <p><strong>Path:</strong>
+            {details.missing ? <s>{details.path}</s> : <p>{details.path}</p>}
+          </p>
         </div>
         <div className="modal-actions">
           <button onClick={onClose}>Close</button>

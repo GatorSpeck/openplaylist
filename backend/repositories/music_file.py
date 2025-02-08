@@ -23,6 +23,7 @@ def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
         kind=music_file_db.kind,
         genres=[g.genre for g in music_file_db.genres] or [],
         last_scanned=music_file_db.last_scanned,
+        missing=music_file_db.missing,
     )
 
 

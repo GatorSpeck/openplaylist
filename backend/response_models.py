@@ -48,6 +48,7 @@ class MusicFile(MusicEntity, TrackDetails):
     path: str
     kind: Optional[str] = None
     last_scanned: Optional[datetime] = None
+    missing: Optional[bool] = False  # True if the track was previously scanned and is now missing from the index
 
     @classmethod
     def from_orm(cls, obj: MusicFileDB):
@@ -64,6 +65,7 @@ class MusicFile(MusicEntity, TrackDetails):
             length=obj.length,
             publisher=obj.publisher,
             genres=[str(s.genre) for s in obj.genres],
+            missing=obj.missing,
         )
 
 
@@ -121,6 +123,7 @@ class MusicFileEntry(PlaylistEntryBase):
                 length=obj.details.length,
                 publisher=obj.details.publisher,
                 genres=[str(s.genre) for s in obj.details.genres],
+                missing=obj.details.missing,
             ) if obj.details is not None else None,
         )
 
@@ -273,3 +276,10 @@ class SearchQuery(BaseModel):
     title: Optional[str] = None
     artist: Optional[str] = None
     limit: Optional[int] = 50
+
+class ScanResults(BaseModel):
+    files_scanned: int
+    files_indexed: int
+    new_files_added: int
+    files_updated: int
+    files_missing: int

@@ -43,7 +43,7 @@ const SearchResultsGrid = ({ filteredSongs, selectedSearchResults, allSearchResu
                     <div className="grid-cell clickable" 
                       onContextMenu={(e) => onContextMenu(e, song)}
                     >
-                      {song.title}
+                      {song.missing ? <s>{song.title}</s> : song.title}
                     </div>
                   </div>
                 )}
