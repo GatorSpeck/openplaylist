@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import '../styles/PlaylistSidebar.css';
 
-const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete }) => (
+const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport }) => (
   <div className="playlist-context-menu" style={{ left: x, top: y }}>
     <div onClick={onClone}>Clone Playlist</div>
     <div onClick={onDelete}>Delete Playlist</div>
+    <div onClick={onExport}>Export Playlist</div>
   </div>
 );
 
@@ -20,6 +21,7 @@ const PlaylistSidebar = ({
   onScan,
   onFullScan,
   onPurge,
+  onExport
 }) => {
   const [contextMenu, setContextMenu] = useState({ 
     visible: false, 
@@ -105,6 +107,10 @@ const PlaylistSidebar = ({
           }}
           onDelete={() => {
             onDeletePlaylist(contextMenu.playlist.id);
+            setContextMenu({ visible: false });
+          }}
+          onExport={() => {
+            onExport(contextMenu.playlist.id);
             setContextMenu({ visible: false });
           }}
         />

@@ -77,7 +77,7 @@ def extract_metadata(file_path, extractor):
     return {}
 
 
-def scan_directory(directory: str):
+def scan_directory(directory: str, full=False):
     directory = pathlib.Path(directory)
     if not directory.exists():
         logging.error(f"Directory {directory} does not exist")
@@ -103,12 +103,18 @@ def scan_directory(directory: str):
             continue
 
         files_seen += 1
+
         last_modified_time = datetime.fromtimestamp(os.path.getmtime(full_path))
         existing_file = (
             db.query(MusicFileDB).filter(MusicFileDB.path == full_path).first()
         )
 
-        if existing_file and existing_file.last_scanned >= last_modified_time:
+        found_existing_file = False
+        if existing_file and existing_file.missing:
+            found_existing_file = True
+            existing_file.missing = False
+
+        if (not full) and (not found_existing_file) and existing_file and existing_file.last_scanned >= last_modified_time:
             files_skipped += 1
             continue  # Skip files that have not changed
 
@@ -128,7 +134,19 @@ def scan_directory(directory: str):
         # Update or add the file in the database
         if existing_file:
             existing_file.last_modified = last_modified_time
-            files_skipped += 1
+            existing_file.title = metadata.get("title")
+            existing_file.artist = metadata.get("artist")
+            existing_file.album = metadata.get("album")
+            existing_file.album_artist = metadata.get("album_artist")
+            existing_file.year = metadata.get("year")
+            existing_file.length = metadata.get("length")
+            existing_file.publisher = metadata.get("publisher")
+            existing_file.kind = metadata.get("kind")
+            existing_file.last_scanned = datetime.now()
+            existing_file.genres = [
+                TrackGenreDB(parent_type="music_file", genre=genre)
+                for genre in metadata.get("genres", [])
+            ]
         else:
             new_adds += 1
 
@@ -147,16 +165,23 @@ def scan_directory(directory: str):
                     length=metadata.get("length"),
                     publisher=metadata.get("publisher"),
                     kind=metadata.get("kind"),
-                    last_scanned=last_modified_time,
+                    last_scanned=datetime.now(),
                 )
             )
 
     logging.info(
-        f"Scanned {files_skipped + new_adds} music files ({files_skipped} existing, {new_adds} new) in {time.time() - start_time:.2f} seconds"
+        f"Scanned {files_seen} music files ({files_seen - files_skipped} existing, {new_adds} new) in {time.time() - start_time:.2f} seconds"
     )
 
     db.commit()
     db.close()
+
+    return {
+        "files_scanned": files_seen,
+        "files_indexed": files_seen - files_skipped,
+        "new_files_added": new_adds,
+        "files_updated": files_seen - files_skipped - new_adds,
+    }
 
 
 router = APIRouter()
@@ -169,18 +194,20 @@ def purge_data():
     Base.metadata.create_all(bind=engine)
 
 
-@router.get("/scan")
+@router.get("/scan", response_model=ScanResults)
 def scan(repo: PlaylistRepository = Depends(get_playlist_repository), music_files: MusicFileRepository = Depends(get_music_file_repository)):
-    scan_directory(os.getenv("MUSIC_PATH", "/music"))
-    prune_music_files(repo, music_files)
+    scan_results = scan_directory(os.getenv("MUSIC_PATH", "/music"), full=False)
+    prune_results = prune_music_files()
+
+    return ScanResults(**scan_results, **prune_results)
 
 
-@router.get("/fullscan")
+@router.get("/fullscan", response_model=ScanResults)
 def full_scan(repo: PlaylistRepository = Depends(get_playlist_repository), music_files: MusicFileRepository = Depends(get_music_file_repository)):
-    drop_music_files()
-    scan_directory(os.getenv("MUSIC_PATH", "/music"))
-    prune_music_files(repo, music_files)
+    scan_results = scan_directory(os.getenv("MUSIC_PATH", "/music"), full=True)
+    prune_results = prune_music_files()
 
+    return ScanResults(**scan_results, **prune_results)
 
 def drop_music_files():
     db = Database.get_session()
@@ -192,31 +219,30 @@ def drop_music_files():
     db.close()
 
 
-def prune_music_files(playlists: PlaylistRepository, music_files: MusicFileRepository):
+def prune_music_files():
     db = Database.get_session()
     existing_files = db.query(MusicFileDB).all()
 
     prunes = 0
     for existing_file in existing_files:
-        if not pathlib.Path(existing_file.path).exists():
+        if (not existing_file.missing) and not pathlib.Path(existing_file.path).exists():
             prunes += 1
             logging.debug(
-                f"Removing nonexistent music file {existing_file.path} from the database"
+                f"Marking nonexistent music file {existing_file.path} as missing"
             )
 
-            # change linked playlist entries to requested
-            for entry in existing_file.entries:
-                entry.update({
-                    "entry_type": "requested"
-                })
-
-            db.delete(existing_file)
+            existing_file.last_scanned = datetime.now()
+            existing_file.missing = True
 
     if prunes:
         logging.info(f"Pruned {prunes} music files from the database")
 
     db.commit()
     db.close()
+
+    return {
+        "files_missing": prunes
+    }
 
 
 @router.get("/filter", response_model=List[MusicFile])
@@ -331,7 +357,7 @@ def export_playlist(playlist_id: int):
         # Generate the .m3u content
         m3u_content = "#EXTM3U\n"
         for entry in playlist.entries:
-            music_file = entry.music_file
+            music_file = entry.details
             m3u_content += (
                 f"#EXTINF:{entry.order},{music_file.title} - {music_file.artist}\n"
             )
@@ -457,4 +483,8 @@ host = os.getenv("HOST", "0.0.0.0")
 port = int(os.getenv("PORT", 3000))
 
 if __name__ == "__main__":
+    music_path = os.getenv("MUSIC_PATH", "/music")
+    if not pathlib.Path(music_path).exists():
+        logging.warning(f"Music path {music_path} does not exist")
+
     uvicorn.run("main:app", host=host, port=port, reload=True)

@@ -115,7 +115,7 @@ const PlaylistGrid = ({
                       <div className="grid-cell clickable"
                         onContextMenu={(e) => onContextMenu(e, track)}
                       >
-                        {track.title}
+                        {track.missing ? <s>{track.title}</s> : track.title}
                       </div>
                     </div>
                   )}

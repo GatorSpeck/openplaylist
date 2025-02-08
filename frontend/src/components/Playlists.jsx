@@ -79,7 +79,8 @@ const Playlists = () => {
       kind: detailsToUse.kind,
       music_file_id: item.music_file_id || null,
       entry_type: item.entry_type,
-      order: item.order || 0
+      order: item.order || 0,
+      missing: detailsToUse.missing || false
     }
   };
 
@@ -139,6 +140,7 @@ const Playlists = () => {
     }
   };
 
+  // TODO
   const createPlaylist = async () => {
     const songs = songToAdd || [];
     console.log(songs);
@@ -206,7 +208,7 @@ const Playlists = () => {
       const updatedEntries = selectedPlaylist.entries.filter((e) => !indexes.includes(e.order));
 
       const entriesToDelete = selectedPlaylist.entries.length - updatedEntries.length;
-      if (!window.confirm(`Are you sure you want to remove ${entriesToDelete} entries from the playlist?`)) {
+      if ((entriesToDelete > 1) && !window.confirm(`Are you sure you want to remove ${entriesToDelete} entries from the playlist?`)) {
         return;
       }
 
@@ -224,7 +226,6 @@ const Playlists = () => {
     }
   }
 
-  // TODO
   const exportPlaylist = async (playlistId) => {
     try {
       const response = await axios.get(`/api/playlists/${playlistId}/export`, {
@@ -321,6 +322,8 @@ const Playlists = () => {
       setShowPlaylistSelectModal(false);
       setSongToAdd(null);
       setNewPlaylistModalVisible(false);
+      
+      showPlaylistDetails(response.data.id);
     } catch (error) {
       console.error('Error creating new playlist:', error);
     }
@@ -395,12 +398,6 @@ const Playlists = () => {
     setSongToAdd(selectedSearchResults);
     setShowPlaylistSelectModal(true);
   };
-
-  // TODO
-  const handleAddSongToPlaylist = (song) => {
-    setSongToAdd([song]);
-    setShowPlaylistSelectModal(true);
-  }
 
   const toggleTrackSelection = (index) => {
     const thisPlaylist = playlists.find(p => p.id === selectedPlaylistID);
@@ -593,6 +590,7 @@ const Playlists = () => {
         onScan={scanMusic}
         onFullScan={fullScanMusic} 
         onPurge={purgeData}
+        onExport={exportPlaylist}
       />
       
       <div className="editor-panel">
@@ -721,6 +719,7 @@ const Playlists = () => {
           onAddTracks={(tracks) => addTracksToPlaylist(selectedPlaylist.id, tracks)}
           onRemoveByAlbum={onRemoveByAlbum}
           onRemoveByArtist={onRemoveByArtist}
+          onDetails={() => handleShowTrackDetails(contextMenu.track)}
         />
       )}
       <Snackbar
