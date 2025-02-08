@@ -67,15 +67,15 @@ const Playlists = () => {
     return {
       ...item,
       id: detailsToUse.id,
-      title: detailsToUse.title || 'Unknown Title',
-      artist: detailsToUse.artist || 'Unknown Artist',
-      album: detailsToUse.album || 'Unknown Album',
+      title: detailsToUse.title || null,
+      artist: detailsToUse.artist || null,
+      album: detailsToUse.album || null,
       album_artist: detailsToUse.album_artist || null,
-      year: detailsToUse.year || '',
+      year: detailsToUse.year || null,
       length: detailsToUse.length || 0,
       genres: detailsToUse.genres || [],
       path: detailsToUse.path,
-      publisher: detailsToUse.publisher || 'Unknown Publisher',
+      publisher: detailsToUse.publisher || null,
       kind: detailsToUse.kind,
       music_file_id: item.music_file_id || null,
       entry_type: item.entry_type,
@@ -242,11 +242,17 @@ const Playlists = () => {
     }
   };
 
-  // TODO
   const scanMusic = async () => {
     setIsScanning(true);
     try {
       await axios.get(`/api/scan`);
+
+      setSnackbar({
+        open: true,
+        message: 'Scan completed successfully',
+        severity: 'success'
+      });
+
       fetchSongs(); // Reload the tracks data
     } catch (error) {
       console.error('Error scanning music:', error);
@@ -256,11 +262,17 @@ const Playlists = () => {
     }
   };
 
-  // TODO
   const fullScanMusic = async () => {
     setIsScanning(true);
     try {
       await axios.get(`/api/fullscan`);
+
+      setSnackbar({
+        open: true,
+        message: 'Scan completed successfully',
+        severity: 'success'
+      });
+
       fetchSongs(); // Reload the tracks data
     } catch (error) {
       console.error('Error performing full scan:', error);
@@ -270,7 +282,6 @@ const Playlists = () => {
     }
   };
 
-  // TODO
   const purgeData = async () => {
     if (!window.confirm('Are you sure you want to purge all data?')) {
       return;
@@ -278,6 +289,12 @@ const Playlists = () => {
 
     try {
       await axios.get(`/api/purge`);
+
+      setSnackbar({
+        open: true,
+        message: 'Data purged successfully',
+        severity: 'success'
+      });
     } catch (error) {
       console.error('Error purging data:', error);
     }
@@ -573,6 +590,9 @@ const Playlists = () => {
         onNewPlaylist={() => setNewPlaylistModalVisible(true)}
         onClonePlaylist={handleClonePlaylist}
         onDeletePlaylist={deletePlaylist}
+        onScan={scanMusic}
+        onFullScan={fullScanMusic} 
+        onPurge={purgeData}
       />
       
       <div className="editor-panel">

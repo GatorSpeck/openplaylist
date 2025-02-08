@@ -27,12 +27,13 @@ const SearchResultsGrid = ({ filteredSongs, selectedSearchResults, allSearchResu
                     ref={provided.innerRef}
                     {...provided.draggableProps}
                     {...provided.dragHandleProps}
+                    onClick={() => onToggleSelection(song)}
                   >
                     <div className="grid-cell">
                       <input 
                         type="checkbox"
                         checked={selectedSearchResults.some(s => s.id === song.id)}
-                        onChange={() => onToggleSelection(song)}
+                        readOnly
                       />
                     </div>
                     <div className="grid-cell">
