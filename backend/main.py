@@ -65,7 +65,7 @@ def extract_metadata(file_path, extractor):
             "album": audio.get("album", [None])[0],
             "album_artist": audio.get("albumartist", [None])[0],
             "year": audio.get("date", [None])[0],
-            "length": int(audio.info.length),
+            "length": int(audio.info.length) if hasattr(audio, "info") else None,
             "publisher": audio.get("organization", [None])[0],
             "kind": audio.mime[0] if hasattr(audio, "mime") else None,
             "genres": audio.get("genre", list()),

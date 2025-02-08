@@ -1,0 +1,6 @@
+.env
+.pytest_cache/
+.venv/
+Dockerfile
+__pycache__/
+tests

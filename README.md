@@ -1,15 +1,12 @@
 # Music Playlist Application
 
-This project is a music playlist application with a React frontend and a FastAPI backend.
+This project is a music playlist management application with a React frontend and a FastAPI backend.
 
-## Prerequisites
+## Running with docker-compose
+- Create .env file with `MUSIC_PATH` variable set
+- Run with `docker-compose up --build -d`
 
-- Node.js (v14 or higher)
-- Python (v3.8 or higher)
-- npm (comes with Node.js)
-- pip (comes with Python)
-
-## Setup
+## Dev Setup
 
 ### Backend
 
