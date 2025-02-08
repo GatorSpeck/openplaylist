@@ -121,7 +121,7 @@ class MusicFileEntry(PlaylistEntryBase):
                 length=obj.details.length,
                 publisher=obj.details.publisher,
                 genres=[str(s.genre) for s in obj.details.genres],
-            ),
+            ) if obj.details is not None else None,
         )
 
 
