@@ -403,6 +403,7 @@ const Playlists = () => {
 
   const toggleTrackSelection = (index) => {
     const thisPlaylist = playlists.find(p => p.id === selectedPlaylistID);
+
     setSelectedPlaylistEntries(prev => {
       const newSelection = prev.includes(index)
         ? prev.filter(i => i !== index)
@@ -426,9 +427,13 @@ const Playlists = () => {
 
     const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistID);
 
+    if (selectedPlaylistEntries.length > 1 && !window.confirm(`Are you sure you want to remove ${selectedPlaylistEntries.length} entries from the playlist?`)) {
+      return;
+    }
+
     try {
-      const remainingEntries = selectedPlaylist.entries.filter((_, index) => 
-        !selectedPlaylistEntries.includes(index)
+      const remainingEntries = selectedPlaylist.entries.filter((t) => 
+        !selectedPlaylistEntries.includes(t.order)
       ).map((entry, index) => ({
         ...entry,
         order: index
