@@ -9,8 +9,12 @@ dotenv.config({ path: path.resolve(__dirname, '.env') });
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: process.env.VITE_HOST || "0.0.0.0",
+    host: true,
     port: process.env.VITE_PORT || 8080,
+    strictPort: true,
+    hmr: {
+      clientPort: process.env.VITE_PORT || 8080,
+    },
     proxy: {
       '/api': {
         target: process.env.VITE_API_URL || 'http://backend:3000',
@@ -18,5 +22,5 @@ export default defineConfig({
         secure: false,
       },
     },
-  },
+  }
 });

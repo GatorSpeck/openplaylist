@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install
+RUN npm ci
 
 # Copy the rest of the application
 COPY . .
@@ -14,8 +14,12 @@ COPY . .
 # Build the application
 RUN npm run build
 
+ENV NODE_ENV=production
+ENV VITE_HOST=0.0.0.0
+ENV VITE_PORT=8080
+
 # Install serve to run the built application
 RUN npm install -g serve
 
 # Command to run the application
-CMD ["npm", "run", "dev", "--", "--host", "--port", "8080"]
+CMD npm run dev -- --host ${VITE_HOST} --port ${VITE_PORT}
