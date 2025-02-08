@@ -558,6 +558,8 @@ const Playlists = () => {
 
     const selectedPlaylist = playlists.find(p => p.id === playlistID);
 
+    console.log(tracks);
+
     // add tracks to entries
     const entries = [
       ...selectedPlaylist.entries, 

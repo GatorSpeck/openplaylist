@@ -46,7 +46,19 @@ const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
 
   const handleAddSelected = () => {
     const tracksToAdd = tracks.filter(track => selectedTracks.has(track.url));
-    onAddTracks(tracksToAdd);
+
+    // for tracks that have linked music files, add as a music file instead of Last.fm
+    let fixedUpTracks = tracksToAdd;
+    fixedUpTracks.forEach((track) => {
+      if (track.music_file_id) {
+        track.entry_type = "music_file";
+        track.id = track.music_file_id;
+
+        track.path = ""; // need a dummy value here to make the backend happy
+      }
+    });
+
+    onAddTracks(fixedUpTracks);
     setSelectedTracks(new Set());
     onClose();
   };
@@ -71,15 +83,15 @@ const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
       <h3>Similar Tracks</h3>
       <ul style={{ listStyle: 'none', padding: 0 }}>
         {tracks.map((track) => (
-          <li key={track.url} onClick={e => e.stopPropagation()} // Stop list item clicks
+          <li key={track.url} onClick={e => toggleTrack(e, track)}
             style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
             <input
               type="checkbox"
               checked={selectedTracks.has(track.url)}
-              onChange={(e) => toggleTrack(e, track)}
               style={{ marginRight: '0.5rem' }}
+              readOnly
             />
-            <span>{track.artist} - {track.title}</span>
+            <span>{track.artist} - {track.title}{track.music_file_id ? (<span> (in library)</span>) : null}</span>
           </li>
         ))}
       </ul>

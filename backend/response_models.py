@@ -158,6 +158,7 @@ class NestedPlaylistEntry(PlaylistEntryBase):
 
 class LastFMTrack(MusicEntity, TrackDetails):
     url: str
+    music_file_id: Optional[int] = None  # linked music file if available
 
 
 class LastFMEntry(PlaylistEntryBase):
