@@ -93,15 +93,10 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
             entry.details = track
 
-        print(entry.__dict__)
-        print(entry.__class__)
-
         this_playlist = (
             self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
         )
         playlist_entry = entry.to_playlist(playlist_id)
-        print(f"Entry type: {playlist_entry.entry_type}")
-        print(f"Class: {playlist_entry.__class__.__name__}")
         this_playlist.entries.append(playlist_entry)
         self.session.commit()
 

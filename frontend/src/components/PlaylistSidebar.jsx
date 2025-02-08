@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import '../styles/PlaylistSidebar.css';
+import RenameDialog from './RenameDialog';
 
-const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport }) => (
+const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist }) => (
   <div className="playlist-context-menu" style={{ left: x, top: y }}>
+    <div onClick={onRenamePlaylist}>Rename Playlist</div>
     <div onClick={onClone}>Clone Playlist</div>
     <div onClick={onDelete}>Delete Playlist</div>
     <div onClick={onExport}>Export Playlist</div>
@@ -21,7 +23,8 @@ const PlaylistSidebar = ({
   onScan,
   onFullScan,
   onPurge,
-  onExport
+  onExport,
+  onRenamePlaylist
 }) => {
   const [contextMenu, setContextMenu] = useState({ 
     visible: false, 
@@ -29,6 +32,8 @@ const PlaylistSidebar = ({
     y: 0,
     playlist: null 
   });
+
+  const [renameDialog, setRenameDialog] = useState({ open: false, playlist: null });
 
   const sidebarRef = useRef(null);
   const hamburgerRef = useRef(null);
@@ -66,6 +71,11 @@ const PlaylistSidebar = ({
     });
   };
 
+  const handleRename = (newName) => {
+    onRenamePlaylist(renameDialog.playlist.id, newName);
+    setRenameDialog({ open: false, playlist: null });
+  };
+
   return (
     <>
       <button ref={hamburgerRef} className="hamburger-menu" onClick={() => onClose(!isOpen)}>
@@ -97,24 +107,41 @@ const PlaylistSidebar = ({
         </div>
       </div>
       {contextMenu.visible && (
-        <PlaylistContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          onClose={() => setContextMenu({ visible: false })}
-          onClone={() => {
-            onClonePlaylist(contextMenu.playlist.id);
-            setContextMenu({ visible: false });
-          }}
-          onDelete={() => {
-            onDeletePlaylist(contextMenu.playlist.id);
-            setContextMenu({ visible: false });
-          }}
-          onExport={() => {
-            onExport(contextMenu.playlist.id);
-            setContextMenu({ visible: false });
-          }}
-        />
+        <div className="context-menu" 
+          style={{
+            display: contextMenu.visible ? 'block' : 'none',
+            left: contextMenu.x,
+            top: contextMenu.y
+          }}>
+          <PlaylistContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onClose={() => setContextMenu({ visible: false })}
+            onClone={() => {
+              onClonePlaylist(contextMenu.playlist.id);
+              setContextMenu({ visible: false });
+            }}
+            onDelete={() => {
+              onDeletePlaylist(contextMenu.playlist.id);
+              setContextMenu({ visible: false });
+            }}
+            onExport={() => {
+              onExport(contextMenu.playlist.id);
+              setContextMenu({ visible: false });
+            }}
+            onRenamePlaylist={() => {
+              setRenameDialog({ open: true, playlist: contextMenu.playlist });
+              setContextMenu({ visible: false });
+            }}
+          />
+        </div>
       )}
+      <RenameDialog
+        open={renameDialog.open}
+        onClose={() => setRenameDialog({ open: false, playlist: null })}
+        onConfirm={handleRename}
+        initialName={renameDialog.playlist?.name || ''}
+      />
     </>
   );
 };
