@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Droppable, Draggable } from 'react-beautiful-dnd';
 import EntryTypeBadge from './EntryTypeBadge';
 import '../styles/PlaylistGrid.css';
@@ -27,6 +27,7 @@ const PlaylistGrid = ({
 }) => {
   const [sortColumn, setSortColumn] = useState('order');
   const [sortDirection, setSortDirection] = useState('asc');
+  const [filter, setFilter] = useState('');
 
   const handleSort = (column) => {
     if (sortColumn === column) {
@@ -54,6 +55,23 @@ const PlaylistGrid = ({
     }
   });
 
+  const filteredEntries = useMemo(() => {
+    if (!filter) return sortedEntries;
+    
+    const searchTerm = filter.toLowerCase();
+    return sortedEntries.filter(entry => {
+      const title = entry.details?.title?.toLowerCase() || '';
+      const artist = entry.details?.artist?.toLowerCase() || '';
+      const album = entry.details?.album?.toLowerCase() || '';
+      const source = entry.entry_type?.toLowerCase() || '';
+      
+      return title.includes(searchTerm) ||
+             artist.includes(searchTerm) ||
+             album.includes(searchTerm) ||
+             source.includes(searchTerm);
+    });
+  }, [sortedEntries, filter]);
+
   const getSortIndicator = (column) => {
     if (sortColumn !== column) return null;
     return sortDirection === 'asc' ? ' ↑' : ' ↓';
@@ -63,11 +81,34 @@ const PlaylistGrid = ({
     <div>
       <h2>{playlist.name}</h2>
 
-      <BatchActions 
-        selectedCount={selectedEntries.length}
-        onRemove={onRemove}
-        onClear={onClear}
-      />
+      <div className="playlist-controls">
+        <div className="filter-container">
+          <input
+            type="text"
+            placeholder="Filter playlist..."
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="filter-input"
+          />
+          {filter && (
+            <button 
+              className="clear-filter"
+              onClick={() => setFilter('')}
+            >
+              Clear
+            </button>
+          )}
+          <span className="filter-count">
+            {filteredEntries.length} of {playlistEntries.length} tracks
+          </span>
+        </div>
+
+        <BatchActions 
+          selectedCount={selectedEntries.length}
+          onRemove={onRemove}
+          onClear={onClear}
+        />
+      </div>
 
       <div className="playlist-container">
         <div className="playlist-grid-header-row">
@@ -88,19 +129,20 @@ const PlaylistGrid = ({
         <Droppable droppableId="playlist">
           {(provided) => (
             <div className="playlist-grid-content" {...provided.droppableProps} ref={provided.innerRef}>
-              {sortedEntries.map((track, index) => (
+              {filteredEntries.map((track, index) => (
                 <Draggable key={index} draggableId={index.toString()} index={index}>
                   {(provided) => (
                     <div className="playlist-grid-row"
                       ref={provided.innerRef}
                       {...provided.draggableProps}
                       {...provided.dragHandleProps}
-                      onClick={() => onToggleEntry(index)}
+                      onClick={() => onToggleEntry(track.order)}
+                      onContextMenu={(e) => onContextMenu(e, track)}
                     >
                       <div className="grid-cell">
                         <input
                           type="checkbox"
-                          checked={selectedEntries.includes(index)}
+                          checked={selectedEntries.includes(track.order)}
                           readOnly
                         />
                       </div>
@@ -112,8 +154,7 @@ const PlaylistGrid = ({
                         <div>{track.artist || track.album_artist}</div>
                         {track.album && <div><i>{track.album}</i></div>}
                       </div>
-                      <div className="grid-cell clickable"
-                        onContextMenu={(e) => onContextMenu(e, track)}
+                      <div className="grid-cell"
                       >
                         {track.missing ? <s>{track.title}</s> : track.title}
                       </div>
