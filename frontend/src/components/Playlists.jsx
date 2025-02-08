@@ -101,7 +101,6 @@ const Playlists = () => {
 
   const extractSearchResults = (response) => {
     const results = response.data.map(s => mapToTrackModel({...s, music_file_id: s.id, entry_type: "music_file"}));
-    console.log(results);
     return results;
   }
 
@@ -369,11 +368,15 @@ const Playlists = () => {
         order: index,
       }));
 
+      // update playlist state
+      thisPlaylist.entries = updatedEntries;
+      setPlaylists(playlists.map(p => p.id === selectedPlaylistID ? thisPlaylist : p));
+
       writePlaylistToDB(selectedPlaylistID, updatedEntries);
     }
     
     // If dragging from songs to playlist
-    if (source.droppableId === 'songs' && destination.droppableId === 'playlist') {
+    if (source.droppableId === 'search-results' && destination.droppableId === 'playlist') {
       const song = filteredSongs[source.index];
       addSongToPlaylist(song, selectedPlaylistID);
     }
@@ -575,6 +578,18 @@ const Playlists = () => {
     });
   };
 
+  const handleRenamePlaylist = async (id, newName) => {
+    try {
+      await axios.post(`/api/playlists/rename/${id}`, { new_name: newName, description: "" });
+      setPlaylists(playlists.map(p => 
+        p.id === id ? { ...p, name: newName } : p
+      ));
+      
+    } catch (error) {
+      
+    }
+  };
+
   const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistID);
 
   return (
@@ -592,6 +607,7 @@ const Playlists = () => {
         onFullScan={() => scanMusic(true)} 
         onPurge={purgeData}
         onExport={exportPlaylist}
+        onRenamePlaylist={handleRenamePlaylist}
       />
       
       <div className="editor-panel">

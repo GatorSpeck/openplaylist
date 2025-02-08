@@ -335,6 +335,20 @@ def update_playlist(
         logging.error(f"Failed to update playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update playlist")
 
+@router.post("/playlists/rename/{playlist_id}")
+def rename_playlist(
+    playlist_id: int,
+    rename_data: AlterPlaylistDetails
+):
+    try:
+        db = Database.get_session()
+        db.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).update(
+            {"name": rename_data.new_name}
+        )
+        db.commit()
+    except Exception as e:
+        logging.error(f"Failed to rename playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to rename playlist")
 
 @router.delete("/playlists/{playlist_id}")
 def delete_playlist(playlist_id: int):

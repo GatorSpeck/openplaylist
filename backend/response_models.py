@@ -290,3 +290,7 @@ class LibraryStats(BaseModel):
     artistCount: int
     totalLength: int
     missingTracks: int
+
+class AlterPlaylistDetails(BaseModel):
+    new_name: Optional[str]
+    description: Optional[str]
