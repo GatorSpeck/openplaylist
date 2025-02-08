@@ -43,6 +43,14 @@ const Playlists = () => {
     severity: 'info'
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [libraryStats, setLibraryStats] = useState({
+    visible: false,
+    trackCount: 0,
+    albumCount: 0,
+    artistCount: 0,
+    totalLength: 0,
+    missingTracks: 0
+  });
 
   const handleSnackbarClose = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
@@ -52,6 +60,13 @@ const Playlists = () => {
     fetchPlaylists();
     fetchSongs();
   }, []);
+
+  const secondsToDaysHoursMins = (seconds) => {
+    const days = Math.floor(seconds / (3600 * 24));
+    const hours = Math.floor(seconds % (3600 * 24) / 3600);
+    const minutes = Math.floor(seconds % 3600 / 60);
+    return `${days} days, ${hours} hours, ${minutes} minutes`;
+  }
 
   const fetchPlaylists = async () => {
     try {
@@ -243,10 +258,11 @@ const Playlists = () => {
     }
   };
 
-  const scanMusic = async () => {
+  const scanMusic = async (full) => {
     setIsScanning(true);
     try {
-      await axios.get(`/api/scan`);
+      const URI = full ? '/api/fullscan' : '/api/scan';
+      await axios.get(URI);
 
       setSnackbar({
         open: true,
@@ -255,29 +271,12 @@ const Playlists = () => {
       });
 
       fetchSongs(); // Reload the tracks data
+
+      const stats = await axios.get('/api/stats');
+      setLibraryStats({...stats.data, visible: true});
     } catch (error) {
       console.error('Error scanning music:', error);
       alert('Error scanning music.');
-    } finally {
-      setIsScanning(false);
-    }
-  };
-
-  const fullScanMusic = async () => {
-    setIsScanning(true);
-    try {
-      await axios.get(`/api/fullscan`);
-
-      setSnackbar({
-        open: true,
-        message: 'Scan completed successfully',
-        severity: 'success'
-      });
-
-      fetchSongs(); // Reload the tracks data
-    } catch (error) {
-      console.error('Error performing full scan:', error);
-      alert('Error performing full scan.');
     } finally {
       setIsScanning(false);
     }
@@ -515,6 +514,8 @@ const Playlists = () => {
   };
 
   useEffect(() => {
+    scanMusic(false);
+
     const handleClickOutside = () => {
       setContextMenu({ visible: false });
     };
@@ -587,8 +588,8 @@ const Playlists = () => {
         onNewPlaylist={() => setNewPlaylistModalVisible(true)}
         onClonePlaylist={handleClonePlaylist}
         onDeletePlaylist={deletePlaylist}
-        onScan={scanMusic}
-        onFullScan={fullScanMusic} 
+        onScan={() => scanMusic(false)}
+        onFullScan={() => scanMusic(true)} 
         onPurge={purgeData}
         onExport={exportPlaylist}
       />
@@ -648,6 +649,17 @@ const Playlists = () => {
 
         </DragDropContext>
 
+        {libraryStats.visible && (
+          <div>
+            <h2>Library Stats</h2>
+            <p>{libraryStats.trackCount} tracks</p>
+            <p>{libraryStats.albumCount} albums</p>
+            <p>{libraryStats.artistCount} artists</p>
+            <p>{secondsToDaysHoursMins(libraryStats.totalLength)} total length</p>
+            <p>{libraryStats.missingTracks} missing tracks</p>
+          </div>
+        )}
+        
         {showLastFMSearch && (
           <LastFMSearch
             onClose={() => setShowLastFMSearch(false)}

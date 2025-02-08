@@ -122,4 +122,45 @@ describe('Playlists', () => {
       ] })
     );
   });
+
+  // TODO: get this working
+  test.skip('allows reordering a playlist using drag and drop', async () => {
+    render(<Playlists />);
+
+    fireEvent.click(screen.getByText('☰'));
+
+    axios.get.mockImplementation((url) => {
+      if (url.includes('/api/playlists/1')) {
+        return Promise.resolve({ data: { ...mockPlaylists[0], entries: mockSongs } });
+      }
+      return Promise.reject(new Error('not found'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Playlist 1')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('Playlist 1'));
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Song 1')).toBeInTheDocument();
+      
+      // drag Song 1 to the second position
+      const dragHandle = (screen.getByText('Song 1'));      
+      fireEvent.mouseDown(dragHandle, { clientX: 0, clientY: 0 });
+      fireEvent.mouseMove(dragHandle, { clientX: 0, clientY: -100 });
+      fireEvent.mouseUp(dragHandle);
+    });
+
+    await waitFor(() => {
+      // expect that Song 1 is now in the second position
+      const parent = screen.getByText('Song 1').parentElement.parentElement;
+      console.log(parent);
+      expect(parent.children[0]).toHaveTextContent('Song 2');
+      expect(parent.children[1]).toHaveTextContent('Song 1');
+    });
+
+
+
+
+  });
 });

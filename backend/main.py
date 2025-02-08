@@ -15,6 +15,7 @@ from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
+from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
 import io
@@ -303,6 +304,23 @@ async def get_playlist(
         raise HTTPException(status_code=500, detail="Failed to get playlist")
     finally:
         db.close()
+
+@router.get("/stats", response_model=LibraryStats)
+async def get_stats():
+    db = Database.get_session()
+    track_count = db.query(MusicFileDB).count()
+    album_count = db.query(MusicFileDB.album).distinct().count()
+    artist_count = db.query(MusicFileDB.artist).distinct().count()
+    total_length = db.query(func.sum(MusicFileDB.length)).first()[0]
+    missing_tracks = db.query(MusicFileDB).filter(MusicFileDB.missing == True).count()
+
+    return LibraryStats(
+        trackCount=track_count,
+        albumCount=album_count,
+        artistCount=artist_count,
+        totalLength=total_length,
+        missingTracks=missing_tracks
+    )
 
 
 @router.put("/playlists/{playlist_id}", response_model=Playlist)
