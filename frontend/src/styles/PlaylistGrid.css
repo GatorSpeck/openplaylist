@@ -54,3 +54,29 @@
 .clickable {
   cursor: pointer;
 }
+
+.history-controls {
+  display: flex;
+  gap: 8px;
+  margin-right: 16px;
+}
+
+.history-controls button {
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.history-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.history-controls button:hover:not(:disabled) {
+  background: #f0f0f0;
+}
