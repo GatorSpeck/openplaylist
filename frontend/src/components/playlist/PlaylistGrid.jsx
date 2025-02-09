@@ -8,6 +8,8 @@ import '../../styles/PlaylistGrid.css';
 import SearchResultsGrid from '../search/SearchResultsGrid';
 import PlaylistItemContextMenu from './PlaylistItemContextMenu';
 import { FaUndo, FaRedo } from 'react-icons/fa';
+import { useParams, useNavigate } from 'react-router-dom';
+import PlaylistModal from './PlaylistModal';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -42,6 +44,7 @@ const PlaylistGrid = ({
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const [playlistModalVisible, setPlaylistModalVisible] = useState(false);
 
   useEffect(() => {
     fetchPlaylistDetails(playlistID);
@@ -307,6 +310,22 @@ const PlaylistGrid = ({
     return sortDirection === 'asc' ? ' ↑' : ' ↓';
   };
 
+  const navigate = useNavigate();
+
+  // TODO: should happen up through parent component
+  const onDeletePlaylist = async () => {
+    if (!window.confirm('Are you sure you want to delete this playlist?')) {
+      return;
+    }
+    
+    try {
+      await axios.delete(`/api/playlists/${playlistID}`);
+      navigate('/');
+    } catch (error) {
+      console.error('Error deleting playlist:', error);
+    }
+  }
+
   return (
     <div>
       <h2>{name}</h2>
@@ -325,6 +344,9 @@ const PlaylistGrid = ({
             title="Redo"
           >
             <FaRedo />
+          </button>
+          <button onClick={() => setPlaylistModalVisible(true)}>
+            ...
           </button>
         </div>
 
@@ -438,6 +460,15 @@ const PlaylistGrid = ({
           onFilterByAlbum={() => searchFor(contextMenu.track.album)}
           onFilterByArtist={() => searchFor(contextMenu.track.artist)}
           onAddTracks={(tracks) => addSongsToPlaylist(tracks)}
+        />
+      )}
+
+      {playlistModalVisible && (
+        <PlaylistModal
+          open={playlistModalVisible}
+          onClose={() => setPlaylistModalVisible(false)}
+          onSyncToPlex={onSyncToPlex}
+          onDelete={onDeletePlaylist}
         />
       )}
 

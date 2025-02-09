@@ -14,6 +14,9 @@ This project is a music playlist management application with a React frontend an
     - `PLEX_MAP_SOURCE`
     - `PLEX_MAP_TARGET`
     - `PLEX_M3U_DROP`
+- Last.FM Integration
+    - `LASTFM_API_KEY`
+    - `LASTFM_SHARED_SECRET`
 
 ## Dev Setup
 

@@ -20,6 +20,14 @@ services:
       - LASTFM_SHARED_SECRET=${LASTFM_SHARED_SECRET}
       - MUSIC_PATH=/music
 
+      - PLEX_ENDPOINT=${PLEX_ENDPOINT}
+      - PLEX_TOKEN=${PLEX_TOKEN}
+      - PLEX_LIBRARY=${PLEX_LIBRARY}
+
+      - PLEX_MAP_SOURCE=${PLEX_MAP_SOURCE}
+      - PLEX_MAP_TARGET=${PLEX_MAP_TARGET}
+      - PLEX_M3U_DROP=${PLEX_M3U_DROP}
+
   frontend:
     build: ./frontend
     ports:
