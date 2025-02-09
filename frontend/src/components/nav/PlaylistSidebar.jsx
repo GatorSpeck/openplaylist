@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import '../styles/PlaylistSidebar.css';
+import '../../styles/PlaylistSidebar.css';
 import RenameDialog from './RenameDialog';
 
 const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex }) => (

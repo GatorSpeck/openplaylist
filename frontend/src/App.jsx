@@ -1,5 +1,5 @@
 import React from 'react';
-import Playlists from './components/Playlists';
+import Playlists from './components/main/Playlists';
 import './App.css';
 
 function App() {
