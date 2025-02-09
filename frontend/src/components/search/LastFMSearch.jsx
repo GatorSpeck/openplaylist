@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import '../styles/LastFMSearch.css';
+import '../../styles/LastFMSearch.css';
 
 const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
   const [title, setTitle] = useState('');
@@ -17,8 +17,7 @@ const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
         params: { title, artist }
       });
 
-      const search_results = response.data.entry_type = 'lastfm';
-      console.log(response.data);
+      response.data.entry_type = 'lastfm';
       
       setSearchResult(response.data);
     } catch (error) {
