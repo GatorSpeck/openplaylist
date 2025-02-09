@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import PlaylistModal from '../nav/PlaylistModal';
 import '../../styles/Playlists.css'; // Import the CSS file for styling
 import Snackbar from '../Snackbar';
 import PlaylistGrid from '../playlist/PlaylistGrid';
@@ -61,6 +60,8 @@ const Playlists = () => {
       if (playlistId) {
         setSelectedPlaylistID(playlistId);
       }
+    } else {
+      setSelectedPlaylistID(null);
     }
   }, [playlistName, playlists]); // Only depends on these two values
 
@@ -70,23 +71,6 @@ const Playlists = () => {
     const minutes = Math.floor(seconds % 3600 / 60);
     return `${days} days, ${hours} hours, ${minutes} minutes`;
   }
-
-  // TODO
-  const createPlaylist = async () => {
-    const songs = songToAdd || [];
-    console.log(songs);
-    try {
-      const response = await axios.post(`/api/playlists`, {
-        name: newPlaylistName,
-        entries: songs.map((s, idx) => mapToTrackModel({...s, order: idx}))
-      });
-
-      setPlaylists([...playlists, response.data]);
-      setNewPlaylistName('');
-    } catch (error) {
-      console.error('Error creating playlist:', error);
-    }
-  };
 
   const deletePlaylist = async (playlistId) => {
     if (window.confirm('Are you sure you want to delete this playlist?')) {
@@ -143,22 +127,18 @@ const Playlists = () => {
   };
 
   const handleCreateNewPlaylist = async () => {
-    const songList = songToAdd ? (Array.isArray(songToAdd) ? songToAdd : [songToAdd]) : [];
-    console.log(songList);
     try {
       const response = await axios.post(`/api/playlists`, {
         name: newPlaylistNameModal,
-        entries: songList.map((s, idx) => mapToTrackModel({...s, order: idx}))
+        entries: []
       });
 
       setPlaylists([...playlists, response.data]);
 
       setNewPlaylistNameModal('');
-      setShowPlaylistSelectModal(false);
-      setSongToAdd(null);
       setNewPlaylistModalVisible(false);
 
-      setSelectedPlaylistID(response.data.id);
+      navigate(`/playlist/${response.data.name}`);
     } catch (error) {
       console.error('Error creating new playlist:', error);
     }
@@ -231,14 +211,6 @@ const Playlists = () => {
           </div>
         )}
       </div>
-      {showPlaylistSelectModal && (
-        <PlaylistModal
-          playlists={playlists}
-          onClose={() => setShowPlaylistSelectModal(false)}
-          onSelect={null/*handleSelectPlaylist*/}
-          onCreateNewPlaylist={() => setNewPlaylistModalVisible(true)}
-        />
-      )}
       {newPlaylistModalVisible && (
         <div className="modal">
           <div className="modal-content">
