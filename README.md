@@ -6,6 +6,15 @@ This project is a music playlist management application with a React frontend an
 - Create .env file with `MUSIC_PATH` variable set
 - Run with `docker-compose up --build -d`
 
+## Other Configuration
+- Plex Playlist Syncing
+    - `PLEX_ENDPOINT`
+    - `PLEX_TOKEN`
+    - `PLEX_LIBRARY`
+    - `PLEX_MAP_SOURCE`
+    - `PLEX_MAP_TARGET`
+    - `PLEX_M3U_DROP`
+
 ## Dev Setup
 
 ### Backend

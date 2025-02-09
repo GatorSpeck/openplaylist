@@ -1,5 +1,5 @@
 import React from 'react';
-import '../styles/PlaylistModal.css'; // Import the CSS file for styling
+import '../../styles/PlaylistModal.css'; // Import the CSS file for styling
 
 const PlaylistModal = ({ playlists, onClose, onSelect, onCreateNewPlaylist }) => {
   return (
