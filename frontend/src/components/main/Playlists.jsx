@@ -1,5 +1,4 @@
-import React, {
-   useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import PlaylistModal from '../nav/PlaylistModal';
 import '../../styles/Playlists.css'; // Import the CSS file for styling
@@ -43,14 +42,27 @@ const Playlists = () => {
   const { playlistName } = useParams();
   const navigate = useNavigate();
 
+  const fetchPlaylists = useCallback(async () => {
+    try {
+      const response = await axios.get(`/api/playlists`);
+      setPlaylists(response.data);
+    } catch (error) {
+      console.error('Error fetching playlists:', error);
+    }
+  }, []); // No dependencies needed as it's a stable function
+
   useEffect(() => {
-    fetchPlaylists().then(() => {
-      if (playlistName.length) {
-        const playlistId = playlists.find(p => p.name === playlistName)?.id;
+    fetchPlaylists();
+  }, []); // Only run on mount
+
+  useEffect(() => {
+    if (playlistName && playlists.length > 0) {
+      const playlistId = playlists.find(p => p.name === playlistName)?.id;
+      if (playlistId) {
         setSelectedPlaylistID(playlistId);
       }
-    });
-  }, [playlistName, playlists]);
+    }
+  }, [playlistName, playlists]); // Only depends on these two values
 
   const secondsToDaysHoursMins = (seconds) => {
     const days = Math.floor(seconds / (3600 * 24));
@@ -58,15 +70,6 @@ const Playlists = () => {
     const minutes = Math.floor(seconds % 3600 / 60);
     return `${days} days, ${hours} hours, ${minutes} minutes`;
   }
-
-  const fetchPlaylists = async () => {
-    try {
-      const response = await axios.get(`/api/playlists`);
-      setPlaylists(response.data);
-    } catch (error) {
-      console.error('Error fetching playlists:', error);
-    }
-  };
 
   // TODO
   const createPlaylist = async () => {
@@ -190,11 +193,9 @@ const Playlists = () => {
     const playlistName = playlists.find(p => p.id === id).name;
     navigate(`/playlist/${playlistName}`);
     setSelectedPlaylistID(id);
-    console.log(id);
   };
 
   const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistID);
-  console.log(selectedPlaylist);
 
   return (
     <div className="playlists-container">

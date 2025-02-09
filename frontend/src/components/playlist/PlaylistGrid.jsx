@@ -7,6 +7,7 @@ import mapToTrackModel from '../../lib/mapToTrackModel';
 import '../../styles/PlaylistGrid.css';
 import SearchResultsGrid from '../search/SearchResultsGrid';
 import PlaylistItemContextMenu from './PlaylistItemContextMenu';
+import { FaUndo, FaRedo } from 'react-icons/fa';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -39,6 +40,8 @@ const PlaylistGrid = ({
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, track: null });
   const [searchFilter, setSearchFilter] = useState('');
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(0);
 
   useEffect(() => {
     fetchPlaylistDetails(playlistID);
@@ -74,20 +77,42 @@ const PlaylistGrid = ({
     }
   };
 
+  const pushToHistory = (entries) => {
+    const newHistory = history.slice(0, historyIndex + 1);
+    setHistory([...newHistory, entries]);
+    setHistoryIndex(historyIndex + 1);
+  };
+
+  const undo = () => {
+    if (historyIndex > 0) {
+      setHistoryIndex(historyIndex - 1);
+      setEntries(history[historyIndex - 1]);
+    }
+  };
+
+  const redo = () => {
+    if (historyIndex < history.length - 1) {
+      setHistoryIndex(historyIndex + 1);
+      setEntries(history[historyIndex + 1]);
+    }
+  };
+
   const addTracksToPlaylist = async (tracks) => {
     const tracksToAdd = Array.isArray(tracks) ? tracks : [tracks];
 
-    // add tracks to entries
-    setEntries([
+    pushToHistory(entries);
+
+    const newEntries = [
       ...entries,
       ...tracksToAdd.map((s, idx) => ({
         ...mapToTrackModel(s),
         order: idx + entries.length, music_file_id: s.id, 
         entry_type: s.entry_type, url: s.url, details: s
       }))
-    ]);
+    ];
+    
+    setEntries(newEntries);
       
-    // Show success message
     setSnackbar({
       open: true,
       message: `Added ${tracksToAdd.length} tracks to ${name}`,
@@ -119,8 +144,13 @@ const PlaylistGrid = ({
       return;
     }
 
-    // filter and re-index entries
-    setEntries(entries.filter((_, index) => !indexes.includes(index)).map((entry, index) => ({ ...entry, order: index })));
+    pushToHistory(entries);
+
+    const newEntries = entries
+      .filter((_, index) => !indexes.includes(index))
+      .map((entry, index) => ({ ...entry, order: index }));
+    
+    setEntries(newEntries);
   }
 
   const exportPlaylist = async () => {
@@ -280,8 +310,24 @@ const PlaylistGrid = ({
   return (
     <div>
       <h2>{name}</h2>
-
       <div className="playlist-controls">
+        <div className="history-controls">
+          <button 
+            onClick={undo} 
+            disabled={historyIndex <= 0}
+            title="Undo"
+          >
+            <FaUndo />
+          </button>
+          <button 
+            onClick={redo} 
+            disabled={historyIndex >= history.length - 1}
+            title="Redo"
+          >
+            <FaRedo />
+          </button>
+        </div>
+
         <div className="filter-container">
           <input
             type="text"
