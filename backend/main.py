@@ -299,7 +299,7 @@ async def get_playlist(
 ):
     db = Database.get_session()
     try:
-        playlist = repo.get_with_entries(playlist_id)
+        playlist = repo.get_with_entries(playlist_id, requests_session=requests_cache_session)
         return playlist
     except Exception as e:
         logging.error(f"Failed to get playlist: {e}", exc_info=True)
@@ -512,14 +512,6 @@ async def get_music_files(
     repo: MusicFileRepository = Depends(get_music_file_repository),
 ):
     return repo.get_all()
-
-
-@app.get("/api/playlists/{playlist_id}")
-async def get_playlist(
-    playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)
-):
-    return repo.get_with_entries(playlist_id)
-
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

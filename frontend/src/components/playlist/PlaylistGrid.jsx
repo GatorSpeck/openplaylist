@@ -404,6 +404,7 @@ const PlaylistGrid = ({
                           <span>{track.order + 1}</span>
                         </div>
                         <div className="grid-cell">
+                          {track.image_url && <div><img style={{height: 40}} src={track.image_url}/></div>}
                           <div>{track.artist || track.album_artist}</div>
                           {track.album && <div><i>{track.album}</i></div>}
                         </div>

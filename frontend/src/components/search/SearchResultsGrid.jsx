@@ -233,6 +233,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible }) => {
                     />
                   </div>
                   <div className="grid-cell">
+                    {song.image_url && <div><img style={{height: 40}} src={song.image_url}/></div>}
                     <div>{song.artist || song.album_artist}</div>
                     <div><i>{song.album}</i></div>
                   </div>
