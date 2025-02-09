@@ -13,6 +13,7 @@ export default defineConfig({
     port: process.env.VITE_PORT || 8080,
     strictPort: true,
     hmr: {
+      protocol: 'ws',
       clientPort: process.env.VITE_PORT || 8080,
     },
     proxy: {

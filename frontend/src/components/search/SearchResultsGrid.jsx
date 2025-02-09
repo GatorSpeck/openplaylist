@@ -1,26 +1,25 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useRef} from 'react';
 import { Droppable, Draggable } from 'react-beautiful-dnd';
 import '../../styles/SearchResultsGrid.css';
 import mapToTrackModel from '../../lib/mapToTrackModel';
 import axios from 'axios';
 import debounce from 'lodash/debounce';
 import { ClipLoader } from 'react-spinners';
-import TrackDetailsModal from '../TrackDetailsModal';
-import LastFMSearch from '../search/LastFMSearch';``
-import ContextMenu from '../search/ContextMenu';
+import LastFMSearch from '../search/LastFMSearch';
+import SearchResultContextMenu from './SearchResultContextMenu';
 
-const SearchResultsGrid = ({ filter, onAddSongs }) => {
-  const [filterQuery, setFilterQuery] = useState('');
+const SearchResultsGrid = ({ filter, onAddSongs, visible }) => {
+  const [filterQuery, setFilterQuery] = useState(filter);
   const [selectedSearchResults, setSelectedSearchResults] = useState([]);
   const [selectedPlaylistEntries, setSelectedPlaylistEntries] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [allSearchResultsSelected, setAllSongsSelected] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState(null);
-  const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, track: null });
   const [showLastFMSearch, setShowLastFMSearch] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
-  const [songToAdd, setSongToAdd] = useState(null);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const panelRef = useRef(null);
 
   const extractSearchResults = (response) => {
     const results = response.data.map(s => mapToTrackModel({...s, music_file_id: s.id, entry_type: "music_file"}));
@@ -48,9 +47,6 @@ const SearchResultsGrid = ({ filter, onAddSongs }) => {
       setIsLoading(false);
     }
   };
-
-  
-  const filteredSongs = searchResults;
 
   const handleFilterByAlbum = async (album) => {
     setContextMenu({ visible: false });
@@ -96,11 +92,6 @@ const SearchResultsGrid = ({ filter, onAddSongs }) => {
     setSelectedSearchResults([]);
   };
 
-  const handleAddSelectedToPlaylist = () => {
-    setSongToAdd(selectedSearchResults);
-    setShowPlaylistSelectModal(true);
-  };
-
   const toggleAllSongs = () => {
     if (allSearchResultsSelected) {
       setSelectedSearchResults([]);
@@ -123,9 +114,34 @@ const SearchResultsGrid = ({ filter, onAddSongs }) => {
     debouncedFetchSongs(query);
   };
 
-  const addSongs = () => {
-    onAddSongs(selectedSearchResults);
+  const addSongs = (tracks) => {
+    onAddSongs(tracks);
+    clearSelectedSongs();
+    closeContextMenu();
+
+    // TODO: filter out songs that are already in the playlist
+    // TODO: adding songs should remove them from the search results
   }
+
+  const openContextMenu = (e, track) => {
+    e.preventDefault();
+    setContextMenu({ visible: true, x: e.clientX, y: e.clientY, track });
+  }
+
+  const closeContextMenu = () => {
+    setContextMenu({ visible: false });
+  }
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (panelRef.current && !panelRef.current.contains(event.target)) {
+        setIsPanelOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = () => {
@@ -138,103 +154,122 @@ const SearchResultsGrid = ({ filter, onAddSongs }) => {
     };
   }, [])
 
+  useEffect(() => {
+    if (visible) {
+      setIsPanelOpen(true);
+    }
+
+    if (filter.length) {
+      handleFilterChange({ target: { value: filter } });
+    }
+  }, [visible, filter]);
+
   return (
-    <div className="search-results-container">
-      <h2>Add Songs</h2>
-
-      <div>
-      <button onClick={() => setShowLastFMSearch(true)}>
-        Search Last.FM
+    <>
+      <button 
+        className="search-panel-toggle"
+        onClick={() => setIsPanelOpen(!isPanelOpen)}
+      >
+        {isPanelOpen ? '✕' : '+ Add Songs'}
       </button>
-      </div>
 
-      <div>
-        <input
-          type="text"
-          placeholder="Search local files..."
-          value={filterQuery}
-          onChange={handleFilterChange}
-        />
-        <button onClick={() => setFilterQuery('')}>Clear</button>
-      </div>
-
-      <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedSearchResults.length > 0 ? 'visible' : 'hidden' }}>
-        <button onClick={addSongs}>
-          Add {selectedSearchResults.length} Selected to Playlist
-        </button>
-        <button onClick={() => clearSelectedSongs()}>
-          Clear Selection
-        </button>
-      </div>
-
-      <div className="search-grid-header-row">
-        <div className="grid-cell">
-          <input
-            type="checkbox"
-            checked={allSearchResultsSelected}
-            onChange={toggleAllSongs}
-          />
+      <div 
+        ref={panelRef}
+        className={`search-results-panel ${isPanelOpen ? 'open' : ''}`}
+      >
+        <div className="search-panel-header">
+          <h2>Add Songs</h2>
+          <button onClick={() => setIsPanelOpen(false)}>✕</button>
         </div>
-        <div className="grid-cell">Artist/Album</div>
-        <div className="grid-cell">Title</div>
-      </div>
 
-          <div className="search-grid-content">
-            {filteredSongs.map((song) => (
-              <div key={song.id}>
-                  <div className="search-grid-row"
-                    onClick={() => toggleSongSelection(song)}
+        <div>
+          <button onClick={() => setShowLastFMSearch(true)}>
+            Search Last.FM
+          </button>
+        </div>
+
+        <div>
+          <input
+            type="text"
+            placeholder="Search local files..."
+            value={filterQuery}
+            onChange={handleFilterChange}
+          />
+          <button onClick={() => setFilterQuery('')}>Clear</button>
+        </div>
+
+        <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedSearchResults.length > 0 ? 'visible' : 'hidden' }}>
+          <button onClick={() => addSongs(selectedSearchResults)}>
+            Add {selectedSearchResults.length} Selected to Playlist
+          </button>
+          <button onClick={() => clearSelectedSongs()}>
+            Clear Selection
+          </button>
+        </div>
+
+        <div className="search-grid-header-row">
+          <div className="grid-cell">
+            <input
+              type="checkbox"
+              checked={allSearchResultsSelected}
+              onChange={toggleAllSongs}
+            />
+          </div>
+          <div className="grid-cell">Artist/Album</div>
+          <div className="grid-cell">Title</div>
+        </div>
+
+        <div className="search-grid-content">
+          {searchResults.map((song) => (
+            <div key={song.id}>
+                <div className="search-grid-row"
+                  onClick={() => toggleSongSelection(song)}
+                >
+                  <div className="grid-cell">
+                    <input 
+                      type="checkbox"
+                      checked={selectedSearchResults.some(s => s.id === song.id)}
+                      readOnly
+                    />
+                  </div>
+                  <div className="grid-cell">
+                    <div>{song.artist || song.album_artist}</div>
+                    <div><i>{song.album}</i></div>
+                  </div>
+                  <div className="grid-cell clickable" 
+                    onContextMenu={(e) => openContextMenu(e, song)}
                   >
-                    <div className="grid-cell">
-                      <input 
-                        type="checkbox"
-                        checked={selectedSearchResults.some(s => s.id === song.id)}
-                        readOnly
-                      />
-                    </div>
-                    <div className="grid-cell">
-                      <div>{song.artist || song.album_artist}</div>
-                      <div><i>{song.album}</i></div>
-                    </div>
-                    <div className="grid-cell clickable" 
-                      onContextMenu={(e) => setContextMenu(e, song)}
-                    >
-                      {song.missing ? <s>{song.title}</s> : song.title}
-                    </div>
+                    {song.missing ? <s>{song.title}</s> : song.title}
                   </div>
                 </div>
-            ))} 
-          </div>
+              </div>
+          ))} 
+        </div>
 
-      {showLastFMSearch && (
-        <LastFMSearch
-          onClose={() => setShowLastFMSearch(false)}
-          onAddToPlaylist={(track) => {
-            setSongToAdd(track);
-            setShowLastFMSearch(false);
-          }}
-        />
-      )}
+        {showLastFMSearch && (
+          <LastFMSearch
+            onClose={() => setShowLastFMSearch(false)}
+            onAddToPlaylist={(track) => {
+              onAddSongs([track]);
+              setShowLastFMSearch(false);
+              closeContextMenu();
+            }}
+          />
+        )}
 
-      {showTrackDetails && (
-        <TrackDetailsModal
-          track={selectedTrack}
-          onClose={() => setShowTrackDetails(false)}
-        />
-      )}
-      {contextMenu.visible && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          track={contextMenu.track}
-          onClose={() => setContextMenu({ visible: false })}
-          onFilterByAlbum={handleFilterByAlbum}
-          onFilterByArtist={handleFilterByArtist}
-          onAddTracks={(tracks) => onAddSongs(tracks)}
-          onDetails={() => showTrackDetails(contextMenu.track)}
-        />
-      )}
-    </div>
+        {contextMenu.visible && (
+          <SearchResultContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            track={contextMenu.track}
+            onClose={() => setContextMenu({ visible: false })}
+            onFilterByAlbum={handleFilterByAlbum}
+            onFilterByArtist={handleFilterByArtist}
+            onAddTracks={(tracks) => onAddSongs(tracks)}
+          />
+        )}
+      </div>
+    </>
   );
 };
 
