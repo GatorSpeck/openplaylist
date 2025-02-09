@@ -6,6 +6,7 @@ import axios from 'axios';
 import mapToTrackModel from '../../lib/mapToTrackModel';
 import '../../styles/PlaylistGrid.css';
 import SearchResultsGrid from '../search/SearchResultsGrid';
+import PlaylistItemContextMenu from './PlaylistItemContextMenu';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -35,6 +36,9 @@ const PlaylistGrid = ({
   const allEntriesSelected = selectedEntries.length === entries.length;
   const [allPlaylistEntriesSelected, setAllTracksSelected] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, track: null });
+  const [searchFilter, setSearchFilter] = useState('');
+  const [searchPanelOpen, setSearchPanelOpen] = useState(false);
 
   useEffect(() => {
     fetchPlaylistDetails(playlistID);
@@ -115,7 +119,8 @@ const PlaylistGrid = ({
       return;
     }
 
-    setEntries(entries.filter((e) => !indexes.includes(e.order)));
+    // filter and re-index entries
+    setEntries(entries.filter((_, index) => !indexes.includes(index)).map((entry, index) => ({ ...entry, order: index })));
   }
 
   const exportPlaylist = async () => {
@@ -151,6 +156,10 @@ const PlaylistGrid = ({
   const onDragEnd = async (result) => {
     if (!result.destination) return;
 
+    if (sortColumn !== 'order') {
+      return;
+    }
+
     const { source, destination } = result;
 
     // If dragging within playlist
@@ -164,12 +173,12 @@ const PlaylistGrid = ({
         order: index,
       }));
 
-      setEntries(updatedEntries, () => writeToDB());
+      setEntries(updatedEntries);
     }
   };
 
   const toggleTrackSelection = (index) => {
-    setSelectedPlaylistEntries(prev => {
+    setSelectedEntries(prev => {
       const newSelection = prev.includes(index)
         ? prev.filter(i => i !== index)
         : [...prev, index];
@@ -179,27 +188,19 @@ const PlaylistGrid = ({
   };
 
   const clearTrackSelection = () => {
-    setSelectedPlaylistEntries([]);
+    setSelectedEntries([]);
   };
 
   const removeSelectedTracks = async () => {
-    removeSongsFromPlaylist(selectedPlaylistEntries);
-  };
-
-  const toggleAllSongs = () => {
-    if (allSearchResultsSelected) {
-      setSelectedSearchResults([]);
-    } else {
-      setSelectedSearchResults(searchResults);
-    }
-    setAllSongsSelected(!allSearchResultsSelected);
+    removeSongsFromPlaylist(selectedEntries);
+    clearTrackSelection();
   };
 
   const toggleAllTracks = () => {
     if (allPlaylistEntriesSelected) {
-      setSelectedPlaylistEntries([]);
+      setSelectedEntries([]);
     } else {
-      setSelectedPlaylistEntries(entries.map((_, index) => index));
+      setSelectedEntries(entries.map((_, index) => index));
     }
     setAllTracksSelected(!allPlaylistEntriesSelected);
   };
@@ -215,7 +216,7 @@ const PlaylistGrid = ({
       visible: true,
       x: e.clientX,
       y: e.clientY,
-      track
+      track: track
     });
   };
 
@@ -266,6 +267,11 @@ const PlaylistGrid = ({
     });
   }, [sortedEntries, filter]);
 
+  const searchFor = (query) => {
+    setSearchFilter(query);
+    setSearchPanelOpen(true);
+  }
+
   const getSortIndicator = (column) => {
     if (sortColumn !== column) return null;
     return sortDirection === 'asc' ? ' ↑' : ' ↓';
@@ -308,10 +314,10 @@ const PlaylistGrid = ({
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="playlist-grid-header-row">
             <div className="grid-cell">
-              <input type="checkbox" checked={allEntriesSelected} onChange={toggleAllSongs} />
+              <input type="checkbox" checked={allEntriesSelected} onChange={toggleAllTracks} />
             </div>
-            <div className="grid-cell clickable" onClick={() => handleSort('type')}>
-              Source {getSortIndicator('type')}
+            <div className="grid-cell clickable" onClick={() => handleSort('order')}>
+              Source {getSortIndicator('order')}
             </div>
             <div className="grid-cell clickable" onClick={() => handleSort('artist')}>
               Artist/Album {getSortIndicator('artist')}
@@ -325,9 +331,15 @@ const PlaylistGrid = ({
             {(provided) => (
               <div className="playlist-grid-content" {...provided.droppableProps} ref={provided.innerRef}>
                 {filteredEntries.map((track, index) => (
-                  <Draggable key={index} draggableId={index.toString()} index={index}>
-                    {(provided) => (
-                      <div className="playlist-grid-row"
+                  <Draggable 
+                    key={index} 
+                    draggableId={index.toString()} 
+                    index={index}
+                    isDragDisabled={sortColumn !== 'order'} // Add this line
+                  >
+                    {(provided, snapshot) => (
+                      <div 
+                        className={`playlist-grid-row ${sortColumn !== 'order' ? 'drag-disabled' : ''} ${snapshot.isDragging ? 'dragging' : ''}`}
                         ref={provided.innerRef}
                         {...provided.draggableProps}
                         {...provided.dragHandleProps}
@@ -365,9 +377,22 @@ const PlaylistGrid = ({
       </div>
 
       <SearchResultsGrid
-        filter={{}}
+        filter={searchFilter}
         onAddSongs={addSongsToPlaylist}
+        visible={searchPanelOpen}
       />
+
+      {contextMenu.visible && (
+        <PlaylistItemContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          track={contextMenu.track}
+          onClose={() => setContextMenu({ visible: false })}
+          onFilterByAlbum={() => searchFor(contextMenu.track.album)}
+          onFilterByArtist={() => searchFor(contextMenu.track.artist)}
+          onAddTracks={(tracks) => addSongsToPlaylist(tracks)}
+        />
+      )}
 
       <Snackbar
         open={snackbar.open}

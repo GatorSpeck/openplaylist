@@ -17,8 +17,7 @@ const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
         params: { title, artist }
       });
 
-      const search_results = response.data.entry_type = 'lastfm';
-      console.log(response.data);
+      response.data.entry_type = 'lastfm';
       
       setSearchResult(response.data);
     } catch (error) {
