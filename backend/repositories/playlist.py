@@ -127,3 +127,20 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         self.session.commit()
 
         return self.add_entries(playlist_id, entries)
+
+    def export_to_m3u(self, playlist_id: int, mapping_source = None, mapping_target = None):
+        playlist = self.get_with_entries(playlist_id)
+        if playlist is None:
+            return None
+
+        #m3u = "#EXTM3U\n"
+        m3u = ""
+        for entry in playlist.entries:
+            if entry.entry_type == "music_file":
+                #m3u += f"#EXTINF:{entry.details.length},{entry.details.artist} - {entry.details.title}\n"
+                path = entry.details.path.replace(mapping_source, mapping_target)
+                m3u += path + "\n"
+            else:
+                continue
+
+        return m3u

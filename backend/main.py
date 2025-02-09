@@ -27,6 +27,8 @@ from response_models import *
 from dependencies import get_music_file_repository, get_playlist_repository
 from repositories.music_file import MusicFileRepository
 from repositories.playlist import PlaylistRepository
+from plexapi.server import PlexServer
+from plexapi.playlist import Playlist as PlexPlaylist
 
 app = FastAPI()
 
@@ -374,26 +376,13 @@ def delete_playlist(playlist_id: int):
 
 
 @router.get("/playlists/{playlist_id}/export", response_class=StreamingResponse)
-def export_playlist(playlist_id: int):
-    db = Database.get_session()
+def export_playlist(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
     try:
-        playlist = (
-            db.query(PlaylistDB)
-            .options(joinedload(PlaylistDB.entries))
-            .filter(PlaylistDB.id == playlist_id)
-            .first()
+        m3u_content = repo.export_to_m3u(
+            playlist_id, mapping_source=os.getenv("PLEX_MAP_SOURCE"), mapping_target=os.getenv("PLEX_MAP_TARGET")
         )
-        if playlist is None:
-            raise HTTPException(status_code=404, detail="Playlist not found")
 
-        # Generate the .m3u content
-        m3u_content = "#EXTM3U\n"
-        for entry in playlist.entries:
-            music_file = entry.details
-            m3u_content += (
-                f"#EXTINF:{entry.order},{music_file.title} - {music_file.artist}\n"
-            )
-            m3u_content += f"{music_file.path}\n"
+        playlist = repo.get_by_id(playlist_id)
 
         # Create a StreamingResponse to return the .m3u file
         response = StreamingResponse(
@@ -406,9 +395,41 @@ def export_playlist(playlist_id: int):
     except Exception as e:
         logging.error(f"Failed to export playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to export playlist")
-    finally:
-        db.close()
 
+@router.get("/playlists/{playlist_id}/synctoplex")
+def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
+    try:
+        plex_drop = os.getenv("PLEX_M3U_DROP", None)
+        if not plex_drop:
+            raise HTTPException(status_code=500, detail="Plex drop path not configured")
+        
+        MAP_SOURCE = os.getenv("PLEX_MAP_SOURCE")
+        MAP_TARGET = os.getenv("PLEX_MAP_TARGET")
+
+        m3u_content = repo.export_to_m3u(
+            playlist_id, mapping_source=os.getenv("PLEX_MAP_SOURCE"), mapping_target=os.getenv("PLEX_MAP_TARGET")
+        )
+
+        playlist = repo.get_by_id(playlist_id)
+
+        m3u_path = pathlib.Path(plex_drop) / f"{playlist.name}.m3u"
+
+        with open(m3u_path, "w") as f:
+            f.write(m3u_content)
+
+        plex_endpoint = os.getenv("PLEX_ENDPOINT")
+        plex_token = os.getenv("PLEX_TOKEN")
+        plex_library = os.getenv("PLEX_LIBRARY")
+
+        server = PlexServer(plex_endpoint, token=plex_token)
+
+        if MAP_SOURCE and MAP_TARGET:
+            endpoint = str(m3u_path).replace(MAP_SOURCE, MAP_TARGET)
+
+        PlexPlaylist.create(server, playlist.name, section=server.library.section(plex_library), m3ufilepath=endpoint)
+    except Exception as e:
+        logging.error(f"Failed to sync playlist to Plex: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to sync playlist to Plex")
 
 @router.get("/lastfm", response_model=LastFMTrack | None)
 def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):

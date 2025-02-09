@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import '../styles/PlaylistSidebar.css';
 import RenameDialog from './RenameDialog';
 
-const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist }) => (
+const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex }) => (
   <div className="playlist-context-menu" style={{ left: x, top: y }}>
     <div onClick={onRenamePlaylist}>Rename Playlist</div>
     <div onClick={onClone}>Clone Playlist</div>
     <div onClick={onDelete}>Delete Playlist</div>
     <div onClick={onExport}>Export Playlist</div>
+    <div onClick={onSyncToPlex}>Sync to Plex</div>
   </div>
 );
 
@@ -24,6 +25,7 @@ const PlaylistSidebar = ({
   onFullScan,
   onPurge,
   onExport,
+  onSyncToPlex,
   onRenamePlaylist
 }) => {
   const [contextMenu, setContextMenu] = useState({ 
@@ -127,6 +129,10 @@ const PlaylistSidebar = ({
             }}
             onExport={() => {
               onExport(contextMenu.playlist.id);
+              setContextMenu({ visible: false });
+            }}
+            onSyncToPlex={() => {
+              onSyncToPlex(contextMenu.playlist.id);
               setContextMenu({ visible: false });
             }}
             onRenamePlaylist={() => {
