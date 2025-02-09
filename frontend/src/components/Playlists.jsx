@@ -257,6 +257,20 @@ const Playlists = () => {
     }
   };
 
+  const onSyncToPlex = async (playlistId) => {
+    try {
+      await axios.get(`/api/playlists/${playlistId}/synctoplex`);
+      
+      const thisPlaylist = playlists.find(p => p.id === playlistId);
+      setSnackbar({
+        open: true,
+        message: `'${thisPlaylist.name}' synced to Plex`
+      })
+    } catch (error) {
+      console.error('Error exporting playlist:', error);
+    }
+  };
+
   const scanMusic = async (full) => {
     setIsScanning(true);
     try {
@@ -614,6 +628,7 @@ const Playlists = () => {
         onFullScan={() => scanMusic(true)} 
         onPurge={purgeData}
         onExport={exportPlaylist}
+        onSyncToPlex={onSyncToPlex}
         onRenamePlaylist={handleRenamePlaylist}
       />
       
