@@ -7,6 +7,7 @@ import Snackbar from '../Snackbar';
 import PlaylistGrid from '../playlist/PlaylistGrid';
 import PlaylistSidebar from '../nav/PlaylistSidebar';
 import mapToTrackModel from '../../lib/mapToTrackModel';
+import { useParams, useNavigate } from 'react-router-dom';
 
 const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
@@ -39,9 +40,17 @@ const Playlists = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
 
+  const { playlistName } = useParams();
+  const navigate = useNavigate();
+
   useEffect(() => {
-    fetchPlaylists();
-  }, []);
+    fetchPlaylists().then(() => {
+      if (playlistName.length) {
+        const playlistId = playlists.find(p => p.name === playlistName)?.id;
+        setSelectedPlaylistID(playlistId);
+      }
+    });
+  }, [playlistName, playlists]);
 
   const secondsToDaysHoursMins = (seconds) => {
     const days = Math.floor(seconds / (3600 * 24));
@@ -177,7 +186,15 @@ const Playlists = () => {
     scanMusic(false);
   }, []);
 
+  const handlePlaylistSelect = (id) => {
+    const playlistName = playlists.find(p => p.id === id).name;
+    navigate(`/playlist/${playlistName}`);
+    setSelectedPlaylistID(id);
+    console.log(id);
+  };
+
   const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistID);
+  console.log(selectedPlaylist);
 
   return (
     <div className="playlists-container">
@@ -186,7 +203,7 @@ const Playlists = () => {
         onClose={setSidebarOpen}
         playlists={playlists}
         selectedPlaylist={selectedPlaylist}
-        onPlaylistSelect={(id) => setSelectedPlaylistID(id)}
+        onPlaylistSelect={handlePlaylistSelect}
         onNewPlaylist={() => setNewPlaylistModalVisible(true)}
         onClonePlaylist={handleClonePlaylist}
         onDeletePlaylist={deletePlaylist}
