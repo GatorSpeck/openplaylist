@@ -76,6 +76,7 @@ class PlaylistBase(BaseModel):
 
 class PlaylistEntryBase(BaseModel, ABC):
     id: Optional[int] = None
+    image_url: Optional[str] = None
     order: int
 
     @abstractmethod

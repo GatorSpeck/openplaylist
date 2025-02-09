@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
+import TrackDetailsModal from '../TrackDetailsModal';
 
 const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
   const [selectedTracks, setSelectedTracks] = useState(new Set());
@@ -117,10 +118,11 @@ const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
   );
 };
 
-const ContextMenu = ({ x, y, track, onClose, onFilterByAlbum, onFilterByArtist, onAddTracks, onRemove, onRemoveByArtist, onRemoveByAlbum, onDetails }) => {
+const SearchResultContextMenu = ({ x, y, track, onClose, onFilterByAlbum, onFilterByArtist, onAddTracks, onDetails }) => {
   const [position, setPosition] = useState({ x, y });
   const [loading, setLoading] = useState(false);
   const [similarTracks, setSimilarTracks] = useState(null);
+  const [showTrackDetails, setShowTrackDetails] = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -170,6 +172,11 @@ const ContextMenu = ({ x, y, track, onClose, onFilterByAlbum, onFilterByArtist, 
     }
   };
 
+  const addTracks = (tracks) => {
+    onAddTracks(tracks);
+    onClose();
+  }
+
   return (
     <>
       <div 
@@ -177,19 +184,13 @@ const ContextMenu = ({ x, y, track, onClose, onFilterByAlbum, onFilterByArtist, 
         className="context-menu" 
         style={{ position: 'fixed', left: position.x, top: position.y, zIndex: 1000 }}
       >
-        <div onClick={(() => { onDetails(); onClose(); })}>Details</div>
+        <div onClick={(() => { setShowTrackDetails(true); onClose(); })}>Details</div>
         <div onClick={() => { onRemove(); onClose(); }}>Remove from Playlist</div>
         <div onClick={() => { onFilterByAlbum(track.album); onClose(); }}>
           Filter by Album: {track.album}
         </div>
         <div onClick={() => { onFilterByArtist(track.artist); onClose(); }}>
           Filter by Artist: {track.artist}
-        </div>
-        <div onClick={() => { onRemoveByArtist(track.artist); onClose(); }}>
-          Remove by Artist: {track.artist}
-        </div>
-        <div onClick={() => { onRemoveByAlbum(track.album); onClose(); }}>
-          Remove by Album: {track.album}
         </div>
         <div onClick={findSimilarTracks}>
           {loading ? 'Loading similar tracks...' : 'Find Similar Tracks'}
@@ -202,11 +203,18 @@ const ContextMenu = ({ x, y, track, onClose, onFilterByAlbum, onFilterByArtist, 
           y={position.y}
           tracks={similarTracks}
           onClose={() => setSimilarTracks(null)}
-          onAddTracks={onAddTracks}
+          onAddTracks={(tracks) => addTracks(tracks)}
+        />
+      )}
+
+      {showTrackDetails && (
+        <TrackDetailsModal
+          track={track}
+          onClose={() => setShowTrackDetails(false)}
         />
       )}
     </>
   );
 };
 
-export default ContextMenu;
+export default SearchResultContextMenu;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import '../styles/PlaylistSidebar.css';
+import '../../styles/PlaylistSidebar.css';
 import RenameDialog from './RenameDialog';
 
 const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex }) => (
@@ -78,6 +78,10 @@ const PlaylistSidebar = ({
     setRenameDialog({ open: false, playlist: null });
   };
 
+  const handlePlaylistClick = (id) => {
+    onPlaylistSelect(id);
+  };
+
   return (
     <>
       <button ref={hamburgerRef} className="hamburger-menu" onClick={() => onClose(!isOpen)}>
@@ -92,7 +96,7 @@ const PlaylistSidebar = ({
               <div
                 key={playlist.id}
                 className={`playlist-item ${selectedPlaylist?.id === playlist.id ? 'selected' : ''}`}
-                onClick={() => onPlaylistSelect(playlist.id)}
+                onClick={() => handlePlaylistClick(playlist.id)}
                 onContextMenu={(e) => handleContextMenu(e, playlist)}
               >
                 {playlist.name}
