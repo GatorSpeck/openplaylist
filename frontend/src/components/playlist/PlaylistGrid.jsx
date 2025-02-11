@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Droppable, Draggable, DragDropContext } from 'react-beautiful-dnd';
-import EntryTypeBadge from '../EntryTypeBadge';
 import Snackbar from '../Snackbar';
 import mapToTrackModel from '../../lib/mapToTrackModel';
 import '../../styles/PlaylistGrid.css';
@@ -11,6 +10,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import PlaylistModal from './PlaylistModal';
 import playlistRepository from '../../repositories/PlaylistRepository';
 import InfiniteScroll from 'react-infinite-scroll-component';
+import PlaylistEntryRow from './PlaylistEntryRow';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -430,35 +430,17 @@ const PlaylistGrid = ({
                       isDragDisabled={sortColumn !== 'order'}
                     >
                       {(provided, snapshot) => (
-                        <div 
+                        <PlaylistEntryRow 
                           className={`playlist-grid-row ${sortColumn !== 'order' ? 'drag-disabled' : ''} ${snapshot.isDragging ? 'dragging' : ''}`}
                           ref={provided.innerRef}
                           {...provided.draggableProps}
                           {...provided.dragHandleProps}
+                          
                           onClick={() => toggleTrackSelection(track.order)}
                           onContextMenu={(e) => handleContextMenu(e, track)}
-                        >
-                          <div className="grid-cell">
-                            <input
-                              type="checkbox"
-                              checked={selectedEntries.includes(track.order)}
-                              readOnly
-                            />
-                          </div>
-                          <div className="grid-cell">
-                            <EntryTypeBadge type={track.entry_type} />
-                            <span>{track.order + 1}</span>
-                          </div>
-                          <div className="grid-cell">
-                            {track.image_url && <div><img style={{height: 40}} src={track.image_url}/></div>}
-                            <div>{track.artist || track.album_artist}</div>
-                            {track.album && <div><i>{track.album}</i></div>}
-                          </div>
-                          <div className="grid-cell"
-                          >
-                            {track.missing ? <s>{track.title}</s> : track.title}
-                          </div>
-                        </div>
+                          isChecked={selectedEntries.includes(track.order)}
+                          track={track}
+                        />
                       )}
                     </Draggable>
                   ))}
@@ -474,6 +456,7 @@ const PlaylistGrid = ({
         filter={searchFilter}
         onAddSongs={addSongsToPlaylist}
         visible={searchPanelOpen}
+        playlistID={playlistID}
       />
 
       {contextMenu.visible && (

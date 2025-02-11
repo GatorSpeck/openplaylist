@@ -19,9 +19,12 @@ from response_models import (
 from sqlalchemy.orm import joinedload
 from typing import List, Optional
 import os
+
 import dotenv
 dotenv.load_dotenv(override=True)
 
+import logging
+logger = logging.getLogger(__name__)
 
 def playlist_orm_to_response(playlist: PlaylistEntryDB):
     if playlist.entry_type == "music_file":
@@ -35,28 +38,11 @@ def playlist_orm_to_response(playlist: PlaylistEntryDB):
     else:
         raise ValueError(f"Unknown entry type: {playlist.entry_type}")
 
-class AlbumAndArtist:
-    def __init__(self, album, artist):
-        self.album = album
-        self.artist = artist
-
-    def __str__(self):
-        return f"{self.artist} - {self.album}"
-
-    def __repr__(self):
-        return f"{self.artist} - {self.album}"
-
-    def __eq__(self, other):
-        return self.album == other.album and self.artist == other.artist
-
-    def __hash__(self):
-        return hash((self.album, self.artist))
-
 class PlaylistRepository(BaseRepository[PlaylistDB]):
     def __init__(self, session):
         super().__init__(session, PlaylistDB)
 
-    def get_with_entries(self, playlist_id: int, limit=None, offset=None, requests_session=None) -> Optional[Playlist]:
+    def get_with_entries(self, playlist_id: int, limit=None, offset=None) -> Optional[Playlist]:
         result = (
             self.session.query(self.model)
             .options(
@@ -82,27 +68,6 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             result.entries = result.entries[offset:offset+limit]
 
         entries = [playlist_orm_to_response(e) for e in result.entries]
-
-        if (requests_session is not None) and (os.getenv("LASTFM_API_KEY") is not None):
-            unique_album_and_artist_pairs = set()
-            for entry in entries:
-                if entry.details is None:
-                    continue
-                if entry.details.album is not None and entry.details.artist is not None:
-                    unique_album_and_artist_pairs.add(AlbumAndArtist(entry.details.album, entry.details.artist))
-
-            for album_and_artist in unique_album_and_artist_pairs:
-                url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={album_and_artist.artist}&album={album_and_artist.album}&format=json"
-                response = requests_session.get(url)
-                if response.status_code == 200:
-                    album_info = response.json()
-                    if "album" in album_info:
-                        album_info = album_info["album"]
-                        for entry in entries:
-                            if entry.details is None:
-                                continue
-                            if entry.details.album == album_info["name"] and entry.details.artist == album_info["artist"]:
-                                entry.image_url = album_info["image"][2]["#text"]
 
         return Playlist(id=result.id, name=result.name, entries=entries)
 
