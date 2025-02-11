@@ -120,7 +120,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         self.session.refresh(playlist_db)
         return Playlist.from_orm(playlist_db)
 
-    def add_entry(self, playlist_id: int, entry: PlaylistEntryBase) -> Playlist:
+    def add_entry(self, playlist_id: int, entry: PlaylistEntryBase, commit=False) -> Playlist:
         if entry.entry_type == "lastfm":
             track = (
                 self.session.query(LastFMTrackDB)
@@ -150,10 +150,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
         playlist_entry = entry.to_playlist(playlist_id)
         this_playlist.entries.append(playlist_entry)
-        self.session.commit()
 
-        self.session.refresh(this_playlist)
-        return Playlist.from_orm(this_playlist)
+        if commit:
+            self.session.commit()
 
     def add_entries(
         self, playlist_id: int, entries: List[PlaylistEntryBase]
@@ -162,7 +161,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             return Playlist(id=playlist_id, name="", entries=[])
 
         for entry in entries:
-            result = self.add_entry(playlist_id, entry)
+            self.add_entry(playlist_id, entry, commit=False)
 
         return self.get_with_entries(playlist_id)
 
@@ -176,6 +175,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         )
         for record in current_records:
             self.session.delete(record)
+
         self.session.commit()
 
         return self.add_entries(playlist_id, entries)
@@ -196,3 +196,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 continue
 
         return m3u
+
+    def reorder_entries(self, playlist: Playlist) -> Playlist:
+        for i, entry in enumerate(playlist.entries):
+            entry.order = i
+
+        self.session.commit()
