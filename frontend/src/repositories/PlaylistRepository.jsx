@@ -1,9 +1,9 @@
 import axios from 'axios';
 
 export class PlaylistRepository {
-    async getPlaylistDetails(playlistID) {
+    async getPlaylistDetails(playlistID, limit = null, offset = null) {
         try {
-            const response = await axios.get(`/api/playlists/${playlistID}`);
+            const response = await axios.get(`/api/playlists/${playlistID}`, { limit: limit, offset: offset });
 
             return response.data;
         } catch (error) {
