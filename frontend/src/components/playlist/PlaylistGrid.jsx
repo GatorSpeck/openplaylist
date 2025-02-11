@@ -190,6 +190,8 @@ const PlaylistGrid = ({
         order: index,
       }));
 
+      pushToHistory(entries);
+
       setEntries(updatedEntries);
     }
   };
