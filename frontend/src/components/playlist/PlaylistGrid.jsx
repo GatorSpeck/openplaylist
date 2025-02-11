@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Droppable, Draggable, DragDropContext } from 'react-beautiful-dnd';
 import EntryTypeBadge from '../EntryTypeBadge';
 import Snackbar from '../Snackbar';
-import axios from 'axios';
 import mapToTrackModel from '../../lib/mapToTrackModel';
 import '../../styles/PlaylistGrid.css';
 import SearchResultsGrid from '../search/SearchResultsGrid';
@@ -10,6 +9,7 @@ import PlaylistItemContextMenu from './PlaylistItemContextMenu';
 import { FaUndo, FaRedo } from 'react-icons/fa';
 import { useParams, useNavigate } from 'react-router-dom';
 import PlaylistModal from './PlaylistModal';
+import playlistRepository from '../../repositories/PlaylistRepository';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -60,10 +60,10 @@ const PlaylistGrid = ({
 
   const fetchPlaylistDetails = async (playlistId) => {
     try {
-      const response = await axios.get(`/api/playlists/${playlistId}`);
-      setName(response.data.name);
+      const playlist = await playlistRepository.getPlaylistDetails(playlistId);
+      setName(playlist.name);
       setIsInitialLoad(true);  // Set flag before updating entries
-      setEntries(response.data.entries.map(entry => mapToTrackModel(entry)))
+      setEntries(playlist.entries.map(entry => mapToTrackModel(entry)))
     } catch (error) {
       console.error('Error fetching playlist details:', error);
     }
@@ -71,10 +71,7 @@ const PlaylistGrid = ({
 
   const writeToDB = async () => {
     try {
-      await axios.put(`/api/playlists/${playlistID}`, {
-        name: name, // Playlist name is not needed for update
-        entries: entries
-      });
+      await playlistRepository.updateEntries(playlistID, entries);
     } catch (error) {
       console.error('Error writing playlist to DB:', error);
     }
@@ -123,9 +120,9 @@ const PlaylistGrid = ({
     });
   };
 
-  const handleRenamePlaylist = async (newName) => {
-    setName(newName, () => {
-      axios.post(`/api/playlists/rename/${playlistID}`, { new_name: newName, description: "" });
+  const handleRenamePlaylist = async (playlistID, newName) => {
+    setName(newName, async () => {
+      await playlistRepository.rename(playlistID, newName);
     });
   };
 
@@ -156,27 +153,14 @@ const PlaylistGrid = ({
     setEntries(newEntries);
   }
 
-  const exportPlaylist = async () => {
-    try {
-      const response = await axios.get(`/api/playlists/${playlistID}/export`, {
-        responseType: 'blob'
-      });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `${name}.m3u`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (error) {
-      console.error('Error exporting playlist:', error);
-    }
+  const exportPlaylist = async (id) => {
+    playlistRepository.export(id);
   };
 
   const onSyncToPlex = async () => {
     try {
-      await axios.get(`/api/playlists/${playlistID}/synctoplex`);
-      
+      await playlistRepository.syncToPlex(playlistID);
+
       setSnackbar({
         open: true,
         message: `'${name}' synced to Plex`
@@ -319,7 +303,7 @@ const PlaylistGrid = ({
     }
     
     try {
-      await axios.delete(`/api/playlists/${playlistID}`);
+      await playlistRepository.deletePlaylist(playlistID);
       navigate('/');
     } catch (error) {
       console.error('Error deleting playlist:', error);

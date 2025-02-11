@@ -27,6 +27,7 @@ from response_models import *
 from dependencies import get_music_file_repository, get_playlist_repository
 from repositories.music_file import MusicFileRepository
 from repositories.playlist import PlaylistRepository
+from repositories.open_ai_repository import open_ai_repository
 from plexapi.server import PlexServer
 from plexapi.playlist import Playlist as PlexPlaylist
 
@@ -413,6 +414,8 @@ def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(g
         playlist = repo.get_by_id(playlist_id)
 
         m3u_path = pathlib.Path(plex_drop) / f"{playlist.name}.m3u"
+        if MAP_SOURCE and MAP_TARGET:
+            m3u_path = str(m3u_path).replace(MAP_SOURCE, MAP_TARGET)
 
         with open(m3u_path, "w") as f:
             f.write(m3u_content)
@@ -430,6 +433,10 @@ def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(g
     except Exception as e:
         logging.error(f"Failed to sync playlist to Plex: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to sync playlist to Plex")
+
+@router.post("/library/findlocals")
+def find_local_files(tracks: List[TrackDetails], repo: MusicFileRepository = Depends(get_music_file_repository)):
+    return repo.find_local_files(tracks)
 
 @router.get("/lastfm", response_model=LastFMTrack | None)
 def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
@@ -488,23 +495,18 @@ def get_similar_tracks(title: str = Query(...), artist: str = Query(...)):
     logging.debug(similar_data)
     similar_tracks = similar_data.get("similartracks", {}).get("track", [])
 
-    db = Database.get_session()
+    return [LastFMTrack(title=track.get("name", ""), artist=track.get("artist", {}).get("name", ""), url=track.get("url")) for track in similar_tracks]
 
-    results = []
+# get similar tracks
+@router.get("/openai/similar")
+def get_similar_tracks_with_openai(title: str = Query(...), artist: str = Query(...)):
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+    
+    repo = open_ai_repository(api_key)
 
-    for t in similar_tracks:
-        track = db.query(MusicFileDB).filter(MusicFileDB.title == t.get("name", "")).filter(MusicFileDB.artist == t.get("artist", {}).get("name", "")).first()
-
-        results.append(
-            LastFMTrack(
-                title=t.get("name", ""),
-                artist=t.get("artist", {}).get("name", ""),
-                url=t.get("url"),
-                music_file_id=track.id if track else None
-            )
-        )
-
-    return results
+    return repo.get_similar_tracks(artist, title)
 
 
 @app.get("/api/music-files")

@@ -98,16 +98,26 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         artist: Optional[str] = None,
         album: Optional[str] = None,
         genre: Optional[str] = None,
+        exact=False,
         limit: int = 50,
     ) -> list[MusicFile]:
         query = self.session.query(MusicFileDB)
 
         if title:
-            query = query.filter(MusicFileDB.title.ilike(f"%{title}%"))
+            if exact:
+                query = query.filter(MusicFileDB.title == title)
+            else:
+                query = query.filter(MusicFileDB.title.ilike(f"%{title}%"))
         if artist:
-            query = query.filter(MusicFileDB.artist.ilike(f"%{artist}%"))
+            if exact:
+                query = query.filter(MusicFileDB.artist == artist)
+            else:
+                query = query.filter(MusicFileDB.artist.ilike(f"%{artist}%"))
         if album:
-            query = query.filter(MusicFileDB.album.ilike(f"%{album}%"))
+            if exact:
+                query = query.filter(MusicFileDB.album == album)
+            else:
+                query = query.filter(MusicFileDB.album.ilike(f"%{album}%"))
         if genre:
             query = query.filter(MusicFileDB.genres.any(genre))
 
@@ -169,3 +179,31 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         music_file.missing = False
 
         self.session.commit()
+    
+    def find_local_files(self, tracks: list[TrackDetails]):
+        results = []
+
+        for t in tracks:
+            existing_files = self.filter(title=t.title, artist=t.artist, exact=True)
+            if existing_files:
+                results.append(existing_files[0])
+            else:
+                results.append(t)
+
+        return results
+    
+    def contains(self, tracks: list[TrackDetails]):
+        filters = or_([MusicFileDB.title == track.title and MusicFileDB.artist == track.artist for track in tracks])
+        existing_tracks = self.session.query(MusicFileDB).filter(filters).all()
+
+        results = []
+
+        for track in tracks:
+            found = False
+            if track.title in [t.title for t in existing_tracks]:
+                if track.artist in [t.artist for t in existing_tracks]:
+                    found = True
+            
+            results.append({"exists": found, "title": track.title, "artist": track.artist})
+
+        return results
