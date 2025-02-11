@@ -212,11 +212,11 @@ class RequestedTrackEntry(PlaylistEntryBase):
     details: Optional[TrackDetails] = None
 
     def to_playlist(self, playlist_id) -> RequestedTrackEntryDB:
-        print("bar")
         return RequestedTrackEntryDB(
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             order=self.order,
+            details=self.details
         )
 
     def to_db(self) -> RequestedTrackDB:
@@ -232,10 +232,12 @@ class RequestedTrackEntry(PlaylistEntryBase):
 
     @classmethod
     def from_orm(cls, obj: RequestedTrackEntryDB):
-        print(obj.__dict__)
+        if obj.details is None:
+            return cls(entry_type="requested", id=obj.id, order=obj.order)
         return cls(
             id=obj.id,
             order=obj.order,
+            entry_type="requested",
             details=TrackDetails(
                 title=obj.details.title,
                 artist=obj.details.artist,

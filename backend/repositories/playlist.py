@@ -6,6 +6,7 @@ from models import (
     LastFMTrackDB,
     MusicFileEntryDB,
     RequestedTrackEntryDB,
+    RequestedTrackDB
 )
 from response_models import (
     Playlist,
@@ -66,9 +67,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 joinedload(PlaylistDB.entries.of_type(MusicFileEntryDB)).joinedload(
                     MusicFileEntryDB.details
                 ),
-                joinedload(
-                    PlaylistDB.entries.of_type(RequestedTrackEntryDB)
-                ).joinedload(RequestedTrackEntryDB.details),
+                joinedload(PlaylistDB.entries.of_type(RequestedTrackEntryDB)).joinedload(
+                    RequestedTrackEntryDB.details
+                ),
             )
             .filter(self.model.id == playlist_id)
             .first()
@@ -82,6 +83,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         if (requests_session is not None) and (os.getenv("LASTFM_API_KEY") is not None):
             unique_album_and_artist_pairs = set()
             for entry in entries:
+                if entry.details is None:
+                    continue
                 if entry.details.album is not None and entry.details.artist is not None:
                     unique_album_and_artist_pairs.add(AlbumAndArtist(entry.details.album, entry.details.artist))
 
@@ -93,6 +96,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                     if "album" in album_info:
                         album_info = album_info["album"]
                         for entry in entries:
+                            if entry.details is None:
+                                continue
                             if entry.details.album == album_info["name"] and entry.details.artist == album_info["artist"]:
                                 entry.image_url = album_info["image"][2]["#text"]
 
@@ -128,10 +133,21 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 self.session.commit()
 
             entry.details = track
+        elif entry.entry_type == "requested":
+            track = (
+                self.session.query(RequestedTrackDB).filter(RequestedTrackDB.artist == entry.details.artist, RequestedTrackDB.title == entry.details.title).first()
+            )
+            if not track:
+                track = entry.to_db()
+                self.session.add(track)
+                self.session.commit()
+            
+            entry.details = track
 
         this_playlist = (
             self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
         )
+
         playlist_entry = entry.to_playlist(playlist_id)
         this_playlist.entries.append(playlist_entry)
         self.session.commit()

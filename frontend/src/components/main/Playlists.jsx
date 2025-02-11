@@ -6,6 +6,8 @@ import PlaylistGrid from '../playlist/PlaylistGrid';
 import PlaylistSidebar from '../nav/PlaylistSidebar';
 import mapToTrackModel from '../../lib/mapToTrackModel';
 import { useParams, useNavigate } from 'react-router-dom';
+import playlistRepository from '../../repositories/PlaylistRepository';
+import libraryRepository from '../../repositories/LibraryRepository';
 
 const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
@@ -43,8 +45,8 @@ const Playlists = () => {
 
   const fetchPlaylists = useCallback(async () => {
     try {
-      const response = await axios.get(`/api/playlists`);
-      setPlaylists(response.data);
+      const response = await playlistRepository.getPlaylists();
+      setPlaylists(response);
     } catch (error) {
       console.error('Error fetching playlists:', error);
     }
@@ -52,6 +54,7 @@ const Playlists = () => {
 
   useEffect(() => {
     fetchPlaylists();
+    getLibraryStats();
   }, []); // Only run on mount
 
   useEffect(() => {
@@ -75,7 +78,7 @@ const Playlists = () => {
   const deletePlaylist = async (playlistId) => {
     if (window.confirm('Are you sure you want to delete this playlist?')) {
       try {
-        await axios.delete(`/api/playlists/${playlistId}`);
+        await playlistRepository.deletePlaylist(playlistId);
         setPlaylists(playlists.filter(playlist => playlist.id !== playlistId));
         if (selectedPlaylistID && selectedPlaylistID === playlistId) {
           setSelectedPlaylistID(null);
@@ -86,11 +89,15 @@ const Playlists = () => {
     }
   };
 
+  const getLibraryStats = async () => {
+    const stats = await libraryRepository.getStats();
+    setLibraryStats({...stats, visible: true});
+  }
+
   const scanMusic = async (full) => {
     setIsScanning(true);
     try {
-      const URI = full ? '/api/fullscan' : '/api/scan';
-      await axios.get(URI);
+      libraryRepository.scan(full);
 
       setSnackbar({
         open: true,
@@ -98,8 +105,8 @@ const Playlists = () => {
         severity: 'success'
       });
 
-      const stats = await axios.get('/api/stats');
-      setLibraryStats({...stats.data, visible: true});
+      const stats = libraryRepository.getStats();
+      setLibraryStats({...stats, visible: true});
     } catch (error) {
       console.error('Error scanning music:', error);
       alert('Error scanning music.');
@@ -128,17 +135,14 @@ const Playlists = () => {
 
   const handleCreateNewPlaylist = async () => {
     try {
-      const response = await axios.post(`/api/playlists`, {
-        name: newPlaylistNameModal,
-        entries: []
-      });
+      const response = await playlistRepository.create(newPlaylistNameModal);
 
-      setPlaylists([...playlists, response.data]);
+      setPlaylists([...playlists, response]);
 
       setNewPlaylistNameModal('');
       setNewPlaylistModalVisible(false);
 
-      navigate(`/playlist/${response.data.name}`);
+      navigate(`/playlist/${response.name}`);
     } catch (error) {
       console.error('Error creating new playlist:', error);
     }
@@ -146,17 +150,11 @@ const Playlists = () => {
 
   const handleClonePlaylist = async () => {
     try {
-      const playlistData = {
-        name: clonePlaylistName,
-        entries: playlistToClone.entries
-      };
-      
-      const response = await axios.post(
-        `/api/playlists`, 
-        playlistData
-      );
-      
-      setPlaylists([...playlists, response.data]);
+      const clonePlaylistName = clonePlaylistName.trim();
+
+      const response = await playlistRepository.clone(playlistToClone.id, clonePlaylistName);
+            
+      setPlaylists([...playlists, response]);
       setCloneModalVisible(false);
       setClonePlaylistName('');
       setPlaylistToClone(null);
@@ -164,10 +162,6 @@ const Playlists = () => {
       console.error('Error cloning playlist:', error);
     }
   };
-
-  useEffect(() => {
-    scanMusic(false);
-  }, []);
 
   const handlePlaylistSelect = (id) => {
     const playlistName = playlists.find(p => p.id === id).name;
@@ -198,6 +192,13 @@ const Playlists = () => {
           <PlaylistGrid
             playlistID={selectedPlaylistID}
           />
+        )}
+
+        {isScanning && (
+          <div className="scan-overlay">
+            <div className="scan-spinner"></div>
+            <h2>Scanning...</h2>
+          </div>
         )}
 
         {libraryStats.visible && (
