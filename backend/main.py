@@ -400,8 +400,10 @@ def export_playlist(playlist_id: int, repo: PlaylistRepository = Depends(get_pla
 @router.get("/playlists/{playlist_id}/synctoplex")
 def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
     try:
-        plex_drop = os.getenv("PLEX_M3U_DROP", None)
-        if not plex_drop:
+        M3U_SOURCE = os.getenv("PLEX_M3U_DROP_SOURCE", None)
+        M3U_TARGET = os.getenv("PLEX_M3U_DROP_TARGET", None)
+    
+        if not M3U_SOURCE or not M3U_TARGET:
             raise HTTPException(status_code=500, detail="Plex drop path not configured")
         
         MAP_SOURCE = os.getenv("PLEX_MAP_SOURCE")
@@ -413,9 +415,7 @@ def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(g
 
         playlist = repo.get_by_id(playlist_id)
 
-        m3u_path = pathlib.Path(plex_drop) / f"{playlist.name}.m3u"
-        if MAP_SOURCE and MAP_TARGET:
-            m3u_path = str(m3u_path).replace(MAP_SOURCE, MAP_TARGET)
+        m3u_path = pathlib.Path(M3U_SOURCE) / f"{playlist.name}.m3u"
 
         with open(m3u_path, "w") as f:
             f.write(m3u_content)
@@ -426,7 +426,7 @@ def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(g
 
         server = PlexServer(plex_endpoint, token=plex_token)
 
-        if MAP_SOURCE and MAP_TARGET:
+        if M3U_SOURCE and M3U_TARGET:
             endpoint = str(m3u_path).replace(MAP_SOURCE, MAP_TARGET)
 
         PlexPlaylist.create(server, playlist.name, section=server.library.section(plex_library), m3ufilepath=endpoint)

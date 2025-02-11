@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Droppable, Draggable, DragDropContext } from 'react-beautiful-dnd';
 import EntryTypeBadge from '../EntryTypeBadge';
 import Snackbar from '../Snackbar';
@@ -45,6 +45,7 @@ const PlaylistGrid = ({
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [playlistModalVisible, setPlaylistModalVisible] = useState(false);
+  const gridContentRef = useRef(null);
 
   useEffect(() => {
     fetchPlaylistDetails(playlistID);
@@ -137,6 +138,14 @@ const PlaylistGrid = ({
   const addSongsToPlaylist = async (songs) => {
     const songsArray = Array.isArray(songs) ? songs : [songs];
     await addTracksToPlaylist(songsArray);
+    
+    // Scroll to bottom after state update
+    setTimeout(() => {
+      gridContentRef.current?.scrollTo({
+        top: gridContentRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }, 100);
   };
 
   const removeSongsFromPlaylist = async (indexes) => {
@@ -383,7 +392,14 @@ const PlaylistGrid = ({
 
           <Droppable droppableId="playlist">
             {(provided) => (
-              <div className="playlist-grid-content" {...provided.droppableProps} ref={provided.innerRef}>
+              <div 
+                className="playlist-grid-content" 
+                {...provided.droppableProps} 
+                ref={(el) => {
+                  provided.innerRef(el);
+                  gridContentRef.current = el;
+                }}
+              >
                 {filteredEntries.map((track, index) => (
                   <Draggable 
                     key={index} 
