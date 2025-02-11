@@ -111,3 +111,32 @@
     padding: 8px;
   }
 }
+
+.artist-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.album-art {
+  flex-shrink: 0;
+}
+
+.album-art img {
+  height: 40px;
+  width: 40px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.track-info {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.track-info .artist,
+.track-info .album {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
