@@ -1,7 +1,7 @@
 from .base import BaseRepository
 from models import MusicFileDB, TrackGenreDB
 from typing import Optional
-from response_models import MusicFile, SearchQuery, RequestedTrack, TrackDetails
+from response_models import MusicFile, SearchQuery, RequestedTrack, TrackDetails, Playlist, MusicFileEntry
 from sqlalchemy import text, or_
 import time
 import urllib
@@ -207,3 +207,16 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             results.append({"exists": found, "title": track.title, "artist": track.artist})
 
         return results
+
+    def dump_library_to_playlist(self, playlist: Playlist, repo: PlaylistRepository) -> Playlist:
+        # get all music files
+        music_files = self.session.query(MusicFileDB).all()
+
+        i = len(playlist.entries)
+        for music_file in music_files:
+            repo.add_entry(playlist.id, MusicFileEntry(entry_type="music_file", order=i, music_file_id=music_file.id, details=MusicFile.from_orm(music_file)), commit=False)
+            i+= 1
+
+        self.session.commit()
+
+        return repo.get_with_entries(playlist.id)

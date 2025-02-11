@@ -7,8 +7,9 @@ import debounce from 'lodash/debounce';
 import { ClipLoader } from 'react-spinners';
 import LastFMSearch from '../search/LastFMSearch';
 import SearchResultContextMenu from './SearchResultContextMenu';
+import playlistRepository from '../../repositories/PlaylistRepository';
 
-const SearchResultsGrid = ({ filter, onAddSongs, visible }) => {
+const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
   const [filterQuery, setFilterQuery] = useState(filter);
   const [selectedSearchResults, setSelectedSearchResults] = useState([]);
   const [selectedPlaylistEntries, setSelectedPlaylistEntries] = useState([]);
@@ -269,6 +270,8 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible }) => {
             onAddTracks={(tracks) => onAddSongs(tracks)}
           />
         )}
+
+        <button onClick={() => playlistRepository.dumpLibrary(playlistID)}>TEST ONLY: Dump full library into this playlist</button>
       </div>
     </>
   );

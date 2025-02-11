@@ -81,6 +81,12 @@ export class PlaylistRepository {
 
         return this.updateEntries(newPlaylist.data.id, fromPlaylist.entries);
     }
+
+    async dumpLibrary(id) {
+        await axios.get(`/api/testing/dumpLibrary/${id}`);
+
+        return this.getPlaylistDetails(id);
+    }
 };
 
 const playlistRepository = new PlaylistRepository();

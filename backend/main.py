@@ -31,6 +31,7 @@ from repositories.open_ai_repository import open_ai_repository
 from repositories.last_fm_repository import last_fm_repository
 from plexapi.server import PlexServer
 from plexapi.playlist import Playlist as PlexPlaylist
+from redis import Redis
 
 app = FastAPI()
 
@@ -60,6 +61,11 @@ Base.metadata.create_all(bind=Database.get_engine())
 
 SUPPORTED_FILETYPES = (".mp3", ".flac", ".wav", ".ogg", ".m4a")
 
+redis_session = None
+REDIS_HOST = os.getenv("REDIS_HOST", None)
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+if REDIS_HOST and REDIS_PORT:
+    redis_session = Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
 
 def extract_metadata(file_path, extractor):
     try:
@@ -301,7 +307,7 @@ async def get_playlist(
 ):
     db = Database.get_session()
     try:
-        playlist = repo.get_with_entries(playlist_id, limit, offset, requests_session=requests_cache_session)
+        playlist = repo.get_with_entries(playlist_id, limit, offset)
         return playlist
     except Exception as e:
         logging.error(f"Failed to get playlist: {e}", exc_info=True)
@@ -458,6 +464,15 @@ def get_similar_tracks(title: str = Query(...), artist: str = Query(...)):
     repo = last_fm_repository(api_key, requests_cache_session)
     return repo.get_similar_tracks(artist, title)
 
+@router.get("/lastfm/albumart")
+def get_album_art(artist: str = Query(...), album: str = Query(...)):
+    api_key = os.getenv("LASTFM_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Last.FM API key not configured")
+
+    repo = last_fm_repository(api_key, requests_cache_session)
+    return repo.get_album_art(artist, album, redis_session=redis_session)
+
 # get similar tracks
 @router.get("/openai/similar")
 def get_similar_tracks_with_openai(title: str = Query(...), artist: str = Query(...)):
@@ -469,6 +484,10 @@ def get_similar_tracks_with_openai(title: str = Query(...), artist: str = Query(
 
     return repo.get_similar_tracks(artist, title)
 
+@router.get("/testing/dumpLibrary/{playlistID}")
+def dump_library(playlistID: int, repo: PlaylistRepository = Depends(get_playlist_repository), music_files: MusicFileRepository = Depends(get_music_file_repository)):
+    playlist = repo.get_by_id(playlistID)
+    return music_files.dump_library_to_playlist(playlist, repo)
 
 @app.get("/api/music-files")
 async def get_music_files(

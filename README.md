@@ -6,17 +6,58 @@ This project is a music playlist management application with a React frontend an
 - Create .env file with `MUSIC_PATH` variable set
 - Run with `docker-compose up --build -d`
 
-## Other Configuration
-- Plex Playlist Syncing
-    - `PLEX_ENDPOINT`
-    - `PLEX_TOKEN`
-    - `PLEX_LIBRARY`
-    - `PLEX_MAP_SOURCE`
-    - `PLEX_MAP_TARGET`
-    - `PLEX_M3U_DROP`
-- Last.FM Integration
-    - `LASTFM_API_KEY`
-    - `LASTFM_SHARED_SECRET`
+```
+version: '3.8'
+
+networks:
+  playlist:
+    driver: bridge
+
+services:
+  backend:
+    build: ./backend
+    volumes:
+      - /path/to/music:/music:ro
+      - ./data:/data:rw
+      # - /path/to/playlists:/playlists:rw
+    restart: unless-stopped
+    networks:
+      - playlist
+    expose:
+      - 3000
+    environment:
+      # Last.fm configuration
+      # - LASTFM_API_KEY=
+      # - LASTFM_SHARED_SECRET=
+
+      # Plex configuration
+      # - PLEX_ENDPOINT=http://localhost:32400
+      # - PLEX_TOKEN=
+      # - PLEX_LIBRARY=Music
+      # - PLEX_MAP_SOURCE=/path/to/music
+      # - PLEX_MAP_TARGET=/music
+
+      # Plex playlist sync configuration
+      # - PLEX_M3U_DROP_SOURCE=/path/to/playlists
+      # - PLEX_M3U_DROP_TARGET=/playlists
+
+      # OpenAI configuration
+      # - OPENAI_API_KEY=
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:8080"
+    volumes:
+      - /app/node_modules
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://backend:3000
+    restart: unless-stopped
+    networks:
+      - playlist
+```
 
 ## Dev Setup
 
