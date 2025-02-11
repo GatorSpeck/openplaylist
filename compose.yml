@@ -10,6 +10,7 @@ services:
     volumes:
       - ${MUSIC_PATH}:/music:ro
       - ./data:/data:rw
+      - /mnt/shared/Media/Music/Playlist:/playlist:rw
     restart: unless-stopped
     networks:
       - playlist
@@ -26,7 +27,9 @@ services:
 
       - PLEX_MAP_SOURCE=${PLEX_MAP_SOURCE}
       - PLEX_MAP_TARGET=${PLEX_MAP_TARGET}
-      - PLEX_M3U_DROP=${PLEX_M3U_DROP}
+
+      - PLEX_M3U_DROP_SOURCE=${PLEX_M3U_DROP_SOURCE}
+      - PLEX_M3U_DROP_TARGET=${PLEX_M3U_DROP_TARGET}
 
   frontend:
     build: ./frontend
