@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, memo } from 'react';
 import { Droppable, Draggable, DragDropContext } from 'react-beautiful-dnd';
 import Snackbar from '../Snackbar';
 import mapToTrackModel from '../../lib/mapToTrackModel';
@@ -11,6 +11,8 @@ import PlaylistModal from './PlaylistModal';
 import playlistRepository from '../../repositories/PlaylistRepository';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import PlaylistEntryRow from './PlaylistEntryRow';
+import AutoSizer from 'react-virtualized-auto-sizer';
+import { FixedSizeList as List } from 'react-window';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -23,9 +25,46 @@ const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   </div>
 );
 
-const PlaylistGrid = ({
-  playlistID,
-}) => {
+const Row = memo(({ data, index, style }) => {
+  const { 
+    entries,
+    toggleTrackSelection, 
+    handleContextMenu, 
+    selectedEntries,
+    sortColumn,
+    provided 
+  } = data;
+  const track = entries[index];
+
+  return (
+    <Draggable 
+      key={track.order}
+      draggableId={`track-${track.order}`}
+      index={index}
+      isDragDisabled={sortColumn !== 'order'}
+    >
+      {(provided, snapshot) => (
+        <PlaylistEntryRow 
+          ref={provided.innerRef}
+          {...provided.draggableProps}
+          {...provided.dragHandleProps}
+          style={{
+            ...style,
+            ...provided.draggableProps.style,
+          }}
+          className={`playlist-grid-row ${sortColumn !== 'order' ? 'drag-disabled' : ''}`}
+          isDragging={snapshot.isDragging}
+          onClick={() => toggleTrackSelection(track.order)}
+          onContextMenu={(e) => handleContextMenu(e, track)}
+          isChecked={selectedEntries.includes(track.order)}
+          track={track}
+        />
+      )}
+    </Draggable>
+  );
+});
+
+const PlaylistGrid = ({ playlistID }) => {
   const [sortColumn, setSortColumn] = useState('order');
   const [sortDirection, setSortDirection] = useState('asc');
   const [filter, setFilter] = useState('');
@@ -335,6 +374,8 @@ const PlaylistGrid = ({
     }, 500);
   };
 
+  const listRef = useRef(null);
+
   return (
     <div>
       <h2>{name}</h2>
@@ -404,48 +445,49 @@ const PlaylistGrid = ({
             </div>
           </div>
 
-          <Droppable droppableId="playlist">
-            {(provided) => (
+          <Droppable
+            droppableId="playlist"
+            mode="virtual"
+            renderClone={(provided, snapshot, rubric) => (
+              <PlaylistEntryRow
+                ref={provided.innerRef}
+                {...provided.draggableProps}
+                {...provided.dragHandleProps}
+                isDragging={snapshot.isDragging}
+                track={filteredEntries[rubric.source.index]}
+                isChecked={selectedEntries.includes(rubric.source.index)}
+                className="playlist-grid-row"
+              />
+            )}
+          >
+            {(provided, snapshot) => (
               <div 
                 className="playlist-grid-content" 
-                {...provided.droppableProps} 
-                ref={(el) => {
-                  provided.innerRef(el);
-                  gridContentRef.current = el;
-                }}
-                id="scrollableDiv"
+                ref={provided.innerRef}
               >
-                <InfiniteScroll
-                  dataLength={displayedItems}
-                  next={fetchMoreData}
-                  hasMore={hasMore}
-                  loader={<h4>Loading...</h4>}
-                  scrollableTarget="scrollableDiv"
-                >
-                  {filteredEntries.slice(0, displayedItems).map((track, index) => (
-                    <Draggable 
-                      key={index} 
-                      draggableId={index.toString()} 
-                      index={index}
-                      isDragDisabled={sortColumn !== 'order'}
+                <AutoSizer>
+                  {({ height, width }) => (
+                    <List
+                      ref={listRef}
+                      height={height}
+                      itemCount={filteredEntries.length}
+                      itemSize={60}
+                      width={width}
+                      itemData={{
+                        entries: filteredEntries,
+                        toggleTrackSelection,
+                        handleContextMenu,
+                        selectedEntries,
+                        sortColumn,
+                        isDraggingOver: snapshot.isDraggingOver
+                      }}
+                      overscanCount={10}
+                      className="playlist-virtual-list"
                     >
-                      {(provided, snapshot) => (
-                        <PlaylistEntryRow 
-                          className={`playlist-grid-row ${sortColumn !== 'order' ? 'drag-disabled' : ''} ${snapshot.isDragging ? 'dragging' : ''}`}
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          {...provided.dragHandleProps}
-                          
-                          onClick={() => toggleTrackSelection(track.order)}
-                          onContextMenu={(e) => handleContextMenu(e, track)}
-                          isChecked={selectedEntries.includes(track.order)}
-                          track={track}
-                        />
-                      )}
-                    </Draggable>
-                  ))}
-                </InfiniteScroll>
-                {provided.placeholder}
+                      {Row}
+                    </List>
+                  )}
+                </AutoSizer>
               </div>
             )}
           </Droppable>
