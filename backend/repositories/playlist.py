@@ -56,7 +56,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
     def __init__(self, session):
         super().__init__(session, PlaylistDB)
 
-    def get_with_entries(self, playlist_id: int, requests_session=None) -> Optional[Playlist]:
+    def get_with_entries(self, playlist_id: int, limit=None, offset=None, requests_session=None) -> Optional[Playlist]:
         result = (
             self.session.query(self.model)
             .options(
@@ -77,6 +77,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
         if result is None:
             return None
+        
+        if limit and offset:
+            result.entries = result.entries[offset:offset+limit]
 
         entries = [playlist_orm_to_response(e) for e in result.entries]
 
@@ -162,6 +165,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
         for entry in entries:
             self.add_entry(playlist_id, entry, commit=False)
+        
+        self.session.commit()
 
         return self.get_with_entries(playlist_id)
 

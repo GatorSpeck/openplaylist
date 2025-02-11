@@ -28,6 +28,7 @@ from dependencies import get_music_file_repository, get_playlist_repository
 from repositories.music_file import MusicFileRepository
 from repositories.playlist import PlaylistRepository
 from repositories.open_ai_repository import open_ai_repository
+from repositories.last_fm_repository import last_fm_repository
 from plexapi.server import PlexServer
 from plexapi.playlist import Playlist as PlexPlaylist
 
@@ -296,11 +297,11 @@ def read_playlists(repo: PlaylistRepository = Depends(get_playlist_repository)):
 
 @router.get("/playlists/{playlist_id}", response_model=Playlist)
 async def get_playlist(
-    playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)
+    playlist_id: int, limit: Optional[int] = None, offset: Optional[int] = None, repo: PlaylistRepository = Depends(get_playlist_repository)
 ):
     db = Database.get_session()
     try:
-        playlist = repo.get_with_entries(playlist_id, requests_session=requests_cache_session)
+        playlist = repo.get_with_entries(playlist_id, limit, offset, requests_session=requests_cache_session)
         return playlist
     except Exception as e:
         logging.error(f"Failed to get playlist: {e}", exc_info=True)
@@ -444,33 +445,8 @@ def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
     if not api_key:
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
-    # URL encode parameters
-    encoded_title = urllib.parse.quote(title)
-    encoded_artist = urllib.parse.quote(artist)
-
-    # Make request to Last.FM API
-    url = f"http://ws.audioscrobbler.com/2.0/?method=track.search&track={encoded_title}&artist={encoded_artist}&api_key={api_key}&format=json&limit=1"
-    response = requests_cache_session.get(url)
-
-    if response.status_code != 200:
-        raise HTTPException(status_code=500, detail="Failed to fetch data from Last.FM")
-
-    data = response.json()
-    tracks = data.get("results", {}).get("trackmatches", {}).get("track", [])
-
-    logging.debug(data)
-
-    # Return first matching track
-    if tracks:
-        track = tracks[0]
-        return LastFMTrack(
-            title=track.get("name", ""),
-            artist=track.get("artist", ""),
-            url=track.get("url"),
-        )
-
-    return None
-
+    repo = last_fm_repository(api_key)
+    return repo.search_track(artist, title)
 
 # get similar tracks using last.fm API
 @router.get("/lastfm/similar", response_model=List[LastFMTrack])
@@ -479,23 +455,8 @@ def get_similar_tracks(title: str = Query(...), artist: str = Query(...)):
     if not api_key:
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
-    # URL encode parameters
-    encoded_title = urllib.parse.quote(title)
-    encoded_artist = urllib.parse.quote(artist)
-
-    similar_url = f"http://ws.audioscrobbler.com/2.0/?method=track.getsimilar&artist={encoded_artist}&track={encoded_title}&api_key={api_key}&format=json&limit=10"
-    similar_response = requests_cache_session.get(similar_url)
-
-    if similar_response.status_code != 200:
-        raise HTTPException(
-            status_code=500, detail="Failed to fetch similar tracks from Last.FM"
-        )
-
-    similar_data = similar_response.json()
-    logging.debug(similar_data)
-    similar_tracks = similar_data.get("similartracks", {}).get("track", [])
-
-    return [LastFMTrack(title=track.get("name", ""), artist=track.get("artist", {}).get("name", ""), url=track.get("url")) for track in similar_tracks]
+    repo = last_fm_repository(api_key, requests_cache_session)
+    return repo.get_similar_tracks(artist, title)
 
 # get similar tracks
 @router.get("/openai/similar")
