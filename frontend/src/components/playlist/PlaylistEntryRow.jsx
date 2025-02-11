@@ -46,10 +46,16 @@ const PlaylistEntryRow = forwardRef(({
         <EntryTypeBadge type={track.entry_type} />
         <div>{track.order + 1}</div>
       </div>
-      <div className="grid-cell">
-        {imageUrl && <div><img style={{height: 40}} src={imageUrl} alt="Album Art" /></div>}
-        <div>{track.artist || track.album_artist}</div>
-        <div><i>{track.album}</i></div>
+      <div className="grid-cell artist-cell">
+        {imageUrl && (
+          <div className="album-art">
+            <img src={imageUrl} alt="Album Art" />
+          </div>
+        )}
+        <div className="track-info">
+          <div className="artist">{track.artist || track.album_artist}</div>
+          <div className="album"><i>{track.album}</i></div>
+        </div>
       </div>
       <div className="grid-cell">
         {track.title}
