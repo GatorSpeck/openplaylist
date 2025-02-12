@@ -41,11 +41,11 @@ def playlist_orm_to_response(playlist: PlaylistEntryDB):
 class PlaylistRepository(BaseRepository[PlaylistDB]):
     def __init__(self, session):
         super().__init__(session, PlaylistDB)
-
-    def get_with_entries(self, playlist_id: int, limit=None, offset=None) -> Optional[Playlist]:
-        result = (
-            self.session.query(self.model)
-            .options(
+    
+    def _get_playlist_query(self, details = False):
+        query = self.session.query(self.model)
+        if details:
+            query = query.options(
                 joinedload(self.model.entries),
                 joinedload(PlaylistDB.entries.of_type(LastFMEntryDB)).joinedload(
                     LastFMEntryDB.details
@@ -57,6 +57,21 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                     RequestedTrackEntryDB.details
                 ),
             )
+        
+        return query
+    
+    def get_without_details(self, playlist_id: int) -> Optional[Playlist]:
+        result = self.session.query(self.model).filter(self.model.id == playlist_id).first()
+
+        if result is None:
+            return None
+
+        entries = [playlist_orm_to_response(e) for e in result.entries]
+        return Playlist(id=result.id, name=result.name, entries=entries)
+
+    def get_with_entries(self, playlist_id: int, limit=None, offset=None) -> Optional[Playlist]:
+        result = (
+            self._get_playlist_query(details=True)
             .filter(self.model.id == playlist_id)
             .first()
         )
@@ -88,7 +103,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         self.session.refresh(playlist_db)
         return Playlist.from_orm(playlist_db)
 
-    def add_entry(self, playlist_id: int, entry: PlaylistEntryBase, commit=False) -> Playlist:
+    def add_entry(self, playlist_id: int, entry: PlaylistEntryBase, commit=False) -> None:
         if entry.entry_type == "lastfm":
             track = (
                 self.session.query(LastFMTrackDB)
@@ -166,9 +181,41 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 continue
 
         return m3u
+    
+    def get_playlist_entry_details(self, playlist_id: int, entry_ids: List[int]):
+        playlist = (
+            self._get_playlist_query(details=False)
+            .filter(PlaylistDB.id == playlist_id)
+            .join(PlaylistDB.entries)
+            .filter(PlaylistEntryDB.order.in_(entry_ids))
+            .first()
+        )
+        
+        if playlist is None:
+            return []
 
-    def reorder_entries(self, playlist: Playlist) -> Playlist:
-        for i, entry in enumerate(playlist.entries):
+        entries = [entry for entry in playlist.entries if entry.order in entry_ids]
+
+        return [playlist_orm_to_response(e) for e in entries]
+
+    def reorder_entries(self, playlist_id: int, indices_to_reorder: List[int], new_index: int):
+        playlist_entries = (
+            self._get_playlist_query(details=False)
+            .filter(self.model.id == playlist_id)
+            .first()
+        ).entries
+
+        reversed_list = sorted(indices_to_reorder, reverse=True)
+
+        # move block of entries to new index
+        for i in reversed_list[::-1]:
+            entry = playlist_entries.pop(i)
+            playlist_entries.insert(new_index, entry)
+        
+        # reassign order
+        for i, entry in enumerate(playlist_entries):
+            if entry.order == i:
+                continue
             entry.order = i
-
+        
         self.session.commit()
