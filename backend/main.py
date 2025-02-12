@@ -7,7 +7,7 @@ import uvicorn
 from mutagen.easyid3 import EasyID3
 from mutagen.flac import FLAC
 import dotenv
-from typing import Optional, List
+from typing import Optional, List, Callable
 import time
 from tqdm import tqdm
 from datetime import datetime
@@ -18,6 +18,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 import io
 from database import Database
 from models import *
@@ -33,6 +34,30 @@ from plexapi.server import PlexServer
 from plexapi.playlist import Playlist as PlexPlaylist
 from redis import Redis
 
+class TimingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: Callable):
+        start_time = time.time()
+        
+        # Get query parameters as dict
+        params = dict(request.query_params)
+        
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+        except Exception as e:
+            status_code = 500
+            raise e
+        finally:
+            duration = time.time() - start_time
+            logging.info(
+                f"{request.method} {request.url.path} "
+                f"params={params} "
+                f"status={status_code} "
+                f"duration={duration:.3f}s"
+            )
+            
+        return response
+
 app = FastAPI()
 
 requests_cache_session = requests_cache.CachedSession(
@@ -47,6 +72,8 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
+
+app.add_middleware(TimingMiddleware)
 
 dotenv.load_dotenv(override=True)
 

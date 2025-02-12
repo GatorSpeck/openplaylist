@@ -90,7 +90,7 @@ class last_fm_repository:
         
         logging.info(f"Fetching album info from Last.FM for {pair}")
         url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={pair.artist}&album={pair.album}&format=json"
-        response = self.requests_session.get(url)
+        response = self.requests_cache_session.get(url)
         image_url = None
         if response.status_code == 200:
             album_info = response.json()

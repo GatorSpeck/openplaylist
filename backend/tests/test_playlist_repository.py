@@ -31,26 +31,19 @@ def sample_playlist(session):
 
 @pytest.fixture
 def sample_music_file(session):
-    music_file = MusicFileDB(
-        path="/test/path.mp3",
-        title="Test Song",
-        artist="Test Artist",
-        album="Test Album",
-        kind="audio/mp3",
-        last_scanned=datetime.datetime.now()
-    )
-    session.add(music_file)
-    session.commit()
-    return music_file
+    return add_music_file(session, "Test Song")
 
 @pytest.fixture
 def sample_music_file2(session):
+    return add_music_file(session, "Test Song2")
+
+def add_music_file(session, title):
     music_file = MusicFileDB(
-        path="/test/path2.flac",
-        title="Test Song2",
-        artist="Test Artist2",
-        album="Test Album2",
-        kind="audio/flac",
+        path=f"/test/{title}.mp3",
+        title=title,
+        artist="Test Artist",
+        album="Test Album",
+        kind="audio/mp3",
         last_scanned=datetime.datetime.now()
     )
     session.add(music_file)
@@ -65,11 +58,15 @@ def test_add_music_file_entry(playlist_repo, sample_playlist, sample_music_file)
         details=MusicFile.from_orm(sample_music_file)
     )
     
-    result = playlist_repo.add_entry(sample_playlist.id, entry)
+    playlist_repo.add_entry(sample_playlist.id, entry)
+    result = playlist_repo.get_with_entries(sample_playlist.id)
     
     assert len(result.entries) == 1
     assert result.entries[0].entry_type == "music_file"
     assert result.entries[0].music_file_id == sample_music_file.id
+
+    first_entry = playlist_repo.get_playlist_entry_details(sample_playlist.id, [0])[0]
+    assert first_entry.details.title == "Test Song"
 
 def test_add_multiple_entries(playlist_repo, sample_playlist, sample_music_file):
     entries = [
@@ -132,3 +129,23 @@ def test_replace_with_empty_list(playlist_repo, sample_playlist, sample_music_fi
     # Replace with empty list
     result = playlist_repo.replace_entries(sample_playlist.id, [])
     assert len(result.entries) == 0
+
+def test_reorder(session, playlist_repo, sample_playlist, sample_music_file):
+    initial_entries = []
+    for i in range(3):
+        f = add_music_file(session, f"Test Song {i}")
+        entry = MusicFileEntry(
+            order=i,
+            entry_type="music_file",
+            music_file_id=f.id,
+            details=MusicFile.from_orm(f)
+        )
+        initial_entries.append(entry)
+
+    playlist_repo.add_entries(sample_playlist.id, initial_entries)
+    
+    # Reorder entries
+    playlist_repo.reorder_entries(sample_playlist.id, [2, 1], 0)
+
+    result = playlist_repo.get_with_entries(sample_playlist.id)
+    assert [e.details.title for e in result.entries] == ["Test Song 2", "Test Song 1", "Test Song 0"]
