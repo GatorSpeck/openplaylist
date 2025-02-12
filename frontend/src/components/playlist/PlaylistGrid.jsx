@@ -433,12 +433,13 @@ const PlaylistGrid = ({ playlistID }) => {
           <div className="playlist-grid-header-row">
             <div className="grid-cell">
               <input type="checkbox" checked={allEntriesSelected} onChange={toggleAllTracks} />
+              <span className="clickable" onClick={() => handleSort('order')}>
+                # {getSortIndicator('order')}
+              </span>
             </div>
-            <div className="grid-cell clickable" onClick={() => handleSort('order')}>
-              Source {getSortIndicator('order')}
-            </div>
+            
             <div className="grid-cell clickable" onClick={() => handleSort('artist')}>
-              Artist/Album {getSortIndicator('artist')}
+              Artist {getSortIndicator('artist')}
             </div>
             <div className="grid-cell clickable" onClick={() => handleSort('title')}>
               Song {getSortIndicator('title')}
@@ -471,7 +472,7 @@ const PlaylistGrid = ({ playlistID }) => {
                       ref={listRef}
                       height={height}
                       itemCount={filteredEntries.length}
-                      itemSize={60}
+                      itemSize={50}
                       width={width}
                       itemData={{
                         entries: filteredEntries,
@@ -481,8 +482,7 @@ const PlaylistGrid = ({ playlistID }) => {
                         sortColumn,
                         isDraggingOver: snapshot.isDraggingOver
                       }}
-                      overscanCount={10}
-                      className="playlist-virtual-list"
+                      overscanCount={5}
                     >
                       {Row}
                     </List>

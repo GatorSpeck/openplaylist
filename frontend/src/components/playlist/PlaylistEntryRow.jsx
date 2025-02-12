@@ -34,30 +34,26 @@ const PlaylistEntryRow = forwardRef(({
       {...props}
     >
       <div className="grid-cell">
-        <input
-          type="checkbox"
-          checked={isChecked}
-          onChange={onClick}
-          onClick={e => e.stopPropagation()}
-          readOnly
-        />
+        {isChecked ? (
+                <span>✔</span>
+        ) : (imageUrl ? (
+            <div className="album-art">
+                <img src={imageUrl} alt="Album Art" />
+            </div>
+        ) : (
+            <div>
+                <EntryTypeBadge type={track.entry_type} />
+            </div>
+        ))}
       </div>
-      <div className="grid-cell">
-        <EntryTypeBadge type={track.entry_type} />
-        <div>{track.order + 1}</div>
-      </div>
+      
       <div className="grid-cell artist-cell">
-        {imageUrl && (
-          <div className="album-art">
-            <img src={imageUrl} alt="Album Art" />
-          </div>
-        )}
         <div className="track-info">
-          <div className="artist">{track.artist || track.album_artist}</div>
-          <div className="album"><i>{track.album}</i></div>
+          <div className="artist truncate-text">{track.artist || track.album_artist}</div>
+          <div className="album truncate-text" overflow="auto"><i>{track.album}</i></div>
         </div>
       </div>
-      <div className="grid-cell">
+      <div className="grid-cell truncate-text" overflow="auto">
         {track.title}
       </div>
     </div>
