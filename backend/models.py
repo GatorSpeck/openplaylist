@@ -1,5 +1,5 @@
 from __future__ import annotations
-from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Enum, Text, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Enum, Text, Boolean, Index
 from sqlalchemy.orm import (
     relationship,
     declarative_base,
@@ -118,10 +118,14 @@ class PlaylistEntryDB(Base):
     order = Column(Integer)
     details = None
 
-    playlist_id = Column(Integer, ForeignKey("playlists.id", ondelete="CASCADE"))
+    playlist_id = Column(Integer, ForeignKey("playlists.id", ondelete="CASCADE"), index=True)
     playlist = relationship("PlaylistDB", back_populates="entries")
 
     __mapper_args__ = {"polymorphic_on": entry_type, "polymorphic_identity": "entry"}
+
+    __table_args__ = (
+        Index('idx_playlist_entries_playlist_id', 'playlist_id'),
+    )
 
 
 class MusicFileEntryDB(PlaylistEntryDB):

@@ -217,6 +217,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             repo.add_entry(playlist.id, MusicFileEntry(entry_type="music_file", order=i, music_file_id=music_file.id, details=MusicFile.from_orm(music_file)), commit=False)
             i+= 1
 
-        self.session.commit()
+            if i % 100 == 0:
+                self.session.commit()
 
-        return repo.get_with_entries(playlist.id)
+        self.session.commit()
