@@ -102,5 +102,5 @@ class last_fm_repository:
                     redis_session.set(str(pair), image_url)
         
             return {"image_url": image_url}
-
-        raise HTTPException(status_code=500, detail="Failed to fetch album art from Last.FM")
+        else:
+            return {"image_url": None}

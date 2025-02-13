@@ -1,11 +1,30 @@
 import axios from 'axios';
 
 export class PlaylistRepository {
-    async getPlaylistDetails(playlistID, limit = null, offset = null) {
+    async getPlaylistDetails(playlistID) {
         try {
-            const response = await axios.get(`/api/playlists/${playlistID}`, { limit: limit, offset: offset });
+            const count = (await axios.get(`/api/playlists/${playlistID}/count`)).data.count;
 
-            return response.data;
+            let response = null;
+            
+            let firstRun = true;
+
+            while (firstRun || (response.entries.length < count)) {
+                const offset = firstRun ? 0 : response.entries.length;
+                const chunk = await axios.get(`/api/playlists/${playlistID}?limit=100&offset=${offset}`, {
+                });
+
+                if (!response) {
+                    response = chunk.data;
+                }
+                else {
+                    response.entries = response.entries.concat(chunk.data.entries);
+                }
+
+                firstRun = false;
+            }
+
+            return response;
         } catch (error) {
             console.error('Error fetching playlist details:', error);
         }

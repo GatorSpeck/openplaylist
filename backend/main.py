@@ -40,6 +40,11 @@ class TimingMiddleware(BaseHTTPMiddleware):
         
         # Get query parameters as dict
         params = dict(request.query_params)
+
+        logging.info(
+                f"{request.method} {request.url.path} "
+                f"params={params}"
+            )
         
         try:
             response = await call_next(request)
@@ -342,6 +347,12 @@ async def get_playlist(
     finally:
         db.close()
 
+@router.get("/playlists/{playlist_id}/count")
+async def get_playlist_count(
+    playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    return repo.get_count(playlist_id)
+
 @router.get("/stats", response_model=LibraryStats)
 async def get_stats():
     db = Database.get_session()
@@ -360,14 +371,14 @@ async def get_stats():
     )
 
 
-@router.put("/playlists/{playlist_id}", response_model=Playlist)
+@router.put("/playlists/{playlist_id}")
 def update_playlist(
     playlist_id: int,
     playlist: Playlist,
     repo: PlaylistRepository = Depends(get_playlist_repository),
 ):
     try:
-        return repo.replace_entries(playlist_id, playlist.entries)
+        repo.replace_entries(playlist_id, playlist.entries)
     except Exception as e:
         logging.error(f"Failed to update playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update playlist")
@@ -514,7 +525,7 @@ def get_similar_tracks_with_openai(title: str = Query(...), artist: str = Query(
 @router.get("/testing/dumpLibrary/{playlistID}")
 def dump_library(playlistID: int, repo: PlaylistRepository = Depends(get_playlist_repository), music_files: MusicFileRepository = Depends(get_music_file_repository)):
     playlist = repo.get_by_id(playlistID)
-    return music_files.dump_library_to_playlist(playlist, repo)
+    music_files.dump_library_to_playlist(playlist, repo)
 
 @app.get("/api/music-files")
 async def get_music_files(

@@ -17,7 +17,8 @@ const PlaylistEntryRow = forwardRef(({
 
   useEffect(() => {
     const fetchAlbumArt = async () => {
-        const url = await lastFMRepository.fetchAlbumArt(track.artist, track.album);
+        const artistToFetch = track.album_artist || track.artist;
+        const url = await lastFMRepository.fetchAlbumArt(artistToFetch, track.album);
         setImageUrl(url.image_url);
     }
 

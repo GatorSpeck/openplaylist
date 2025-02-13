@@ -17,7 +17,7 @@ class Database:
         if cls._instance is None:
             cls._instance = super(Database, cls).__new__(cls)
             DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////data/playlists.db")
-            cls._engine = create_engine(DATABASE_URL)
+            cls._engine = create_engine(DATABASE_URL, echo = (os.getenv("LOG_LEVEL", "INFO") == "DEBUG"))
             cls._sessionmaker = sessionmaker(
                 autocommit=False, autoflush=False, bind=cls._engine
             )
