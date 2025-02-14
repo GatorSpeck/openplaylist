@@ -8,6 +8,7 @@ from sqlalchemy.orm import (
     mapped_column,
 )
 from typing import List, Optional
+from sqlalchemy.ext.orderinglist import ordering_list
 
 Base = declarative_base()
 
@@ -107,7 +108,8 @@ class PlaylistDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     entries = relationship(
-        "PlaylistEntryDB", back_populates="playlist", order_by="PlaylistEntryDB.order"
+        "PlaylistEntryDB", back_populates="playlist", order_by="PlaylistEntryDB.order", 
+        collection_class=ordering_list("order"),
     )
 
 
