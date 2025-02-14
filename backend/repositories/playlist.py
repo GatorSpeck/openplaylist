@@ -211,7 +211,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
     
     def get_playlist_entry_details(self, playlist_id: int, entry_ids: List[int]):
         playlist = (
-            self._get_playlist_query(details=False)
+            self._get_playlist_query(playlist_id, details=False)
             .filter(PlaylistDB.id == playlist_id)
             .join(PlaylistDB.entries)
             .filter(PlaylistEntryDB.order.in_(entry_ids))
@@ -227,7 +227,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
     def reorder_entries(self, playlist_id: int, indices_to_reorder: List[int], new_index: int):
         playlist_entries = (
-            self._get_playlist_query(details=False)
+            self._get_playlist_query(playlist_id, details=False)
             .filter(self.model.id == playlist_id)
             .first()
         ).entries
