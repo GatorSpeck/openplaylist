@@ -77,7 +77,7 @@ class PlaylistBase(BaseModel):
 class PlaylistEntryBase(BaseModel, ABC):
     id: Optional[int] = None
     image_url: Optional[str] = None
-    order: int
+    order: Optional[int] = None
 
     @abstractmethod
     def to_playlist(self, playlist_id):
@@ -93,7 +93,6 @@ class MusicFileEntry(PlaylistEntryBase):
         return MusicFileEntryDB(
             playlist_id=playlist_id,
             entry_type=self.entry_type,
-            order=self.order,
             music_file_id=self.music_file_id,
         )
 
@@ -137,8 +136,7 @@ class NestedPlaylistEntry(PlaylistEntryBase):
     def to_playlist(self, playlist_id) -> NestedPlaylistEntryDB:
         return NestedPlaylistEntryDB(
             entry_type=self.entry_type,
-            playlist_id=playlist_id,
-            order=self.order,
+            playlist_id=playlist_id
         )
 
     def to_db(self) -> NestedPlaylistDB:
@@ -171,7 +169,6 @@ class LastFMEntry(PlaylistEntryBase):
         return LastFMEntryDB(
             playlist_id=playlist_id,
             entry_type=self.entry_type,
-            order=self.order,
             lastfm_track_id=self.url,
             details=self.details,
         )
@@ -215,7 +212,6 @@ class RequestedTrackEntry(PlaylistEntryBase):
         return RequestedTrackEntryDB(
             playlist_id=playlist_id,
             entry_type=self.entry_type,
-            order=self.order,
             details=self.details
         )
 

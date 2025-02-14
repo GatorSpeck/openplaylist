@@ -135,10 +135,9 @@ def test_replace_with_empty_list(playlist_repo, sample_playlist, sample_music_fi
 
 def test_reorder(session, playlist_repo, sample_playlist, sample_music_file):
     initial_entries = []
-    for i in range(3):
+    for i in range(10):
         f = add_music_file(session, f"Test Song {i}")
         entry = MusicFileEntry(
-            order=i,
             entry_type="music_file",
             music_file_id=f.id,
             details=MusicFile.from_orm(f)
@@ -148,7 +147,7 @@ def test_reorder(session, playlist_repo, sample_playlist, sample_music_file):
     playlist_repo.add_entries(sample_playlist.id, initial_entries)
     
     # Reorder entries
-    playlist_repo.reorder_entries(sample_playlist.id, [2, 1], 0)
+    playlist_repo.replace_entries(sample_playlist.id, initial_entries[::-1])
 
     result = playlist_repo.get_with_entries(sample_playlist.id)
-    assert [e.details.title for e in result.entries] == ["Test Song 2", "Test Song 1", "Test Song 0"]
+    assert [e.details.title for e in result.entries] == [e.details.title for e in initial_entries[::-1]]
