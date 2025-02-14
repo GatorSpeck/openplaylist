@@ -10,13 +10,14 @@ import datetime
 def engine():
     return create_engine('sqlite:///:memory:')
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def session(engine):
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
     yield session
     session.close()
+    Base.metadata.drop_all(engine)
 
 @pytest.fixture
 def playlist_repo(session):
@@ -79,7 +80,8 @@ def test_add_multiple_entries(playlist_repo, sample_playlist, sample_music_file)
         for i in range(3)
     ]
     
-    result = playlist_repo.add_entries(sample_playlist.id, entries)
+    playlist_repo.add_entries(sample_playlist.id, entries)
+    result = playlist_repo.get_with_entries(sample_playlist.id)
     
     assert len(result.entries) == 3
     assert all(e.entry_type == "music_file" for e in result.entries)
@@ -107,7 +109,8 @@ def test_replace_entries(playlist_repo, sample_playlist, sample_music_file, samp
         )
     ]
     
-    result = playlist_repo.replace_entries(sample_playlist.id, new_entries)
+    playlist_repo.replace_entries(sample_playlist.id, new_entries)
+    result = playlist_repo.get_with_entries(sample_playlist.id)
     
     assert len(result.entries) == 1
     assert result.entries[0].order == 0
