@@ -19,7 +19,7 @@ from response_models import (
     LastFMEntry,
     RequestedTrackEntry,
 )
-from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic
+from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 from sqlalchemy import select
 from typing import List, Optional
 import warnings
@@ -62,24 +62,21 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 entries_subquery = entries_subquery.offset(offset).limit(limit)
             
             entries_subquery = entries_subquery.subquery('paginated_entries')
+
+            playlist_entry_polymorphic = selectin_polymorphic(
+                PlaylistEntryDB,
+                [LastFMEntryDB, MusicFileEntryDB, RequestedTrackEntryDB],
+            )
+            details_polymorphic = selectin_polymorphic(
+                BaseNode,
+                [LastFMTrackDB, MusicFileDB, RequestedTrackDB],
+            )
             
             # Use contains_eager with proper polymorphic loading
             query = (
                 query
-                .outerjoin(PlaylistDB.entries)
-                .options(
-                    contains_eager(PlaylistDB.entries),
-                    selectin_polymorphic(PlaylistEntryDB, [
-                        LastFMEntryDB,
-                        MusicFileEntryDB,
-                        RequestedTrackEntryDB
-                    ]),
-                    selectin_polymorphic(BaseNode, [
-                        LastFMTrackDB,
-                        MusicFileDB,
-                        RequestedTrackDB
-                    ])
-                )
+                .options(playlist_entry_polymorphic)
+                .options(details_polymorphic)
             )
             
             if limit is not None and offset is not None:
