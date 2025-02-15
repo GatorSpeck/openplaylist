@@ -13,10 +13,12 @@ def test_db():
     # Create in-memory database for testing
     DATABASE_URL = "sqlite:///:memory:"
     engine = create_engine(
-        DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool
+        DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool,
+        #echo=True,
     )
 
     # Create tables
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     TestingSessionLocal = sessionmaker(bind=engine)
 

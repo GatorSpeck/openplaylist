@@ -383,6 +383,46 @@ def update_playlist(
         logging.error(f"Failed to update playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update playlist")
 
+@router.post("/playlists/{playlist_id}/add")
+def add_to_playlist(
+    playlist_id: int,
+    entries: List[PlaylistEntryBase],
+    undo: Optional[bool] = False,
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+):
+    try:
+        repo.add_entries(playlist_id, entries, undo)
+    except Exception as e:
+        logging.error(f"Failed to add to playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to add to playlist")
+
+@router.post("/playlists/{playlist_id}/remove")
+def add_to_playlist(
+    playlist_id: int,
+    entries: List[PlaylistEntryBase],
+    undo: Optional[bool] = False,
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+):
+    try:
+        repo.remove_entries(playlist_id, entries, undo)
+    except Exception as e:
+        logging.error(f"Failed to add to playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to add to playlist")
+
+@router.post("/playlists/{playlist_id}/reorder")
+def add_to_playlist(
+    playlist_id: int,
+    positions: List[int],
+    new_position: int,
+    undo: Optional[bool] = False,
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+):
+    try:
+        repo.reorder_entries(playlist_id, positions, new_position, undo)
+    except Exception as e:
+        logging.error(f"Failed to add to playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to add to playlist")
+
 @router.post("/playlists/rename/{playlist_id}")
 def rename_playlist(
     playlist_id: int,
