@@ -8,7 +8,8 @@ from models import (
     RequestedTrackEntryDB,
     RequestedTrackDB,
     MusicFileDB,
-    TrackGenreDB
+    TrackGenreDB,
+    BaseNode
 )
 from response_models import (
     Playlist,
@@ -18,9 +19,10 @@ from response_models import (
     LastFMEntry,
     RequestedTrackEntry,
 )
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic
 from sqlalchemy import select
 from typing import List, Optional
+import warnings
 import os
 
 import dotenv
@@ -45,15 +47,13 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
     def __init__(self, session):
         super().__init__(session, PlaylistDB)
     
-    def _get_playlist_query(self, playlist_id: int, details = False, limit = None, offset = None):
-        query = self.session.query(self.model).filter(self.model.id == playlist_id)
+    def _get_playlist_query(self, playlist_id: int, details=False, limit=None, offset=None):
+        query = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id)
+        
         if details:
-            # First get the IDs of the entries we want with proper pagination
+            # Create a subquery to get the paginated entry IDs
             entries_subquery = (
-                self.session.query(
-                    PlaylistEntryDB.id.label('id'),
-                    PlaylistEntryDB.playlist_id.label('playlist_id')
-                )
+                self.session.query(PlaylistEntryDB.id)
                 .filter(PlaylistEntryDB.playlist_id == playlist_id)
                 .order_by(PlaylistEntryDB.order)
             )
@@ -62,26 +62,28 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 entries_subquery = entries_subquery.offset(offset).limit(limit)
             
             entries_subquery = entries_subquery.subquery('paginated_entries')
-
-            # Then join with the main query and load only those entries
+            
+            # Use contains_eager with proper polymorphic loading
             query = (
                 query
-                .join(PlaylistDB.entries)
-                .join(entries_subquery, PlaylistEntryDB.id == entries_subquery.c.id)
+                .outerjoin(PlaylistDB.entries)
                 .options(
-                    joinedload(PlaylistDB.entries.of_type(LastFMEntryDB))
-                    .joinedload(LastFMEntryDB.details)
-                    .joinedload(LastFMTrackDB.genres),
-                    
-                    joinedload(PlaylistDB.entries.of_type(MusicFileEntryDB))
-                    .joinedload(MusicFileEntryDB.details)
-                    .joinedload(MusicFileDB.genres),
-                    
-                    joinedload(PlaylistDB.entries.of_type(RequestedTrackEntryDB))
-                    .joinedload(RequestedTrackEntryDB.details)
-                    .joinedload(RequestedTrackDB.genres)
+                    contains_eager(PlaylistDB.entries),
+                    selectin_polymorphic(PlaylistEntryDB, [
+                        LastFMEntryDB,
+                        MusicFileEntryDB,
+                        RequestedTrackEntryDB
+                    ]),
+                    selectin_polymorphic(BaseNode, [
+                        LastFMTrackDB,
+                        MusicFileDB,
+                        RequestedTrackDB
+                    ])
                 )
             )
+            
+            if limit is not None and offset is not None:
+                query = query.join(entries_subquery, PlaylistEntryDB.id == entries_subquery.c.id)
 
         return query
     
@@ -98,16 +100,11 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         return Playlist(id=result.id, name=result.name, entries=entries)
 
     def get_with_entries(self, playlist_id: int, limit=None, offset=None) -> Optional[Playlist]:
-        query = (
-            self._get_playlist_query(playlist_id, details=True, limit=limit, offset=offset)
-        )
-
+        query = self._get_playlist_query(playlist_id, details=True, limit=limit, offset=offset)
         result = query.first()
         
         if result is None:
             return None
-        
-        print(len(result.entries))
 
         return Playlist(
             id=result.id,
@@ -167,8 +164,11 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             self.session.commit()
 
     def add_entries(
-        self, playlist_id: int, entries: List[PlaylistEntryBase]
-    ) -> Playlist:
+        self, playlist_id: int, entries: List[PlaylistEntryBase], undo=False
+    ) -> None:
+        if undo:
+            return self.undo_add_entries(playlist_id, entries)
+        
         if not entries:
             return Playlist(id=playlist_id, name="", entries=[])
 
@@ -176,10 +176,29 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             self.add_entry(playlist_id, entry, commit=False)
         
         self.session.commit()
+    
+    def remove_entries(
+        self, playlist_id: int, entries: List[int], undo=False
+    ) -> None:
+        if undo:
+            return self.undo_remove_entries(playlist_id, entries)
+        
+        playlist_entries = (
+            self._get_playlist_query(playlist_id, details=False)
+            .filter(self.model.id == playlist_id)
+            .first()
+        ).entries
+
+        for entry in playlist_entries:
+            if entry.order in entries:
+                self.session.delete(entry)
+
+        self.session.commit()
 
     def replace_entries(
         self, playlist_id: int, entries: List[PlaylistEntryBase]
-    ) -> Playlist:
+    ) -> None:
+        warnings.warn("use add/remove/reorder entries instead", DeprecationWarning)
         current_records = (
             self.session.query(PlaylistEntryDB)
             .filter(PlaylistEntryDB.playlist_id == playlist_id)
@@ -224,6 +243,25 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         entries = [entry for entry in playlist.entries if entry.order in entry_ids]
 
         return [playlist_orm_to_response(e) for e in entries]
+    
+    def undo_reorder_entries(self, playlist_id: int, indices_to_reorder: List[int], new_index: int):
+        playlist_entries = (
+            self._get_playlist_query(playlist_id, details=False)
+            .filter(self.model.id == playlist_id)
+            .first()
+        ).entries
+
+        entries_to_move = []
+        for _ in indices_to_reorder:
+            entries_to_move.append(playlist_entries.pop(new_index))
+        
+        reversed_list = sorted(indices_to_reorder)
+
+        for i in reversed_list:
+            entry = entries_to_move.pop(0)
+            playlist_entries.insert(i, entry)
+
+        self.session.commit()
 
     def reorder_entries(self, playlist_id: int, indices_to_reorder: List[int], new_index: int):
         playlist_entries = (
@@ -234,15 +272,26 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
         reversed_list = sorted(indices_to_reorder, reverse=True)
 
+        entries_to_move = [playlist_entries.pop(i) for i in reversed_list]
+
         # move block of entries to new index
-        for i in reversed_list[::-1]:
-            entry = playlist_entries.pop(i)
+        for entry in entries_to_move:
             playlist_entries.insert(new_index, entry)
         
-        # reassign order
-        for i, entry in enumerate(playlist_entries):
-            if entry.order == i:
-                continue
-            entry.order = i
-        
         self.session.commit()
+
+    def undo_add_entries(self, playlist_id: int, entries: List[PlaylistEntryBase]):
+        playlist = self._get_playlist_query(playlist_id).first()
+        if playlist is None:
+            return None
+        
+        num_entries_to_remove = len(entries)
+        entries_to_remove = playlist.entries[-num_entries_to_remove:]
+
+        for e in entries_to_remove:
+            self.session.delete(e)
+
+        self.session.commit()
+    
+    def undo_remove_entries(self, playlist_id: int, entries: List[PlaylistEntryBase]):
+        self.add_entries(playlist_id, entries)
