@@ -529,7 +529,7 @@ def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
     if not api_key:
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
-    repo = last_fm_repository(api_key)
+    repo = last_fm_repository(api_key, requests_cache_session)
     return repo.search_track(artist, title)
 
 # get similar tracks using last.fm API

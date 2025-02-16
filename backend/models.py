@@ -131,6 +131,7 @@ class PlaylistEntryDB(Base):
 
     __mapper_args__ = {"polymorphic_on": entry_type, "polymorphic_identity": "entry"}
 
+Index("playlist_entries_playlist_idx", PlaylistEntryDB.playlist_id)
 
 class MusicFileEntryDB(PlaylistEntryDB):
     __tablename__ = "music_file_entries"

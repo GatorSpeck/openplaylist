@@ -48,39 +48,23 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         super().__init__(session, PlaylistDB)
     
     def _get_playlist_query(self, playlist_id: int, details=False, limit=None, offset=None):
-        query = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id)
-        
-        if details:
-            # Create a subquery to get the paginated entry IDs
-            entries_subquery = (
-                self.session.query(PlaylistEntryDB.id)
-                .filter(PlaylistEntryDB.playlist_id == playlist_id)
-                .order_by(PlaylistEntryDB.order)
-            )
-            
-            if limit is not None and offset is not None:
-                entries_subquery = entries_subquery.offset(offset).limit(limit)
-            
-            entries_subquery = entries_subquery.subquery('paginated_entries')
+        query = (self.session.query(PlaylistDB)
+            .filter(PlaylistDB.id == playlist_id)
+        )
 
-            playlist_entry_polymorphic = selectin_polymorphic(
-                PlaylistEntryDB,
-                [LastFMEntryDB, MusicFileEntryDB, RequestedTrackEntryDB],
-            )
-            details_polymorphic = selectin_polymorphic(
-                BaseNode,
-                [LastFMTrackDB, MusicFileDB, RequestedTrackDB],
-            )
-            
-            # Use contains_eager with proper polymorphic loading
-            query = (
-                query
-                .options(playlist_entry_polymorphic)
-                .options(details_polymorphic)
+        if limit is not None and offset is not None:
+            subquery = (
+                self.session.query(PlaylistEntryDB.id)
+                    .filter(PlaylistEntryDB.playlist_id == playlist_id)
+                    .order_by(PlaylistEntryDB.order)
+                    .limit(limit).offset(offset)
             )
             
-            if limit is not None and offset is not None:
-                query = query.join(entries_subquery, PlaylistEntryDB.id == entries_subquery.c.id)
+            subquery = subquery.subquery("subquery")
+
+            query = query.join(PlaylistEntryDB, PlaylistDB.entries).filter(PlaylistEntryDB.id.in_(select(subquery.c.id)))
+        elif details:
+            query = query.outerjoin(PlaylistEntryDB)
 
         return query
     
