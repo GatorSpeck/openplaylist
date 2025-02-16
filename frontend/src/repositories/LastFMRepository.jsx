@@ -21,6 +21,10 @@ export class LastFMRepository {
     }
 
     async fetchAlbumArt(artist, album) {
+        if (!artist || !album) {
+            return null;
+        }
+        
         try {
             const response = await axios.get(`/api/lastfm/albumart`, {
                 params: {

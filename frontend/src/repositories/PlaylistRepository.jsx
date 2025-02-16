@@ -106,6 +106,18 @@ export class PlaylistRepository {
 
         return this.getPlaylistDetails(id);
     }
+
+    async addTracks(id, tracks, undo) {
+        await axios.post(`/api/playlists/${id}/add`, {"tracks": tracks, "undo": undo});
+    }
+
+    async removeTracks(id, tracks, undo) {
+        await axios.post(`/api/playlists/${id}/remove`, {"tracks": tracks, "undo": undo});
+    }
+
+    async reorderTracks(id, tracks, position, undo) {
+        await axios.post(`/api/playlists/${id}/reorder`, {"tracks": tracks, "positions": position, "undo": undo});
+    }
 };
 
 const playlistRepository = new PlaylistRepository();
