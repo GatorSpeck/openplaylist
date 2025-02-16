@@ -1,13 +1,18 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, memo } from 'react';
 import { Droppable, Draggable, DragDropContext } from 'react-beautiful-dnd';
-import EntryTypeBadge from '../EntryTypeBadge';
 import Snackbar from '../Snackbar';
-import axios from 'axios';
 import mapToTrackModel from '../../lib/mapToTrackModel';
 import '../../styles/PlaylistGrid.css';
 import SearchResultsGrid from '../search/SearchResultsGrid';
 import PlaylistItemContextMenu from './PlaylistItemContextMenu';
 import { FaUndo, FaRedo } from 'react-icons/fa';
+import { useParams, useNavigate } from 'react-router-dom';
+import PlaylistModal from './PlaylistModal';
+import playlistRepository from '../../repositories/PlaylistRepository';
+import InfiniteScroll from 'react-infinite-scroll-component';
+import PlaylistEntryRow from './PlaylistEntryRow';
+import AutoSizer from 'react-virtualized-auto-sizer';
+import { FixedSizeList as List } from 'react-window';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -20,9 +25,46 @@ const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   </div>
 );
 
-const PlaylistGrid = ({
-  playlistID,
-}) => {
+const Row = memo(({ data, index, style }) => {
+  const { 
+    entries,
+    toggleTrackSelection, 
+    handleContextMenu, 
+    selectedEntries,
+    sortColumn,
+    provided 
+  } = data;
+  const track = entries[index];
+
+  return (
+    <Draggable 
+      key={track.order}
+      draggableId={`track-${track.order}`}
+      index={index}
+      isDragDisabled={sortColumn !== 'order'}
+    >
+      {(provided, snapshot) => (
+        <PlaylistEntryRow 
+          ref={provided.innerRef}
+          {...provided.draggableProps}
+          {...provided.dragHandleProps}
+          style={{
+            ...style,
+            ...provided.draggableProps.style,
+          }}
+          className={`playlist-grid-row ${sortColumn !== 'order' ? 'drag-disabled' : ''}`}
+          isDragging={snapshot.isDragging}
+          onClick={() => toggleTrackSelection(track.order)}
+          onContextMenu={(e) => handleContextMenu(e, track)}
+          isChecked={selectedEntries.includes(track.order)}
+          track={track}
+        />
+      )}
+    </Draggable>
+  );
+});
+
+const PlaylistGrid = ({ playlistID }) => {
   const [sortColumn, setSortColumn] = useState('order');
   const [sortDirection, setSortDirection] = useState('asc');
   const [filter, setFilter] = useState('');
@@ -42,25 +84,21 @@ const PlaylistGrid = ({
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const [playlistModalVisible, setPlaylistModalVisible] = useState(false);
+  const gridContentRef = useRef(null);
+  const [displayedItems, setDisplayedItems] = useState(50);
+  const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
     fetchPlaylistDetails(playlistID);
   }, [playlistID]); // Only re-fetch when playlistID changes
 
-  useEffect(() => {
-    if (!isInitialLoad) {
-      writeToDB();
-    } else {
-      setIsInitialLoad(false);
-    }
-  }, [entries]);
-
   const fetchPlaylistDetails = async (playlistId) => {
     try {
-      const response = await axios.get(`/api/playlists/${playlistId}`);
-      setName(response.data.name);
+      const playlist = await playlistRepository.getPlaylistDetails(playlistId);
+      setName(playlist.name);
       setIsInitialLoad(true);  // Set flag before updating entries
-      setEntries(response.data.entries.map(entry => mapToTrackModel(entry)))
+      setEntries(playlist.entries.map(entry => mapToTrackModel(entry)))
     } catch (error) {
       console.error('Error fetching playlist details:', error);
     }
@@ -68,10 +106,7 @@ const PlaylistGrid = ({
 
   const writeToDB = async () => {
     try {
-      await axios.put(`/api/playlists/${playlistID}`, {
-        name: name, // Playlist name is not needed for update
-        entries: entries
-      });
+      await playlistRepository.updateEntries(playlistID, entries);
     } catch (error) {
       console.error('Error writing playlist to DB:', error);
     }
@@ -112,6 +147,8 @@ const PlaylistGrid = ({
     ];
     
     setEntries(newEntries);
+
+    playlistRepository.addTracks(playlistID, tracksToAdd);
       
     setSnackbar({
       open: true,
@@ -120,9 +157,9 @@ const PlaylistGrid = ({
     });
   };
 
-  const handleRenamePlaylist = async (newName) => {
-    setName(newName, () => {
-      axios.post(`/api/playlists/rename/${playlistID}`, { new_name: newName, description: "" });
+  const handleRenamePlaylist = async (playlistID, newName) => {
+    setName(newName, async () => {
+      await playlistRepository.rename(playlistID, newName);
     });
   };
 
@@ -137,6 +174,14 @@ const PlaylistGrid = ({
   const addSongsToPlaylist = async (songs) => {
     const songsArray = Array.isArray(songs) ? songs : [songs];
     await addTracksToPlaylist(songsArray);
+    
+    // Scroll to bottom after state update
+    setTimeout(() => {
+      gridContentRef.current?.scrollTo({
+        top: gridContentRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }, 100);
   };
 
   const removeSongsFromPlaylist = async (indexes) => {
@@ -151,29 +196,18 @@ const PlaylistGrid = ({
       .map((entry, index) => ({ ...entry, order: index }));
     
     setEntries(newEntries);
+
+    playlistRepository.removeTracks(playlistID, indexes.map(i => entries[i]));
   }
 
-  const exportPlaylist = async () => {
-    try {
-      const response = await axios.get(`/api/playlists/${playlistID}/export`, {
-        responseType: 'blob'
-      });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `${name}.m3u`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (error) {
-      console.error('Error exporting playlist:', error);
-    }
+  const exportPlaylist = async (id) => {
+    playlistRepository.export(id);
   };
 
   const onSyncToPlex = async () => {
     try {
-      await axios.get(`/api/playlists/${playlistID}/synctoplex`);
-      
+      await playlistRepository.syncToPlex(playlistID);
+
       setSnackbar({
         open: true,
         message: `'${name}' synced to Plex`
@@ -203,7 +237,11 @@ const PlaylistGrid = ({
         order: index,
       }));
 
+      pushToHistory(entries);
+
       setEntries(updatedEntries);
+
+      playlistRepository.reorderTracks(playlistID, [movedTrack], destination.index, false);
     }
   };
 
@@ -307,6 +345,35 @@ const PlaylistGrid = ({
     return sortDirection === 'asc' ? ' ↑' : ' ↓';
   };
 
+  const navigate = useNavigate();
+
+  // TODO: should happen up through parent component
+  const onDeletePlaylist = async () => {
+    if (!window.confirm('Are you sure you want to delete this playlist?')) {
+      return;
+    }
+    
+    try {
+      await playlistRepository.deletePlaylist(playlistID);
+      navigate('/');
+    } catch (error) {
+      console.error('Error deleting playlist:', error);
+    }
+  }
+
+  const fetchMoreData = () => {
+    if (displayedItems >= filteredEntries.length) {
+      setHasMore(false);
+      return;
+    }
+    
+    setTimeout(() => {
+      setDisplayedItems(displayedItems + 50);
+    }, 500);
+  };
+
+  const listRef = useRef(null);
+
   return (
     <div>
       <h2>{name}</h2>
@@ -325,6 +392,9 @@ const PlaylistGrid = ({
             title="Redo"
           >
             <FaRedo />
+          </button>
+          <button onClick={() => setPlaylistModalVisible(true)}>
+            ...
           </button>
         </div>
 
@@ -361,62 +431,61 @@ const PlaylistGrid = ({
           <div className="playlist-grid-header-row">
             <div className="grid-cell">
               <input type="checkbox" checked={allEntriesSelected} onChange={toggleAllTracks} />
+              <span className="clickable" onClick={() => handleSort('order')}>
+                # {getSortIndicator('order')}
+              </span>
             </div>
-            <div className="grid-cell clickable" onClick={() => handleSort('order')}>
-              Source {getSortIndicator('order')}
-            </div>
+            
             <div className="grid-cell clickable" onClick={() => handleSort('artist')}>
-              Artist/Album {getSortIndicator('artist')}
+              Artist {getSortIndicator('artist')}
             </div>
             <div className="grid-cell clickable" onClick={() => handleSort('title')}>
               Song {getSortIndicator('title')}
             </div>
           </div>
 
-          <Droppable droppableId="playlist">
-            {(provided) => (
-              <div className="playlist-grid-content" {...provided.droppableProps} ref={provided.innerRef}>
-                {filteredEntries.map((track, index) => (
-                  <Draggable 
-                    key={index} 
-                    draggableId={index.toString()} 
-                    index={index}
-                    isDragDisabled={sortColumn !== 'order'} // Add this line
-                  >
-                    {(provided, snapshot) => (
-                      <div 
-                        className={`playlist-grid-row ${sortColumn !== 'order' ? 'drag-disabled' : ''} ${snapshot.isDragging ? 'dragging' : ''}`}
-                        ref={provided.innerRef}
-                        {...provided.draggableProps}
-                        {...provided.dragHandleProps}
-                        onClick={() => toggleTrackSelection(track.order)}
-                        onContextMenu={(e) => handleContextMenu(e, track)}
-                      >
-                        <div className="grid-cell">
-                          <input
-                            type="checkbox"
-                            checked={selectedEntries.includes(track.order)}
-                            readOnly
-                          />
-                        </div>
-                        <div className="grid-cell">
-                          <EntryTypeBadge type={track.entry_type} />
-                          <span>{track.order + 1}</span>
-                        </div>
-                        <div className="grid-cell">
-                          {track.image_url && <div><img style={{height: 40}} src={track.image_url}/></div>}
-                          <div>{track.artist || track.album_artist}</div>
-                          {track.album && <div><i>{track.album}</i></div>}
-                        </div>
-                        <div className="grid-cell"
-                        >
-                          {track.missing ? <s>{track.title}</s> : track.title}
-                        </div>
-                      </div>
-                    )}
-                  </Draggable>
-                ))}
-                {provided.placeholder}
+          <Droppable
+            droppableId="playlist"
+            mode="virtual"
+            renderClone={(provided, snapshot, rubric) => (
+              <PlaylistEntryRow
+                ref={provided.innerRef}
+                {...provided.draggableProps}
+                {...provided.dragHandleProps}
+                isDragging={snapshot.isDragging}
+                track={filteredEntries[rubric.source.index]}
+                isChecked={selectedEntries.includes(rubric.source.index)}
+                className="playlist-grid-row"
+              />
+            )}
+          >
+            {(provided, snapshot) => (
+              <div 
+                className="playlist-grid-content" 
+                ref={provided.innerRef}
+              >
+                <AutoSizer>
+                  {({ height, width }) => (
+                    <List
+                      ref={listRef}
+                      height={height}
+                      itemCount={filteredEntries.length}
+                      itemSize={50}
+                      width={width}
+                      itemData={{
+                        entries: filteredEntries,
+                        toggleTrackSelection,
+                        handleContextMenu,
+                        selectedEntries,
+                        sortColumn,
+                        isDraggingOver: snapshot.isDraggingOver
+                      }}
+                      overscanCount={5}
+                    >
+                      {Row}
+                    </List>
+                  )}
+                </AutoSizer>
               </div>
             )}
           </Droppable>
@@ -427,6 +496,7 @@ const PlaylistGrid = ({
         filter={searchFilter}
         onAddSongs={addSongsToPlaylist}
         visible={searchPanelOpen}
+        playlistID={playlistID}
       />
 
       {contextMenu.visible && (
@@ -438,6 +508,15 @@ const PlaylistGrid = ({
           onFilterByAlbum={() => searchFor(contextMenu.track.album)}
           onFilterByArtist={() => searchFor(contextMenu.track.artist)}
           onAddTracks={(tracks) => addSongsToPlaylist(tracks)}
+        />
+      )}
+
+      {playlistModalVisible && (
+        <PlaylistModal
+          open={playlistModalVisible}
+          onClose={() => setPlaylistModalVisible(false)}
+          onSyncToPlex={onSyncToPlex}
+          onDelete={onDeletePlaylist}
         />
       )}
 

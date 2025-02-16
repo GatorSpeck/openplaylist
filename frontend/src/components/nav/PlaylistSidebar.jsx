@@ -92,9 +92,9 @@ const PlaylistSidebar = ({
           <h2>Playlists</h2>
           <button onClick={onNewPlaylist}>New Playlist</button>
           <div className="playlist-list">
-            {playlists.map((playlist) => (
+            {playlists.map((playlist, index) => (
               <div
-                key={playlist.id}
+                key={index}
                 className={`playlist-item ${selectedPlaylist?.id === playlist.id ? 'selected' : ''}`}
                 onClick={() => handlePlaylistClick(playlist.id)}
                 onContextMenu={(e) => handleContextMenu(e, playlist)}

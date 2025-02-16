@@ -6,6 +6,10 @@ from models import (
     LastFMTrackDB,
     MusicFileEntryDB,
     RequestedTrackEntryDB,
+    RequestedTrackDB,
+    MusicFileDB,
+    TrackGenreDB,
+    BaseNode
 )
 from response_models import (
     Playlist,
@@ -15,12 +19,17 @@ from response_models import (
     LastFMEntry,
     RequestedTrackEntry,
 )
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
+from sqlalchemy import select
 from typing import List, Optional
+import warnings
 import os
+
 import dotenv
 dotenv.load_dotenv(override=True)
 
+import logging
+logger = logging.getLogger(__name__)
 
 def playlist_orm_to_response(playlist: PlaylistEntryDB):
     if playlist.entry_type == "music_file":
@@ -34,69 +43,55 @@ def playlist_orm_to_response(playlist: PlaylistEntryDB):
     else:
         raise ValueError(f"Unknown entry type: {playlist.entry_type}")
 
-class AlbumAndArtist:
-    def __init__(self, album, artist):
-        self.album = album
-        self.artist = artist
-
-    def __str__(self):
-        return f"{self.artist} - {self.album}"
-
-    def __repr__(self):
-        return f"{self.artist} - {self.album}"
-
-    def __eq__(self, other):
-        return self.album == other.album and self.artist == other.artist
-
-    def __hash__(self):
-        return hash((self.album, self.artist))
-
 class PlaylistRepository(BaseRepository[PlaylistDB]):
     def __init__(self, session):
         super().__init__(session, PlaylistDB)
-
-    def get_with_entries(self, playlist_id: int, requests_session=None) -> Optional[Playlist]:
-        result = (
-            self.session.query(self.model)
-            .options(
-                joinedload(self.model.entries),
-                joinedload(PlaylistDB.entries.of_type(LastFMEntryDB)).joinedload(
-                    LastFMEntryDB.details
-                ),
-                joinedload(PlaylistDB.entries.of_type(MusicFileEntryDB)).joinedload(
-                    MusicFileEntryDB.details
-                ),
-                joinedload(
-                    PlaylistDB.entries.of_type(RequestedTrackEntryDB)
-                ).joinedload(RequestedTrackEntryDB.details),
-            )
-            .filter(self.model.id == playlist_id)
-            .first()
+    
+    def _get_playlist_query(self, playlist_id: int, details=False, limit=None, offset=None):
+        query = (self.session.query(PlaylistDB)
+            .filter(PlaylistDB.id == playlist_id)
         )
+
+        if limit is not None and offset is not None:
+            subquery = (
+                self.session.query(PlaylistEntryDB.id)
+                    .filter(PlaylistEntryDB.playlist_id == playlist_id)
+                    .order_by(PlaylistEntryDB.order)
+                    .limit(limit).offset(offset)
+            )
+            
+            subquery = subquery.subquery("subquery")
+
+            query = query.join(PlaylistEntryDB, PlaylistDB.entries).filter(PlaylistEntryDB.id.in_(select(subquery.c.id)))
+        elif details:
+            query = query.outerjoin(PlaylistEntryDB)
+
+        return query
+    
+    def get_count(self, playlist_id: int):
+        return {"count": self.session.query(PlaylistEntryDB).filter(PlaylistEntryDB.playlist_id == playlist_id).count()}
+    
+    def get_without_details(self, playlist_id: int) -> Optional[Playlist]:
+        result = self.session.query(self.model).filter(self.model.id == playlist_id).first()
 
         if result is None:
             return None
 
         entries = [playlist_orm_to_response(e) for e in result.entries]
-
-        if (requests_session is not None) and (os.getenv("LASTFM_API_KEY") is not None):
-            unique_album_and_artist_pairs = set()
-            for entry in entries:
-                if entry.details.album is not None and entry.details.artist is not None:
-                    unique_album_and_artist_pairs.add(AlbumAndArtist(entry.details.album, entry.details.artist))
-
-            for album_and_artist in unique_album_and_artist_pairs:
-                url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={album_and_artist.artist}&album={album_and_artist.album}&format=json"
-                response = requests_session.get(url)
-                if response.status_code == 200:
-                    album_info = response.json()
-                    if "album" in album_info:
-                        album_info = album_info["album"]
-                        for entry in entries:
-                            if entry.details.album == album_info["name"] and entry.details.artist == album_info["artist"]:
-                                entry.image_url = album_info["image"][2]["#text"]
-
         return Playlist(id=result.id, name=result.name, entries=entries)
+
+    def get_with_entries(self, playlist_id: int, limit=None, offset=None) -> Optional[Playlist]:
+        query = self._get_playlist_query(playlist_id, details=True, limit=limit, offset=offset)
+        result = query.first()
+        
+        if result is None:
+            return None
+
+        return Playlist(
+            id=result.id,
+            name=result.name,
+            entries=[playlist_orm_to_response(e) for e in result.entries]
+        )
 
     def get_all(self):
         results = self.session.query(self.model).all()
@@ -115,7 +110,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         self.session.refresh(playlist_db)
         return Playlist.from_orm(playlist_db)
 
-    def add_entry(self, playlist_id: int, entry: PlaylistEntryBase) -> Playlist:
+    def add_entry(self, playlist_id: int, entry: PlaylistEntryBase, commit=False) -> None:
         if entry.entry_type == "lastfm":
             track = (
                 self.session.query(LastFMTrackDB)
@@ -128,31 +123,63 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 self.session.commit()
 
             entry.details = track
+        elif entry.entry_type == "requested":
+            track = (
+                self.session.query(RequestedTrackDB).filter(RequestedTrackDB.artist == entry.details.artist, RequestedTrackDB.title == entry.details.title).first()
+            )
+            if not track:
+                track = entry.to_db()
+                self.session.add(track)
+                self.session.commit()
+            
+            entry.details = track
 
         this_playlist = (
             self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
         )
+
         playlist_entry = entry.to_playlist(playlist_id)
         this_playlist.entries.append(playlist_entry)
-        self.session.commit()
 
-        self.session.refresh(this_playlist)
-        return Playlist.from_orm(this_playlist)
+        if commit:
+            self.session.commit()
 
     def add_entries(
-        self, playlist_id: int, entries: List[PlaylistEntryBase]
-    ) -> Playlist:
+        self, playlist_id: int, entries: List[PlaylistEntryBase], undo=False
+    ) -> None:
+        if undo:
+            return self.undo_add_entries(playlist_id, entries)
+        
         if not entries:
             return Playlist(id=playlist_id, name="", entries=[])
 
         for entry in entries:
-            result = self.add_entry(playlist_id, entry)
+            self.add_entry(playlist_id, entry, commit=False)
+        
+        self.session.commit()
+    
+    def remove_entries(
+        self, playlist_id: int, entries: List[int], undo=False
+    ) -> None:
+        if undo:
+            return self.undo_remove_entries(playlist_id, entries)
+        
+        playlist_entries = (
+            self._get_playlist_query(playlist_id, details=False)
+            .filter(self.model.id == playlist_id)
+            .first()
+        ).entries
 
-        return self.get_with_entries(playlist_id)
+        for entry in playlist_entries:
+            if entry.order in entries:
+                self.session.delete(entry)
+
+        self.session.commit()
 
     def replace_entries(
         self, playlist_id: int, entries: List[PlaylistEntryBase]
-    ) -> Playlist:
+    ) -> None:
+        warnings.warn("use add/remove/reorder entries instead", DeprecationWarning)
         current_records = (
             self.session.query(PlaylistEntryDB)
             .filter(PlaylistEntryDB.playlist_id == playlist_id)
@@ -160,6 +187,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         )
         for record in current_records:
             self.session.delete(record)
+
         self.session.commit()
 
         return self.add_entries(playlist_id, entries)
@@ -180,3 +208,73 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 continue
 
         return m3u
+    
+    def get_playlist_entry_details(self, playlist_id: int, entry_ids: List[int]):
+        playlist = (
+            self._get_playlist_query(playlist_id, details=False)
+            .filter(PlaylistDB.id == playlist_id)
+            .join(PlaylistDB.entries)
+            .filter(PlaylistEntryDB.order.in_(entry_ids))
+            .first()
+        )
+        
+        if playlist is None:
+            return []
+
+        entries = [entry for entry in playlist.entries if entry.order in entry_ids]
+
+        return [playlist_orm_to_response(e) for e in entries]
+    
+    def undo_reorder_entries(self, playlist_id: int, indices_to_reorder: List[int], new_index: int):
+        playlist_entries = (
+            self._get_playlist_query(playlist_id, details=False)
+            .filter(self.model.id == playlist_id)
+            .first()
+        ).entries
+
+        entries_to_move = []
+        for _ in indices_to_reorder:
+            entries_to_move.append(playlist_entries.pop(new_index))
+        
+        reversed_list = sorted(indices_to_reorder)
+
+        for i in reversed_list:
+            entry = entries_to_move.pop(0)
+            playlist_entries.insert(i, entry)
+
+        self.session.commit()
+
+    def reorder_entries(self, playlist_id: int, indices_to_reorder: List[int], new_index: int):
+        playlist = (
+            self._get_playlist_query(playlist_id, details=False)
+            .filter(self.model.id == playlist_id)
+            .first()
+        )
+
+        playlist_entries = playlist.entries
+
+        reversed_list = sorted(indices_to_reorder, reverse=True)
+
+        entries_to_move = [playlist_entries.pop(i) for i in reversed_list]
+
+        # move block of entries to new index
+        for entry in entries_to_move:
+            playlist_entries.insert(new_index, entry)
+        
+        self.session.commit()
+
+    def undo_add_entries(self, playlist_id: int, entries: List[PlaylistEntryBase]):
+        playlist = self._get_playlist_query(playlist_id).first()
+        if playlist is None:
+            return None
+        
+        num_entries_to_remove = len(entries)
+        entries_to_remove = playlist.entries[-num_entries_to_remove:]
+
+        for e in entries_to_remove:
+            self.session.delete(e)
+
+        self.session.commit()
+    
+    def undo_remove_entries(self, playlist_id: int, entries: List[PlaylistEntryBase]):
+        self.add_entries(playlist_id, entries)

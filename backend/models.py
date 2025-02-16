@@ -1,5 +1,5 @@
 from __future__ import annotations
-from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Enum, Text, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Enum, Text, Boolean, Index
 from sqlalchemy.orm import (
     relationship,
     declarative_base,
@@ -8,6 +8,7 @@ from sqlalchemy.orm import (
     mapped_column,
 )
 from typing import List, Optional
+from sqlalchemy.ext.orderinglist import ordering_list
 
 Base = declarative_base()
 
@@ -106,30 +107,38 @@ class PlaylistDB(Base):
     __tablename__ = "playlists"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
-    entries = relationship(
-        "PlaylistEntryDB", back_populates="playlist", order_by="PlaylistEntryDB.order"
-    )
 
+    entries: Mapped[List["PlaylistEntryDB"]] = relationship(
+        order_by="PlaylistEntryDB.order",
+        back_populates="playlist",
+        collection_class=ordering_list("order"),
+        passive_deletes=True,
+        single_parent=True
+    )
 
 class PlaylistEntryDB(Base):
     __tablename__ = "playlist_entries"
     id = Column(Integer, primary_key=True, index=True)
     entry_type = Column(String(50), nullable=False)
     order = Column(Integer)
-    details = None
 
-    playlist_id = Column(Integer, ForeignKey("playlists.id", ondelete="CASCADE"))
-    playlist = relationship("PlaylistDB", back_populates="entries")
+    playlist_id: Mapped[int] = mapped_column(ForeignKey("playlists.id"))
+    playlist: Mapped["PlaylistDB"] = relationship("PlaylistDB", back_populates="entries")
+    
+    details_id = Column(Integer, ForeignKey("base_elements.id"), nullable=True)
+    details = relationship("BaseNode", foreign_keys=[details_id])
 
     __mapper_args__ = {"polymorphic_on": entry_type, "polymorphic_identity": "entry"}
 
+Index("playlist_entries_playlist_idx", PlaylistEntryDB.playlist_id)
 
 class MusicFileEntryDB(PlaylistEntryDB):
     __tablename__ = "music_file_entries"
 
-    id = Column(Integer, ForeignKey("playlist_entries.id"), primary_key=True)
-    music_file_id = Column(Integer, ForeignKey("music_files.id"))
-    details = relationship("MusicFileDB", foreign_keys=[music_file_id])
+    id = Column(Integer, ForeignKey("playlist_entries.id", ondelete="CASCADE"), primary_key=True)
+    
+    music_file_id = Column(Integer, ForeignKey("music_files.id", ondelete="SET NULL"))
+    details = relationship("MusicFileDB", foreign_keys=[music_file_id], passive_deletes=True)
 
     __mapper_args__ = {"polymorphic_identity": "music_file"}
 
@@ -137,10 +146,10 @@ class MusicFileEntryDB(PlaylistEntryDB):
 class NestedPlaylistEntryDB(PlaylistEntryDB):
     __tablename__ = "nested_playlist_entries"
 
-    id = Column(Integer, ForeignKey("playlist_entries.id"), primary_key=True)
+    id = Column(Integer, ForeignKey("playlist_entries.id", ondelete="CASCADE"), primary_key=True)
 
-    nested_playlist_id = Column(Integer, ForeignKey("nested_playlists.id"))
-    details = relationship("NestedPlaylistDB", foreign_keys=[nested_playlist_id])
+    nested_playlist_id = Column(Integer, ForeignKey("nested_playlists.id", ondelete="SET NULL"))
+    details = relationship("NestedPlaylistDB", foreign_keys=[nested_playlist_id], passive_deletes=True)
 
     __mapper_args__ = {"polymorphic_identity": "nested_playlist"}
 
@@ -150,16 +159,17 @@ class LastFMEntryDB(PlaylistEntryDB):
 
     __mapper_args__ = {"polymorphic_identity": "lastfm"}
 
-    id = Column(Integer, ForeignKey("playlist_entries.id"), primary_key=True)
-    lastfm_track_id = Column(Integer, ForeignKey("lastfm_tracks.id"))
-    details = relationship("LastFMTrackDB", foreign_keys=[lastfm_track_id])
+    id = Column(Integer, ForeignKey("playlist_entries.id", ondelete="CASCADE"), primary_key=True)
+    lastfm_track_id = Column(Integer, ForeignKey("lastfm_tracks.id", ondelete="SET NULL"))
+    details = relationship("LastFMTrackDB", foreign_keys=[lastfm_track_id], passive_deletes=True)
 
 
 class RequestedTrackEntryDB(PlaylistEntryDB):
     __tablename__ = "requested_entries"
 
-    id = Column(Integer, ForeignKey("playlist_entries.id"), primary_key=True)
-    requested_track_id = Column(Integer, ForeignKey("requested_tracks.id"))
-    details = relationship("RequestedTrackDB", foreign_keys=[requested_track_id])
+    id = Column(Integer, ForeignKey("playlist_entries.id", ondelete="CASCADE"), primary_key=True)
+    
+    requested_track_id = Column(Integer, ForeignKey("requested_tracks.id", ondelete="SET NULL"))
+    details = relationship("RequestedTrackDB", foreign_keys=[requested_track_id], passive_deletes=True)
 
     __mapper_args__ = {"polymorphic_identity": "requested"}

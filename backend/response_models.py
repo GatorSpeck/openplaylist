@@ -77,7 +77,7 @@ class PlaylistBase(BaseModel):
 class PlaylistEntryBase(BaseModel, ABC):
     id: Optional[int] = None
     image_url: Optional[str] = None
-    order: int
+    order: Optional[int] = None
 
     @abstractmethod
     def to_playlist(self, playlist_id):
@@ -93,7 +93,6 @@ class MusicFileEntry(PlaylistEntryBase):
         return MusicFileEntryDB(
             playlist_id=playlist_id,
             entry_type=self.entry_type,
-            order=self.order,
             music_file_id=self.music_file_id,
         )
 
@@ -137,8 +136,7 @@ class NestedPlaylistEntry(PlaylistEntryBase):
     def to_playlist(self, playlist_id) -> NestedPlaylistEntryDB:
         return NestedPlaylistEntryDB(
             entry_type=self.entry_type,
-            playlist_id=playlist_id,
-            order=self.order,
+            playlist_id=playlist_id
         )
 
     def to_db(self) -> NestedPlaylistDB:
@@ -171,7 +169,6 @@ class LastFMEntry(PlaylistEntryBase):
         return LastFMEntryDB(
             playlist_id=playlist_id,
             entry_type=self.entry_type,
-            order=self.order,
             lastfm_track_id=self.url,
             details=self.details,
         )
@@ -212,11 +209,10 @@ class RequestedTrackEntry(PlaylistEntryBase):
     details: Optional[TrackDetails] = None
 
     def to_playlist(self, playlist_id) -> RequestedTrackEntryDB:
-        print("bar")
         return RequestedTrackEntryDB(
             playlist_id=playlist_id,
             entry_type=self.entry_type,
-            order=self.order,
+            details=self.details
         )
 
     def to_db(self) -> RequestedTrackDB:
@@ -232,10 +228,12 @@ class RequestedTrackEntry(PlaylistEntryBase):
 
     @classmethod
     def from_orm(cls, obj: RequestedTrackEntryDB):
-        print(obj.__dict__)
+        if obj.details is None:
+            return cls(entry_type="requested", id=obj.id, order=obj.order)
         return cls(
             id=obj.id,
             order=obj.order,
+            entry_type="requested",
             details=TrackDetails(
                 title=obj.details.title,
                 artist=obj.details.artist,
@@ -248,11 +246,10 @@ class RequestedTrackEntry(PlaylistEntryBase):
             ),
         )
 
+PlaylistEntry = Union[MusicFileEntry, NestedPlaylistEntry, LastFMEntry, RequestedTrackEntry]
 
 class Playlist(PlaylistBase):
-    entries: List[
-        Union[MusicFileEntry, NestedPlaylistEntry, LastFMEntry, RequestedTrackEntry]
-    ] = [Field(discriminator="entry_type")]
+    entries: List[PlaylistEntry] = [Field(discriminator="entry_type")]
 
     @classmethod
     def from_orm(cls, obj: PlaylistDB):

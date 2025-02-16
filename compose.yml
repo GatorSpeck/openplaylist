@@ -10,6 +10,7 @@ services:
     volumes:
       - ${MUSIC_PATH}:/music:ro
       - ./data:/data:rw
+      - /mnt/shared/Media/Music/Playlist:/playlist:rw
     restart: unless-stopped
     networks:
       - playlist
@@ -19,6 +20,16 @@ services:
       - LASTFM_API_KEY=${LASTFM_API_KEY}
       - LASTFM_SHARED_SECRET=${LASTFM_SHARED_SECRET}
       - MUSIC_PATH=/music
+
+      - PLEX_ENDPOINT=${PLEX_ENDPOINT}
+      - PLEX_TOKEN=${PLEX_TOKEN}
+      - PLEX_LIBRARY=${PLEX_LIBRARY}
+
+      - PLEX_MAP_SOURCE=${PLEX_MAP_SOURCE}
+      - PLEX_MAP_TARGET=${PLEX_MAP_TARGET}
+
+      - PLEX_M3U_DROP_SOURCE=${PLEX_M3U_DROP_SOURCE}
+      - PLEX_M3U_DROP_TARGET=${PLEX_M3U_DROP_TARGET}
 
   frontend:
     build: ./frontend

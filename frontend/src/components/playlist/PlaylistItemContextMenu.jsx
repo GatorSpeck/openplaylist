@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import axios from 'axios';
 import TrackDetailsModal from '../TrackDetailsModal';
+import openAIRepository from '../../repositories/OpenAIRepository';
+import lastFMRepository from '../../repositories/LastFMRepository';
+import libraryRepository from '../../repositories/LibraryRepository';
+import { FaNapster } from 'react-icons/fa';
 
 const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
   const [selectedTracks, setSelectedTracks] = useState(new Set());
@@ -32,24 +35,22 @@ const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
     setPosition({ x: newX, y: newY });
   }, [x, y]);
 
-  const toggleTrack = (e, track) => {
+  const toggleTrack = (e, idx) => {
     e.stopPropagation(); // Stop event from bubbling up
     setSelectedTracks(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(track.url)) {
-        newSet.delete(track.url);
+      if (newSet.has(idx)) {
+        newSet.delete(idx);
       } else {
-        newSet.add(track.url);
+        newSet.add(idx);
       }
       return newSet;
     });
   };
 
   const handleAddSelected = () => {
-    const tracksToAdd = tracks.filter(track => selectedTracks.has(track.url));
-
     // for tracks that have linked music files, add as a music file instead of Last.fm
-    let fixedUpTracks = tracksToAdd;
+    let fixedUpTracks = tracks.filter((_, idx) => selectedTracks.has(idx));
     fixedUpTracks.forEach((track) => {
       if (track.music_file_id) {
         track.entry_type = "music_file";
@@ -59,10 +60,14 @@ const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
       }
     });
 
+    console.log(fixedUpTracks);
+
     onAddTracks(fixedUpTracks);
     setSelectedTracks(new Set());
     onClose();
   };
+
+  console.log(tracks);
 
   return (
     <div className="similar-tracks-popup"
@@ -83,16 +88,16 @@ const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
     >
       <h3>Similar Tracks</h3>
       <ul style={{ listStyle: 'none', padding: 0 }}>
-        {tracks.map((track) => (
-          <li key={track.url} onClick={e => toggleTrack(e, track)}
+        {tracks.map((track, idx) => (
+          <li key={idx} onClick={e => toggleTrack(e, idx)}
             style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
             <input
               type="checkbox"
-              checked={selectedTracks.has(track.url)}
+              checked={selectedTracks.has(idx)}
               style={{ marginRight: '0.5rem' }}
               readOnly
             />
-            <span>{track.artist} - {track.title}{track.music_file_id ? (<span> (in library)</span>) : null}</span>
+            <span>{track.artist} - {track.title}{track.path ? (<span> (in library)</span>) : null}</span>
           </li>
         ))}
       </ul>
@@ -121,6 +126,7 @@ const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
 const PlaylistItemContextMenu = ({ x, y, track, onClose, onFilterByAlbum, onFilterByArtist, onAddTracks, onRemove, onRemoveByArtist, onRemoveByAlbum, onDetails }) => {
   const [position, setPosition] = useState({ x, y });
   const [loading, setLoading] = useState(false);
+  const [openAILoading, setOpenAILoading] = useState(false);
   const [similarTracks, setSimilarTracks] = useState(null);
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const menuRef = useRef(null);
@@ -150,26 +156,35 @@ const PlaylistItemContextMenu = ({ x, y, track, onClose, onFilterByAlbum, onFilt
     setPosition({ x: newX, y: newY });
   }, [x, y]);
 
+  const findSimilarTracksWithOpenAI = async (e) => {
+    e.stopPropagation();
+    setOpenAILoading(true);
+
+    const similars = await openAIRepository.findSimilarTracks(track);
+    const localFiles = await libraryRepository.findLocalFiles(similars);
+
+    // prefer local files
+    setSimilarTracks(localFiles);
+
+    setPosition({ x, y });
+    setOpenAILoading(false);
+  };
+
   const findSimilarTracks = async (e) => {
     e.stopPropagation();
     setLoading(true);
-    try {
-      const response = await axios.get(`/api/lastfm/similar`, {
-        params: {
-          artist: track.artist,
-          title: track.title
-        }
-      });
 
-      const search_results = response.data.map((track) => ({...track, entry_type: 'lastfm'}));
+    const similars = await lastFMRepository.findSimilarTracks(track);
+    const localFiles = await libraryRepository.findLocalFiles(similars);
 
-      setSimilarTracks(search_results);
-      setPosition({ x, y });
-    } catch (error) {
-      console.error('Error fetching similar tracks:', error);
-    } finally {
-      setLoading(false);
-    }
+    console.log(similars);
+    console.log(localFiles);
+
+    // prefer local files
+    setSimilarTracks(localFiles);
+
+    setPosition({ x, y });
+    setLoading(false);
   };
 
   const addSimilarTracks = (tracks) => {
@@ -201,6 +216,9 @@ const PlaylistItemContextMenu = ({ x, y, track, onClose, onFilterByAlbum, onFilt
         </div>
         <div onClick={findSimilarTracks}>
           {loading ? 'Loading similar tracks...' : 'Find Similar Tracks'}
+        </div>
+        <div onClick={findSimilarTracksWithOpenAI}>
+          {openAILoading ? 'Loading similar tracks...' : 'Find Similar Tracks using OpenAI'}
         </div>
       </div>
 

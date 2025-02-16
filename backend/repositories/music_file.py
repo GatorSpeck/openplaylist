@@ -1,7 +1,7 @@
 from .base import BaseRepository
 from models import MusicFileDB, TrackGenreDB
 from typing import Optional
-from response_models import MusicFile, SearchQuery, RequestedTrack, TrackDetails
+from response_models import MusicFile, SearchQuery, RequestedTrack, TrackDetails, Playlist, MusicFileEntry
 from sqlalchemy import text, or_
 import time
 import urllib
@@ -98,16 +98,26 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         artist: Optional[str] = None,
         album: Optional[str] = None,
         genre: Optional[str] = None,
+        exact=False,
         limit: int = 50,
     ) -> list[MusicFile]:
         query = self.session.query(MusicFileDB)
 
         if title:
-            query = query.filter(MusicFileDB.title.ilike(f"%{title}%"))
+            if exact:
+                query = query.filter(MusicFileDB.title == title)
+            else:
+                query = query.filter(MusicFileDB.title.ilike(f"%{title}%"))
         if artist:
-            query = query.filter(MusicFileDB.artist.ilike(f"%{artist}%"))
+            if exact:
+                query = query.filter(MusicFileDB.artist == artist)
+            else:
+                query = query.filter(MusicFileDB.artist.ilike(f"%{artist}%"))
         if album:
-            query = query.filter(MusicFileDB.album.ilike(f"%{album}%"))
+            if exact:
+                query = query.filter(MusicFileDB.album == album)
+            else:
+                query = query.filter(MusicFileDB.album.ilike(f"%{album}%"))
         if genre:
             query = query.filter(MusicFileDB.genres.any(genre))
 
@@ -167,5 +177,47 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             return
 
         music_file.missing = False
+
+        self.session.commit()
+    
+    def find_local_files(self, tracks: list[TrackDetails]):
+        results = []
+
+        for t in tracks:
+            existing_files = self.filter(title=t.title, artist=t.artist, exact=True)
+            if existing_files:
+                results.append(existing_files[0])
+            else:
+                results.append(t)
+
+        return results
+    
+    def contains(self, tracks: list[TrackDetails]):
+        filters = or_([MusicFileDB.title == track.title and MusicFileDB.artist == track.artist for track in tracks])
+        existing_tracks = self.session.query(MusicFileDB).filter(filters).all()
+
+        results = []
+
+        for track in tracks:
+            found = False
+            if track.title in [t.title for t in existing_tracks]:
+                if track.artist in [t.artist for t in existing_tracks]:
+                    found = True
+            
+            results.append({"exists": found, "title": track.title, "artist": track.artist})
+
+        return results
+
+    def dump_library_to_playlist(self, playlist: Playlist, repo: PlaylistRepository) -> Playlist:
+        # get all music files
+        music_files = self.session.query(MusicFileDB).all()
+
+        i = len(playlist.entries)
+        for music_file in music_files:
+            repo.add_entry(playlist.id, MusicFileEntry(entry_type="music_file", order=i, music_file_id=music_file.id, details=MusicFile.from_orm(music_file)), commit=False)
+            i+= 1
+
+            if i % 100 == 0:
+                self.session.commit()
 
         self.session.commit()
