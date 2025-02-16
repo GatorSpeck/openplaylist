@@ -246,11 +246,10 @@ class RequestedTrackEntry(PlaylistEntryBase):
             ),
         )
 
+PlaylistEntry = Union[MusicFileEntry, NestedPlaylistEntry, LastFMEntry, RequestedTrackEntry]
 
 class Playlist(PlaylistBase):
-    entries: List[
-        Union[MusicFileEntry, NestedPlaylistEntry, LastFMEntry, RequestedTrackEntry]
-    ] = [Field(discriminator="entry_type")]
+    entries: List[PlaylistEntry] = [Field(discriminator="entry_type")]
 
     @classmethod
     def from_orm(cls, obj: PlaylistDB):
