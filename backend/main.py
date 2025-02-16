@@ -7,7 +7,7 @@ import uvicorn
 from mutagen.easyid3 import EasyID3
 from mutagen.flac import FLAC
 import dotenv
-from typing import Optional, List
+from typing import Optional, List, Callable
 import time
 from tqdm import tqdm
 from datetime import datetime
@@ -18,6 +18,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 import io
 from database import Database
 from models import *
@@ -27,8 +28,40 @@ from response_models import *
 from dependencies import get_music_file_repository, get_playlist_repository
 from repositories.music_file import MusicFileRepository
 from repositories.playlist import PlaylistRepository
+from repositories.open_ai_repository import open_ai_repository
+from repositories.last_fm_repository import last_fm_repository
 from plexapi.server import PlexServer
 from plexapi.playlist import Playlist as PlexPlaylist
+from redis import Redis
+
+class TimingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: Callable):
+        start_time = time.time()
+        
+        # Get query parameters as dict
+        params = dict(request.query_params)
+
+        logging.info(
+                f"{request.method} {request.url.path} "
+                f"params={params}"
+            )
+        
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+        except Exception as e:
+            status_code = 500
+            raise e
+        finally:
+            duration = time.time() - start_time
+            logging.info(
+                f"{request.method} {request.url.path} "
+                f"params={params} "
+                f"status={status_code} "
+                f"duration={duration:.3f}s"
+            )
+            
+        return response
 
 app = FastAPI()
 
@@ -45,6 +78,8 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+app.add_middleware(TimingMiddleware)
+
 dotenv.load_dotenv(override=True)
 
 # read log level from environment variable
@@ -58,6 +93,11 @@ Base.metadata.create_all(bind=Database.get_engine())
 
 SUPPORTED_FILETYPES = (".mp3", ".flac", ".wav", ".ogg", ".m4a")
 
+redis_session = None
+REDIS_HOST = os.getenv("REDIS_HOST", None)
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+if REDIS_HOST and REDIS_PORT:
+    redis_session = Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
 
 def extract_metadata(file_path, extractor):
     try:
@@ -295,17 +335,23 @@ def read_playlists(repo: PlaylistRepository = Depends(get_playlist_repository)):
 
 @router.get("/playlists/{playlist_id}", response_model=Playlist)
 async def get_playlist(
-    playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)
+    playlist_id: int, limit: Optional[int] = None, offset: Optional[int] = None, repo: PlaylistRepository = Depends(get_playlist_repository)
 ):
     db = Database.get_session()
     try:
-        playlist = repo.get_with_entries(playlist_id, requests_session=requests_cache_session)
+        playlist = repo.get_with_entries(playlist_id, limit, offset)
         return playlist
     except Exception as e:
         logging.error(f"Failed to get playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get playlist")
     finally:
         db.close()
+
+@router.get("/playlists/{playlist_id}/count")
+async def get_playlist_count(
+    playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    return repo.get_count(playlist_id)
 
 @router.get("/stats", response_model=LibraryStats)
 async def get_stats():
@@ -325,17 +371,57 @@ async def get_stats():
     )
 
 
-@router.put("/playlists/{playlist_id}", response_model=Playlist)
+@router.put("/playlists/{playlist_id}")
 def update_playlist(
     playlist_id: int,
     playlist: Playlist,
     repo: PlaylistRepository = Depends(get_playlist_repository),
 ):
     try:
-        return repo.replace_entries(playlist_id, playlist.entries)
+        repo.replace_entries(playlist_id, playlist.entries)
     except Exception as e:
         logging.error(f"Failed to update playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update playlist")
+
+@router.post("/playlists/{playlist_id}/add")
+def add_to_playlist(
+    playlist_id: int,
+    entries: List[PlaylistEntry],
+    undo: Optional[bool] = False,
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+):
+    try:
+        repo.add_entries(playlist_id, entries, undo)
+    except Exception as e:
+        logging.error(f"Failed to add to playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to add to playlist")
+
+@router.post("/playlists/{playlist_id}/remove")
+def remove_from_playlist(
+    playlist_id: int,
+    entries: List[PlaylistEntry],
+    undo: Optional[bool] = False,
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+):
+    try:
+        repo.remove_entries(playlist_id, entries, undo)
+    except Exception as e:
+        logging.error(f"Failed to add to playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to add to playlist")
+
+@router.post("/playlists/{playlist_id}/reorder")
+def reorder_in_playlist(
+    playlist_id: int,
+    positions: List[int],
+    new_position: int,
+    undo: Optional[bool] = False,
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+):
+    try:
+        repo.reorder_entries(playlist_id, positions, new_position)
+    except Exception as e:
+        logging.error(f"Failed to add to playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to add to playlist")
 
 @router.post("/playlists/rename/{playlist_id}")
 def rename_playlist(
@@ -399,8 +485,10 @@ def export_playlist(playlist_id: int, repo: PlaylistRepository = Depends(get_pla
 @router.get("/playlists/{playlist_id}/synctoplex")
 def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
     try:
-        plex_drop = os.getenv("PLEX_M3U_DROP", None)
-        if not plex_drop:
+        M3U_SOURCE = os.getenv("PLEX_M3U_DROP_SOURCE", None)
+        M3U_TARGET = os.getenv("PLEX_M3U_DROP_TARGET", None)
+    
+        if not M3U_SOURCE or not M3U_TARGET:
             raise HTTPException(status_code=500, detail="Plex drop path not configured")
         
         MAP_SOURCE = os.getenv("PLEX_MAP_SOURCE")
@@ -412,7 +500,7 @@ def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(g
 
         playlist = repo.get_by_id(playlist_id)
 
-        m3u_path = pathlib.Path(plex_drop) / f"{playlist.name}.m3u"
+        m3u_path = pathlib.Path(M3U_SOURCE) / f"{playlist.name}.m3u"
 
         with open(m3u_path, "w") as f:
             f.write(m3u_content)
@@ -423,7 +511,7 @@ def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(g
 
         server = PlexServer(plex_endpoint, token=plex_token)
 
-        if MAP_SOURCE and MAP_TARGET:
+        if M3U_SOURCE and M3U_TARGET:
             endpoint = str(m3u_path).replace(MAP_SOURCE, MAP_TARGET)
 
         PlexPlaylist.create(server, playlist.name, section=server.library.section(plex_library), m3ufilepath=endpoint)
@@ -431,39 +519,18 @@ def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(g
         logging.error(f"Failed to sync playlist to Plex: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to sync playlist to Plex")
 
+@router.post("/library/findlocals")
+def find_local_files(tracks: List[TrackDetails], repo: MusicFileRepository = Depends(get_music_file_repository)):
+    return repo.find_local_files(tracks)
+
 @router.get("/lastfm", response_model=LastFMTrack | None)
 def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
-    # URL encode parameters
-    encoded_title = urllib.parse.quote(title)
-    encoded_artist = urllib.parse.quote(artist)
-
-    # Make request to Last.FM API
-    url = f"http://ws.audioscrobbler.com/2.0/?method=track.search&track={encoded_title}&artist={encoded_artist}&api_key={api_key}&format=json&limit=1"
-    response = requests_cache_session.get(url)
-
-    if response.status_code != 200:
-        raise HTTPException(status_code=500, detail="Failed to fetch data from Last.FM")
-
-    data = response.json()
-    tracks = data.get("results", {}).get("trackmatches", {}).get("track", [])
-
-    logging.debug(data)
-
-    # Return first matching track
-    if tracks:
-        track = tracks[0]
-        return LastFMTrack(
-            title=track.get("name", ""),
-            artist=track.get("artist", ""),
-            url=track.get("url"),
-        )
-
-    return None
-
+    repo = last_fm_repository(api_key, requests_cache_session)
+    return repo.search_track(artist, title)
 
 # get similar tracks using last.fm API
 @router.get("/lastfm/similar", response_model=List[LastFMTrack])
@@ -472,40 +539,33 @@ def get_similar_tracks(title: str = Query(...), artist: str = Query(...)):
     if not api_key:
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
-    # URL encode parameters
-    encoded_title = urllib.parse.quote(title)
-    encoded_artist = urllib.parse.quote(artist)
+    repo = last_fm_repository(api_key, requests_cache_session)
+    return repo.get_similar_tracks(artist, title)
 
-    similar_url = f"http://ws.audioscrobbler.com/2.0/?method=track.getsimilar&artist={encoded_artist}&track={encoded_title}&api_key={api_key}&format=json&limit=10"
-    similar_response = requests_cache_session.get(similar_url)
+@router.get("/lastfm/albumart")
+def get_album_art(artist: str = Query(...), album: str = Query(...)):
+    api_key = os.getenv("LASTFM_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
-    if similar_response.status_code != 200:
-        raise HTTPException(
-            status_code=500, detail="Failed to fetch similar tracks from Last.FM"
-        )
+    repo = last_fm_repository(api_key, requests_cache_session)
+    return repo.get_album_art(artist, album, redis_session=redis_session)
 
-    similar_data = similar_response.json()
-    logging.debug(similar_data)
-    similar_tracks = similar_data.get("similartracks", {}).get("track", [])
+# get similar tracks
+@router.get("/openai/similar")
+def get_similar_tracks_with_openai(title: str = Query(...), artist: str = Query(...)):
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+    
+    repo = open_ai_repository(api_key)
 
-    db = Database.get_session()
+    return repo.get_similar_tracks(artist, title)
 
-    results = []
-
-    for t in similar_tracks:
-        track = db.query(MusicFileDB).filter(MusicFileDB.title == t.get("name", "")).filter(MusicFileDB.artist == t.get("artist", {}).get("name", "")).first()
-
-        results.append(
-            LastFMTrack(
-                title=t.get("name", ""),
-                artist=t.get("artist", {}).get("name", ""),
-                url=t.get("url"),
-                music_file_id=track.id if track else None
-            )
-        )
-
-    return results
-
+@router.get("/testing/dumpLibrary/{playlistID}")
+def dump_library(playlistID: int, repo: PlaylistRepository = Depends(get_playlist_repository), music_files: MusicFileRepository = Depends(get_music_file_repository)):
+    playlist = repo.get_by_id(playlistID)
+    music_files.dump_library_to_playlist(playlist, repo)
 
 @app.get("/api/music-files")
 async def get_music_files(

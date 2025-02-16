@@ -7,54 +7,35 @@ from response_models import *
 import datetime
 
 @pytest.fixture
-def engine():
-    return create_engine('sqlite:///:memory:')
+def playlist_repo(test_db):
+    return PlaylistRepository(test_db)
 
 @pytest.fixture
-def session(engine):
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    yield session
-    session.close()
-
-@pytest.fixture
-def playlist_repo(session):
-    return PlaylistRepository(session)
-
-@pytest.fixture
-def sample_playlist(session):
+def sample_playlist(test_db):
     playlist = PlaylistDB(name="Test Playlist")
-    session.add(playlist)
-    session.commit()
+    test_db.add(playlist)
+    test_db.commit()
     return playlist
 
 @pytest.fixture
-def sample_music_file(session):
+def sample_music_file(test_db):
+    return add_music_file(test_db, "Test Song")
+
+@pytest.fixture
+def sample_music_file2(test_db):
+    return add_music_file(test_db, "Test Song2")
+
+def add_music_file(test_db, title):
     music_file = MusicFileDB(
-        path="/test/path.mp3",
-        title="Test Song",
+        path=f"/test/{title}.mp3",
+        title=title,
         artist="Test Artist",
         album="Test Album",
         kind="audio/mp3",
         last_scanned=datetime.datetime.now()
     )
-    session.add(music_file)
-    session.commit()
-    return music_file
-
-@pytest.fixture
-def sample_music_file2(session):
-    music_file = MusicFileDB(
-        path="/test/path2.flac",
-        title="Test Song2",
-        artist="Test Artist2",
-        album="Test Album2",
-        kind="audio/flac",
-        last_scanned=datetime.datetime.now()
-    )
-    session.add(music_file)
-    session.commit()
+    test_db.add(music_file)
+    test_db.commit()
     return music_file
 
 def test_add_music_file_entry(playlist_repo, sample_playlist, sample_music_file):
@@ -65,11 +46,15 @@ def test_add_music_file_entry(playlist_repo, sample_playlist, sample_music_file)
         details=MusicFile.from_orm(sample_music_file)
     )
     
-    result = playlist_repo.add_entry(sample_playlist.id, entry)
+    playlist_repo.add_entry(sample_playlist.id, entry)
+    result = playlist_repo.get_with_entries(sample_playlist.id)
     
     assert len(result.entries) == 1
     assert result.entries[0].entry_type == "music_file"
     assert result.entries[0].music_file_id == sample_music_file.id
+
+    first_entry = playlist_repo.get_playlist_entry_details(sample_playlist.id, [0])[0]
+    assert first_entry.details.title == "Test Song"
 
 def test_add_multiple_entries(playlist_repo, sample_playlist, sample_music_file):
     entries = [
@@ -82,11 +67,17 @@ def test_add_multiple_entries(playlist_repo, sample_playlist, sample_music_file)
         for i in range(3)
     ]
     
-    result = playlist_repo.add_entries(sample_playlist.id, entries)
+    playlist_repo.add_entries(sample_playlist.id, entries)
+    result = playlist_repo.get_with_entries(sample_playlist.id)
     
     assert len(result.entries) == 3
     assert all(e.entry_type == "music_file" for e in result.entries)
     assert [e.order for e in result.entries] == [0, 1, 2]
+
+    playlist_repo.undo_add_entries(sample_playlist.id, entries)
+
+    result = playlist_repo.get_with_entries(sample_playlist.id)
+    assert len(result.entries) == 0
 
 def test_replace_entries(playlist_repo, sample_playlist, sample_music_file, sample_music_file2):
     # Add initial entries
@@ -110,7 +101,8 @@ def test_replace_entries(playlist_repo, sample_playlist, sample_music_file, samp
         )
     ]
     
-    result = playlist_repo.replace_entries(sample_playlist.id, new_entries)
+    playlist_repo.replace_entries(sample_playlist.id, new_entries)
+    result = playlist_repo.get_with_entries(sample_playlist.id)
     
     assert len(result.entries) == 1
     assert result.entries[0].order == 0
@@ -132,3 +124,63 @@ def test_replace_with_empty_list(playlist_repo, sample_playlist, sample_music_fi
     # Replace with empty list
     result = playlist_repo.replace_entries(sample_playlist.id, [])
     assert len(result.entries) == 0
+
+def test_reorder(test_db, playlist_repo, sample_playlist, sample_music_file):
+    initial_entries = []
+    for i in range(10):
+        f = add_music_file(test_db, f"Test Song {i}")
+        entry = MusicFileEntry(
+            entry_type="music_file",
+            music_file_id=f.id,
+            details=MusicFile.from_orm(f)
+        )
+        initial_entries.append(entry)
+
+    playlist_repo.add_entries(sample_playlist.id, initial_entries)
+
+    result = playlist_repo.get_with_entries(sample_playlist.id)
+    assert len(result.entries) == 10
+    assert [e.details.title for e in result.entries] == [e.details.title for e in initial_entries]
+    
+    # Reorder entries
+    playlist_repo.reorder_entries(sample_playlist.id, [1, 3], 0)
+
+    result = playlist_repo.get_with_entries(sample_playlist.id)
+    assert [e.details.title for e in result.entries[0:5]] == ["Test Song 1", "Test Song 3", "Test Song 0", "Test Song 2", "Test Song 4"]
+
+    playlist_repo.undo_reorder_entries(sample_playlist.id, [1, 3], 0)
+
+    result = playlist_repo.get_with_entries(sample_playlist.id)
+    assert [e.details.title for e in result.entries] == [e.details.title for e in initial_entries]
+
+@pytest.mark.skip
+def test_playlist_pagination(playlist_repo, test_db):
+    # Create a playlist with multiple entries
+    playlist = PlaylistDB(name="Test Playlist")
+    test_db.add(playlist)
+    test_db.commit()
+    
+    # Add 5 entries
+    for i in range(5):
+        f = add_music_file(test_db, f"Test Song {i}")
+        entry = MusicFileEntryDB(
+            playlist_id=playlist.id,
+            order=i,
+            entry_type="music_file",
+            music_file_id=f.id,
+            details=f
+        )
+        test_db.add(entry)
+    test_db.commit()
+
+    # Test without pagination
+    result = playlist_repo.get_with_entries(playlist.id)
+    assert len(result.entries) == 5
+    
+    # Test with pagination
+    result = playlist_repo.get_with_entries(playlist.id, limit=2, offset=0)
+    assert len(result.entries) == 2
+    
+    result = playlist_repo.get_with_entries(playlist.id, limit=2, offset=2)
+    assert len(result.entries) == 2
+

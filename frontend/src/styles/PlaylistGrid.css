@@ -1,34 +1,42 @@
 .playlist-container {
-  max-height: 66vh;
+  height: calc(100vh - 120px); /* Taller, only leave space for header/controls */
+  width: calc(100vw - 32px); /* Nearly full width with margins */
   display: flex;
   flex-direction: column;
   border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.playlist-grid-header-row,
+.playlist-grid-row {
+  grid-template-columns: 50px 2fr 2fr;
+  display: grid;
+  gap: 8px;
+  margin: 0px;
 }
 
 .playlist-grid-header-row {
-  display: grid;
-  grid-template-columns: 50px 100px 1fr 1fr;
-  gap: 8px;
-  padding: 8px;
   background: #f5f5f5;
+  border-bottom: 1px solid black;
+  color: black;
   position: sticky;
   top: 0;
   z-index: 2;
-  color: black;
 }
 
 .playlist-grid-content {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
+  min-height: 0; /* Important for Firefox */
 }
 
 .playlist-grid-row {
-  display: grid;
-  grid-template-columns: 50px 100px 1fr 1fr;
-  gap: 8px;
-  padding: 8px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid black;
+  background: white;
+  color: black;
+  min-height: 60px;
+  align-items: left;
 }
 
 .playlist-grid-row.drag-disabled {
@@ -43,12 +51,14 @@
 .playlist-grid-row.dragging {
   background: #f0f0f0;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  color: black;
 }
 
 .grid-cell {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding: 4px;
 }
 
 .clickable {
@@ -79,4 +89,52 @@
 
 .history-controls button:hover:not(:disabled) {
   background: #f0f0f0;
+  color: black;
+}
+
+/* Add styles for virtualized list */
+.ReactVirtualized__Grid {
+  outline: none;
+}
+
+/* Add responsive styles for smaller screens */
+@media (max-width: 768px) {
+  .playlist-container {
+    width: calc(100vw - 16px);
+    margin: 8px;
+  }
+
+  .playlist-grid-header-row,
+  .playlist-grid-row {
+    margin: 1px;
+    padding: 1px;
+    grid-template-columns: 20% 40% 40%;
+    gap: 1px;
+    font-size: 0.8em;
+  }
+}
+
+
+
+.truncate-text {
+  animation: scroll-text 3s linear infinite;
+  overflow: hidden;
+  white-space: nowrap;
+  position: relative;
+}
+
+.album-art {
+  flex-shrink: 0;
+}
+
+.album-art img {
+  height: 40px;
+  width: 40px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.track-info {
+  flex-grow: 1;
+  min-width: 0;
 }

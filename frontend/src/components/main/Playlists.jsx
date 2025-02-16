@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import PlaylistModal from '../nav/PlaylistModal';
 import '../../styles/Playlists.css'; // Import the CSS file for styling
 import Snackbar from '../Snackbar';
 import PlaylistGrid from '../playlist/PlaylistGrid';
 import PlaylistSidebar from '../nav/PlaylistSidebar';
 import mapToTrackModel from '../../lib/mapToTrackModel';
 import { useParams, useNavigate } from 'react-router-dom';
+import playlistRepository from '../../repositories/PlaylistRepository';
+import libraryRepository from '../../repositories/LibraryRepository';
 
 const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
@@ -44,8 +45,8 @@ const Playlists = () => {
 
   const fetchPlaylists = useCallback(async () => {
     try {
-      const response = await axios.get(`/api/playlists`);
-      setPlaylists(response.data);
+      const response = await playlistRepository.getPlaylists();
+      setPlaylists(response);
     } catch (error) {
       console.error('Error fetching playlists:', error);
     }
@@ -53,6 +54,7 @@ const Playlists = () => {
 
   useEffect(() => {
     fetchPlaylists();
+    getLibraryStats();
   }, []); // Only run on mount
 
   useEffect(() => {
@@ -61,6 +63,8 @@ const Playlists = () => {
       if (playlistId) {
         setSelectedPlaylistID(playlistId);
       }
+    } else {
+      setSelectedPlaylistID(null);
     }
   }, [playlistName, playlists]); // Only depends on these two values
 
@@ -71,27 +75,10 @@ const Playlists = () => {
     return `${days} days, ${hours} hours, ${minutes} minutes`;
   }
 
-  // TODO
-  const createPlaylist = async () => {
-    const songs = songToAdd || [];
-    console.log(songs);
-    try {
-      const response = await axios.post(`/api/playlists`, {
-        name: newPlaylistName,
-        entries: songs.map((s, idx) => mapToTrackModel({...s, order: idx}))
-      });
-
-      setPlaylists([...playlists, response.data]);
-      setNewPlaylistName('');
-    } catch (error) {
-      console.error('Error creating playlist:', error);
-    }
-  };
-
   const deletePlaylist = async (playlistId) => {
     if (window.confirm('Are you sure you want to delete this playlist?')) {
       try {
-        await axios.delete(`/api/playlists/${playlistId}`);
+        await playlistRepository.deletePlaylist(playlistId);
         setPlaylists(playlists.filter(playlist => playlist.id !== playlistId));
         if (selectedPlaylistID && selectedPlaylistID === playlistId) {
           setSelectedPlaylistID(null);
@@ -102,11 +89,15 @@ const Playlists = () => {
     }
   };
 
+  const getLibraryStats = async () => {
+    const stats = await libraryRepository.getStats();
+    setLibraryStats({...stats, visible: true});
+  }
+
   const scanMusic = async (full) => {
     setIsScanning(true);
     try {
-      const URI = full ? '/api/fullscan' : '/api/scan';
-      await axios.get(URI);
+      libraryRepository.scan(full);
 
       setSnackbar({
         open: true,
@@ -114,8 +105,8 @@ const Playlists = () => {
         severity: 'success'
       });
 
-      const stats = await axios.get('/api/stats');
-      setLibraryStats({...stats.data, visible: true});
+      const stats = libraryRepository.getStats();
+      setLibraryStats({...stats, visible: true});
     } catch (error) {
       console.error('Error scanning music:', error);
       alert('Error scanning music.');
@@ -143,22 +134,15 @@ const Playlists = () => {
   };
 
   const handleCreateNewPlaylist = async () => {
-    const songList = songToAdd ? (Array.isArray(songToAdd) ? songToAdd : [songToAdd]) : [];
-    console.log(songList);
     try {
-      const response = await axios.post(`/api/playlists`, {
-        name: newPlaylistNameModal,
-        entries: songList.map((s, idx) => mapToTrackModel({...s, order: idx}))
-      });
+      const response = await playlistRepository.create(newPlaylistNameModal);
 
-      setPlaylists([...playlists, response.data]);
+      setPlaylists([...playlists, response]);
 
       setNewPlaylistNameModal('');
-      setShowPlaylistSelectModal(false);
-      setSongToAdd(null);
       setNewPlaylistModalVisible(false);
 
-      setSelectedPlaylistID(response.data.id);
+      navigate(`/playlist/${response.name}`);
     } catch (error) {
       console.error('Error creating new playlist:', error);
     }
@@ -166,17 +150,11 @@ const Playlists = () => {
 
   const handleClonePlaylist = async () => {
     try {
-      const playlistData = {
-        name: clonePlaylistName,
-        entries: playlistToClone.entries
-      };
-      
-      const response = await axios.post(
-        `/api/playlists`, 
-        playlistData
-      );
-      
-      setPlaylists([...playlists, response.data]);
+      const clonePlaylistName = clonePlaylistName.trim();
+
+      const response = await playlistRepository.clone(playlistToClone.id, clonePlaylistName);
+            
+      setPlaylists([...playlists, response]);
       setCloneModalVisible(false);
       setClonePlaylistName('');
       setPlaylistToClone(null);
@@ -184,10 +162,6 @@ const Playlists = () => {
       console.error('Error cloning playlist:', error);
     }
   };
-
-  useEffect(() => {
-    scanMusic(false);
-  }, []);
 
   const handlePlaylistSelect = (id) => {
     const playlistName = playlists.find(p => p.id === id).name;
@@ -220,6 +194,13 @@ const Playlists = () => {
           />
         )}
 
+        {isScanning && (
+          <div className="scan-overlay">
+            <div className="scan-spinner"></div>
+            <h2>Scanning...</h2>
+          </div>
+        )}
+
         {libraryStats.visible && (
           <div>
             <h2>Library Stats</h2>
@@ -231,14 +212,6 @@ const Playlists = () => {
           </div>
         )}
       </div>
-      {showPlaylistSelectModal && (
-        <PlaylistModal
-          playlists={playlists}
-          onClose={() => setShowPlaylistSelectModal(false)}
-          onSelect={null/*handleSelectPlaylist*/}
-          onCreateNewPlaylist={() => setNewPlaylistModalVisible(true)}
-        />
-      )}
       {newPlaylistModalVisible && (
         <div className="modal">
           <div className="modal-content">
