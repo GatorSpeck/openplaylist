@@ -245,11 +245,13 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         self.session.commit()
 
     def reorder_entries(self, playlist_id: int, indices_to_reorder: List[int], new_index: int):
-        playlist_entries = (
+        playlist = (
             self._get_playlist_query(playlist_id, details=False)
             .filter(self.model.id == playlist_id)
             .first()
-        ).entries
+        )
+
+        playlist_entries = playlist.entries
 
         reversed_list = sorted(indices_to_reorder, reverse=True)
 

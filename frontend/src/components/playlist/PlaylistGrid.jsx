@@ -93,14 +93,6 @@ const PlaylistGrid = ({ playlistID }) => {
     fetchPlaylistDetails(playlistID);
   }, [playlistID]); // Only re-fetch when playlistID changes
 
-  useEffect(() => {
-    if (!isInitialLoad) {
-      writeToDB();
-    } else {
-      setIsInitialLoad(false);
-    }
-  }, [entries]);
-
   const fetchPlaylistDetails = async (playlistId) => {
     try {
       const playlist = await playlistRepository.getPlaylistDetails(playlistId);
@@ -155,6 +147,8 @@ const PlaylistGrid = ({ playlistID }) => {
     ];
     
     setEntries(newEntries);
+
+    playlistRepository.addTracks(playlistID, tracksToAdd);
       
     setSnackbar({
       open: true,
@@ -202,6 +196,8 @@ const PlaylistGrid = ({ playlistID }) => {
       .map((entry, index) => ({ ...entry, order: index }));
     
     setEntries(newEntries);
+
+    playlistRepository.removeTracks(playlistID, indexes.map(i => entries[i]));
   }
 
   const exportPlaylist = async (id) => {
@@ -244,6 +240,8 @@ const PlaylistGrid = ({ playlistID }) => {
       pushToHistory(entries);
 
       setEntries(updatedEntries);
+
+      playlistRepository.reorderTracks(playlistID, [movedTrack], destination.index, false);
     }
   };
 

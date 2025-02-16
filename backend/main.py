@@ -386,7 +386,7 @@ def update_playlist(
 @router.post("/playlists/{playlist_id}/add")
 def add_to_playlist(
     playlist_id: int,
-    entries: List[PlaylistEntryBase],
+    entries: List[PlaylistEntry],
     undo: Optional[bool] = False,
     repo: PlaylistRepository = Depends(get_playlist_repository),
 ):
@@ -397,9 +397,9 @@ def add_to_playlist(
         raise HTTPException(status_code=500, detail="Failed to add to playlist")
 
 @router.post("/playlists/{playlist_id}/remove")
-def add_to_playlist(
+def remove_from_playlist(
     playlist_id: int,
-    entries: List[PlaylistEntryBase],
+    entries: List[PlaylistEntry],
     undo: Optional[bool] = False,
     repo: PlaylistRepository = Depends(get_playlist_repository),
 ):
@@ -410,7 +410,7 @@ def add_to_playlist(
         raise HTTPException(status_code=500, detail="Failed to add to playlist")
 
 @router.post("/playlists/{playlist_id}/reorder")
-def add_to_playlist(
+def reorder_in_playlist(
     playlist_id: int,
     positions: List[int],
     new_position: int,
@@ -418,7 +418,7 @@ def add_to_playlist(
     repo: PlaylistRepository = Depends(get_playlist_repository),
 ):
     try:
-        repo.reorder_entries(playlist_id, positions, new_position, undo)
+        repo.reorder_entries(playlist_id, positions, new_position)
     except Exception as e:
         logging.error(f"Failed to add to playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to add to playlist")

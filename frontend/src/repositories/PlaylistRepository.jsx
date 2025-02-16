@@ -108,15 +108,32 @@ export class PlaylistRepository {
     }
 
     async addTracks(id, tracks, undo) {
-        await axios.post(`/api/playlists/${id}/add`, {"tracks": tracks, "undo": undo});
+        await axios.post(`/api/playlists/${id}/add`,
+            tracks, {
+                params: {
+                    "undo": undo
+                }
+            }
+        );
     }
 
     async removeTracks(id, tracks, undo) {
-        await axios.post(`/api/playlists/${id}/remove`, {"tracks": tracks, "undo": undo});
+        await axios.post(`/api/playlists/${id}/remove`, 
+            tracks, {params: {"undo": undo}});
     }
 
     async reorderTracks(id, tracks, position, undo) {
-        await axios.post(`/api/playlists/${id}/reorder`, {"tracks": tracks, "positions": position, "undo": undo});
+        const positions = tracks.map(track => track.order);
+        
+        await axios.post(
+            `/api/playlists/${id}/reorder?new_position=${position}`, // Add position as query param
+            positions, // Send positions array directly as body
+            {
+                params: {
+                    undo: undo || false
+                }
+            }
+        );
     }
 };
 
