@@ -48,7 +48,12 @@ class TrackDetailsMixin:
 class BaseNode(Base):
     __tablename__ = "base_elements"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    entry_type = Column(String(50))
 
+    __mapper_args__ = {
+        "polymorphic_identity": "base",
+        "polymorphic_on": entry_type 
+    }
 
 class TrackGenreDB(Base):
     __tablename__ = "track_genres"
@@ -75,6 +80,8 @@ class MusicFileDB(BaseNode, TrackDetailsMixin):
     )
     missing = Column(Boolean, default=False)
 
+    __mapper_args__ = {"polymorphic_identity": "music_file"}
+
 
 class LastFMTrackDB(BaseNode, TrackDetailsMixin):
     __tablename__ = "lastfm_tracks"
@@ -86,12 +93,46 @@ class LastFMTrackDB(BaseNode, TrackDetailsMixin):
         cascade="all, delete-orphan",
     )
 
+    __mapper_args__ = {"polymorphic_identity": "lastfm_track"}
+
 
 class NestedPlaylistDB(BaseNode):
     __tablename__ = "nested_playlists"
     id = Column(Integer, ForeignKey("base_elements.id"), primary_key=True)
     playlist_id = Column(Integer, ForeignKey("playlists.id"))
 
+    __mapper_args__ = {"polymorphic_identity": "nested_playlist"}
+
+class AlbumDB(BaseNode):
+    __tablename__ = "albums"
+    id = Column(Integer, ForeignKey("base_elements.id"), primary_key=True)
+    title = Column(String, index=True)
+    artist = Column(String, index=True)
+    year = Column(String, index=True)
+    tracks: Mapped[List[AlbumTrackDB]] = relationship(
+        order_by="AlbumTrackDB.order",
+        collection_class=ordering_list("order"),
+        foreign_keys="AlbumTrackDB.album_id",
+    )
+    art_url = Column(String, nullable=True)
+    publisher = Column(String, index=True)
+
+    __mapper_args__ = {"polymorphic_identity": "album"}
+
+class AlbumTrackDB(BaseNode, TrackDetailsMixin):
+    __tablename__ = "album_tracks"
+    id = Column(Integer, ForeignKey("base_elements.id"), primary_key=True)
+
+    linked_track_id = Column(Integer, ForeignKey("base_elements.id"), nullable=True)
+    linked_track = relationship("BaseNode", foreign_keys=[linked_track_id])
+
+    order = Column(Integer, index=True)
+    album_id = Column(Integer, ForeignKey("albums.id"), nullable=False)
+
+    __mapper_args__ = {
+        "inherit_condition": id == BaseNode.id,
+        "polymorphic_identity": "album_track",
+    }
 
 class RequestedTrackDB(BaseNode, TrackDetailsMixin):
     __tablename__ = "requested_tracks"
@@ -101,6 +142,8 @@ class RequestedTrackDB(BaseNode, TrackDetailsMixin):
         primaryjoin="and_(TrackGenreDB.requested_track_id==RequestedTrackDB.id, TrackGenreDB.parent_type=='requested')",
         cascade="all, delete-orphan",
     )
+
+    __mapper_args__ = {"polymorphic_identity": "requested_track"}
 
 
 class PlaylistDB(Base):
@@ -173,3 +216,13 @@ class RequestedTrackEntryDB(PlaylistEntryDB):
     details = relationship("RequestedTrackDB", foreign_keys=[requested_track_id], passive_deletes=True)
 
     __mapper_args__ = {"polymorphic_identity": "requested"}
+
+class AlbumEntryDB(PlaylistEntryDB):
+    __tablename__ = "album_entries"
+
+    id = Column(Integer, ForeignKey("playlist_entries.id", ondelete="CASCADE"), primary_key=True)
+
+    album_id = Column(Integer, ForeignKey("albums.id", ondelete="SET NULL"))
+    details = relationship("AlbumDB", foreign_keys=[album_id], passive_deletes=True)
+
+    __mapper_args__ = {"polymorphic_identity": "album"}

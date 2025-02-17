@@ -18,6 +18,7 @@ from response_models import (
     NestedPlaylistEntry,
     LastFMEntry,
     RequestedTrackEntry,
+    AlbumEntry
 )
 from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 from sqlalchemy import select
@@ -40,6 +41,8 @@ def playlist_orm_to_response(playlist: PlaylistEntryDB):
         return LastFMEntry.from_orm(playlist)
     elif playlist.entry_type == "requested":
         return RequestedTrackEntry.from_orm(playlist)
+    elif playlist.entry_type == "album":
+        return AlbumEntry.from_orm(playlist)
     else:
         raise ValueError(f"Unknown entry type: {playlist.entry_type}")
 

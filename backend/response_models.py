@@ -14,6 +14,9 @@ from models import (
     NestedPlaylistEntryDB,
     LastFMEntryDB,
     RequestedTrackEntryDB,
+    AlbumDB,
+    AlbumTrackDB,
+    AlbumEntryDB,
 )
 from abc import ABC, abstractmethod
 
@@ -66,6 +69,49 @@ class MusicFile(MusicEntity, TrackDetails):
             publisher=obj.publisher,
             genres=[str(s.genre) for s in obj.genres],
             missing=obj.missing,
+        )
+
+class AlbumTrack(MusicEntity):
+    id: Optional[int] = None
+    order: int
+    linked_track: Optional[Union[MusicFile, RequestedTrack, "LastFMTrack"]] = None
+    
+    @classmethod
+    def from_orm(cls, obj: AlbumTrackDB):
+        this_track = None
+
+        if obj.linked_track is not None:
+            if obj.linked_track.entry_type == "music_file":
+                this_track = MusicFile.from_orm(obj.linked_track)
+            elif obj.linked_track.entry_type == "requested":
+                this_track = RequestedTrack.from_orm(obj.linked_track)
+            elif obj.linked_track.entry_type == "lastfm":
+                this_track = LastFMTrack.from_orm(obj.linked_track)
+
+        return cls(
+            id=obj.id,
+            order=obj.order,
+            linked_track=this_track
+        )
+
+
+class Album(MusicEntity):
+    title: str
+    artist: str
+    year: Optional[str] = None
+    publisher: Optional[str] = None
+    tracks: List[AlbumTrack] = []
+    art_url: Optional[str] = None
+
+    @classmethod
+    def from_orm(cls, obj: AlbumDB):
+        return cls(
+            id=obj.id,
+            title=obj.title,
+            artist=obj.artist,
+            year=obj.year,
+            publisher=obj.publisher,
+            tracks=[AlbumTrack.from_orm(t) for t in obj.tracks],
         )
 
 
@@ -246,7 +292,45 @@ class RequestedTrackEntry(PlaylistEntryBase):
             ),
         )
 
-PlaylistEntry = Union[MusicFileEntry, NestedPlaylistEntry, LastFMEntry, RequestedTrackEntry]
+class AlbumEntry(PlaylistEntryBase):
+    entry_type: Literal["album"]
+    album_id: int
+    details: Optional[Album] = None
+
+    def to_playlist(self, playlist_id) -> AlbumEntryDB:
+        return AlbumEntryDB(
+            playlist_id=playlist_id,
+            entry_type=self.entry_type,
+            album_id=self.album_id,
+        )
+
+    def to_db(self) -> AlbumDB:
+        return AlbumDB(
+            id=self.album_id,
+            title=self.details.title,
+            artist=self.details.artist,
+            year=self.details.year,
+            publisher=self.details.publisher,
+            tracks=[t.__class_.from_orm(t) for t in self.details.tracks],
+        )
+
+    @classmethod
+    def from_orm(cls, obj: AlbumEntryDB):
+        return cls(
+            entry_type="album",
+            id=obj.id,
+            order=obj.order,
+            album_id=obj.album_id,
+            details=Album(
+                title=obj.details.title,
+                artist=obj.details.artist,
+                year=obj.details.year,
+                publisher=obj.details.publisher,
+                tracks=[AlbumTrack.from_orm(t) for t in obj.details.tracks],
+            ),
+        )
+
+PlaylistEntry = Union[MusicFileEntry, NestedPlaylistEntry, LastFMEntry, RequestedTrackEntry, AlbumEntry]
 
 class Playlist(PlaylistBase):
     entries: List[PlaylistEntry] = [Field(discriminator="entry_type")]
