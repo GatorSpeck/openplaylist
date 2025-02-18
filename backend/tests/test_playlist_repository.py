@@ -111,6 +111,12 @@ def test_empty_entries_list(playlist_repo, sample_playlist):
     result = playlist_repo.add_entries(sample_playlist.id, [])
     assert len(result.entries) == 0
 
+    result = playlist_repo.get_with_entries(sample_playlist.id)
+    assert len(result.entries) == 0
+
+    result = playlist_repo.get_with_entries(sample_playlist.id, limit=1, offset=0)
+    assert len(result.entries) == 0
+
 def test_replace_with_empty_list(playlist_repo, sample_playlist, sample_music_file):
     # Add initial entry
     initial_entry = MusicFileEntry(
@@ -153,7 +159,6 @@ def test_reorder(test_db, playlist_repo, sample_playlist, sample_music_file):
     result = playlist_repo.get_with_entries(sample_playlist.id)
     assert [e.details.title for e in result.entries] == [e.details.title for e in initial_entries]
 
-@pytest.mark.skip
 def test_playlist_pagination(playlist_repo, test_db):
     # Create a playlist with multiple entries
     playlist = PlaylistDB(name="Test Playlist")

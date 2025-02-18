@@ -65,9 +65,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             
             subquery = subquery.subquery("subquery")
 
-            query = query.join(PlaylistEntryDB, PlaylistDB.entries).filter(PlaylistEntryDB.id.in_(select(subquery.c.id)))
+            query = query.outerjoin(PlaylistEntryDB, PlaylistDB.entries.any() & (PlaylistEntryDB.id.in_(select(subquery.c.id))))
         elif details:
-            query = query.outerjoin(PlaylistEntryDB)
+            query = query.outerjoin(PlaylistEntryDB, PlaylistDB.entries)
 
         return query
     
@@ -89,11 +89,13 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         
         if result is None:
             return None
+        
+        results_to_use = result.entries if (limit is None and offset is None) else result.entries[offset:offset+limit]
 
         return Playlist(
             id=result.id,
             name=result.name,
-            entries=[playlist_orm_to_response(e) for e in result.entries]
+            entries=[playlist_orm_to_response(e) for e in results_to_use]
         )
 
     def get_all(self):
