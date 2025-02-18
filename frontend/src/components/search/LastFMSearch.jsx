@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import LastFMRepository from '../../repositories/LastFMRepository';
 import '../../styles/LastFMSearch.css';
 
 const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
@@ -13,15 +13,10 @@ const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await axios.get('/api/lastfm', {
-        params: { title, artist }
-      });
-
-      response.data.entry_type = 'lastfm';
-      
-      setSearchResult(response.data);
+      const result = await LastFMRepository.searchTrack(title, artist);
+      setSearchResult(result);
     } catch (error) {
-      setError('Failed to fetch track information');
+      setError(error.message);
       console.error('Error fetching Last.FM data:', error);
     } finally {
       setIsLoading(false);
