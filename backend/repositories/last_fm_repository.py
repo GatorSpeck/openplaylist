@@ -3,6 +3,8 @@ from http.client import HTTPException
 import logging
 from response_models import LastFMTrack
 import os
+import warnings
+import json
 
 import dotenv
 dotenv.load_dotenv(override=True)
@@ -77,6 +79,7 @@ class last_fm_repository:
         return None
 
     def get_album_art(self, artist, album, redis_session=None):
+        warnings.warn("This method is deprecated. Use get_album_info instead.", DeprecationWarning)
         if os.getenv("LASTFM_API_KEY") is None:
             raise ValueError("LASTFM_API_KEY environment variable is not set")
         
@@ -104,3 +107,25 @@ class last_fm_repository:
             return {"image_url": image_url}
         else:
             return {"image_url": None}
+
+    def get_album_info(self, artist, album, redis_session=None):
+        if os.getenv("LASTFM_API_KEY") is None:
+            raise ValueError("LASTFM_API_KEY environment variable is not set")
+        
+        pair = AlbumAndArtist(album, artist)
+
+        if redis_session:
+            cached_info = redis_session.get(str(pair))
+            if cached_info is not None:
+                return json.loads(cached_info)
+        
+        logging.info(f"Fetching album info from Last.FM for {pair}")
+        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={pair.artist}&album={pair.album}&format=json"
+        response = self.requests_cache_session.get(url)
+        album_info = None
+        if response.status_code == 200:
+            album_info = response.json()
+            if redis_session:
+                redis_session.set(str(pair), json.dumps(album_info))
+        
+        return album_info
