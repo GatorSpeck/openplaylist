@@ -39,6 +39,20 @@ export class LastFMRepository {
             console.error('Error fetching album art:', error);
         }
     }
+
+    async searchTrack(title, artist) {
+        try {
+            const response = await axios.get('/api/lastfm', {
+                params: { title, artist }
+            });
+            return {
+                ...response.data,
+                entry_type: 'lastfm'
+            };
+        } catch (error) {
+            throw new Error('Failed to fetch track information');
+        }
+    }
 };
 
 const lastFMRepository = new LastFMRepository();

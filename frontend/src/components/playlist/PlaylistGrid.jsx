@@ -133,17 +133,17 @@ const PlaylistGrid = ({ playlistID }) => {
   };
 
   const addTracksToPlaylist = async (tracks) => {
-    const tracksToAdd = Array.isArray(tracks) ? tracks : [tracks];
+    const tracksToAdd = (Array.isArray(tracks) ? tracks : [tracks]).map((track, idx) => ({
+      ...mapToTrackModel(track),
+      order: idx + entries.length, music_file_id: track.id, 
+      entry_type: track.entry_type, url: track.url, details: track
+    }));
 
     pushToHistory(entries);
 
     const newEntries = [
       ...entries,
-      ...tracksToAdd.map((s, idx) => ({
-        ...mapToTrackModel(s),
-        order: idx + entries.length, music_file_id: s.id, 
-        entry_type: s.entry_type, url: s.url, details: s
-      }))
+      ...tracksToAdd
     ];
     
     setEntries(newEntries);
