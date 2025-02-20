@@ -157,7 +157,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             
             entry.details = track
         elif entry.entry_type == "requested_album":
-            this_album = AlbumDB(artist=entry.details.artist, title=entry.details.title)
+            this_album = AlbumDB(artist=entry.details.artist, title=entry.details.title, art_url=entry.details.art_url)
             self.session.add(this_album)
             self.session.commit()
 
@@ -218,11 +218,16 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             .first()
         ).entries
 
+        entry_ids = set([e.order for e in entries])
+
+        count = 0
         for entry in playlist_entries:
-            if entry.order in entries:
+            if entry.order in entry_ids:
+                count += 1
                 self.session.delete(entry)
 
         self.session.commit()
+        logger.info(f"Removed {count} entries from playlist {playlist_id}")
 
     def replace_entries(
         self, playlist_id: int, entries: List[PlaylistEntryBase]

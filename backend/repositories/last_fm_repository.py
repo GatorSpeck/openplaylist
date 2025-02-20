@@ -23,7 +23,7 @@ def from_json(payload) -> Optional[Album]:
     return Album(
         title=payload.get("album").get("name"),
         artist=payload.get("album").get("artist"),
-        image_url=payload.get("album").get("image")[-1].get("#text"),
+        art_url=payload.get("album").get("image")[-1].get("#text"),
         tracks=tracks
     )
 

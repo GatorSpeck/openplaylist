@@ -160,7 +160,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
       setIsPanelOpen(true);
     }
 
-    if (filter.length) {
+    if (filter && filter.length) {
       handleFilterChange({ target: { value: filter } });
     }
   }, [visible, filter]);

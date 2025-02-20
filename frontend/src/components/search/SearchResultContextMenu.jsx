@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
-import TrackDetailsModal from '../TrackDetailsModal';
+import TrackDetailsModal from '../common/TrackDetailsModal';
 
 const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
   const [selectedTracks, setSelectedTracks] = useState(new Set());

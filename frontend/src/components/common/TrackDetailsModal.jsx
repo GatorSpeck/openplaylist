@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import '../styles/TrackDetailsModal.css';
+import '../../styles/TrackDetailsModal.css';
 
 const TrackDetailsModal = ({ track, onClose }) => {
   if (!track) return null;
