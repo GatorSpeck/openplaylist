@@ -209,7 +209,7 @@ def test_add_album_entry(test_db, playlist_repo, sample_playlist):
 
     entry = AlbumEntry(
         order=0,
-        entry_type="album",
+        entry_type="requested_album",
         album_id=album.id,
         details=Album.from_orm(album)
     )

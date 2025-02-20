@@ -551,7 +551,7 @@ def get_album_art(artist: str = Query(...), album: str = Query(...)):
     repo = last_fm_repository(api_key, requests_cache_session)
     return repo.get_album_art(artist, album, redis_session=redis_session)
 
-@router.get("/lastfm/album/info")
+@router.get("/lastfm/album/info", response_model=Optional[Album])
 def get_album_info(artist: str = Query(...), album: str = Query(...)):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:

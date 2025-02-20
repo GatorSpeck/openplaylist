@@ -311,7 +311,7 @@ class AlbumEntry(PlaylistEntryBase):
             artist=self.details.artist,
             year=self.details.year,
             publisher=self.details.publisher,
-            tracks=[t.__class_.from_orm(t) for t in self.details.tracks],
+            tracks=[t.__class__.from_orm(t) for t in self.details.tracks],
         )
 
     @classmethod
@@ -330,7 +330,33 @@ class AlbumEntry(PlaylistEntryBase):
             ),
         )
 
-PlaylistEntry = Union[MusicFileEntry, NestedPlaylistEntry, LastFMEntry, RequestedTrackEntry, AlbumEntry]
+class RequestedAlbumEntry(PlaylistEntryBase):
+    entry_type: Literal["requested_album"]
+    details: Optional[Album] = None
+
+    def to_playlist(self, playlist_id) -> AlbumEntryDB:
+        return AlbumEntryDB(
+            playlist_id=playlist_id,
+            entry_type=self.entry_type,
+            details=self.details
+        )
+
+    @classmethod
+    def from_orm(cls, obj: AlbumEntryDB):
+        return cls(
+            entry_type="requested_album",
+            id=obj.id,
+            order=obj.order,
+            details=Album(
+                title=obj.details.title,
+                artist=obj.details.artist,
+                year=obj.details.year,
+                publisher=obj.details.publisher,
+                tracks=[AlbumTrack.from_orm(t) for t in obj.details.tracks],
+            ),
+        )
+
+PlaylistEntry = Union[MusicFileEntry, NestedPlaylistEntry, LastFMEntry, RequestedTrackEntry, AlbumEntry, RequestedAlbumEntry]
 
 class Playlist(PlaylistBase):
     entries: List[PlaylistEntry] = [Field(discriminator="entry_type")]

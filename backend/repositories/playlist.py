@@ -9,7 +9,9 @@ from models import (
     RequestedTrackDB,
     MusicFileDB,
     TrackGenreDB,
-    BaseNode
+    BaseNode,
+    AlbumDB,
+    AlbumTrackDB,
 )
 from response_models import (
     Playlist,
@@ -43,6 +45,8 @@ def playlist_orm_to_response(playlist: PlaylistEntryDB):
         return RequestedTrackEntry.from_orm(playlist)
     elif playlist.entry_type == "album":
         return AlbumEntry.from_orm(playlist)
+    elif playlist.entry_type == "requested_album":
+        return AlbumEntry.from_orm(playlist)
     else:
         raise ValueError(f"Unknown entry type: {playlist.entry_type}")
 
@@ -68,6 +72,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             query = query.outerjoin(PlaylistEntryDB, PlaylistDB.entries.any() & (PlaylistEntryDB.id.in_(select(subquery.c.id))))
         elif details:
             query = query.outerjoin(PlaylistEntryDB, PlaylistDB.entries)
+        
+        
 
         return query
     
@@ -138,6 +144,31 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 self.session.commit()
             
             entry.details = track
+        elif entry.entry_type == "requested_album":
+            entry.entry_type = "album"
+            this_album = AlbumDB(artist=entry.details.artist, title=entry.details.title)
+            self.session.add(this_album)
+            self.session.commit()
+
+            if entry.details.tracks:
+                for i, track in enumerate(entry.details.tracks):
+                    # add new requested track
+                    artist = track.linked_track.artist if track.linked_track.artist else track.linked_track.album_artist
+                    new_track = RequestedTrackDB(artist=artist, title=track.linked_track.title)
+                    self.session.add(new_track)
+                    self.session.commit()
+
+                    this_album.tracks.append(AlbumTrackDB(
+                        order=i,
+                        linked_track=new_track,
+                        album_id=this_album.id
+                    ))
+                
+                self.session.commit()
+            
+            entry.details = this_album
+        else:
+            pass  # no need to hook up any new data
 
         this_playlist = (
             self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()

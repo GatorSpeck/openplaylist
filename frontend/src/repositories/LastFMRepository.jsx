@@ -40,6 +40,20 @@ export class LastFMRepository {
         }
     }
 
+    async searchAlbum(title, artist) {
+        try {
+            const response = await axios.get('/api/lastfm/album/info', {
+                params: { album: title, artist }
+            });
+            return {
+                ...response.data,
+                entry_type: 'requested_album'
+            };
+        } catch (error) {
+            throw new Error('Failed to fetch album information');
+        }
+    }
+
     async searchTrack(title, artist) {
         try {
             const response = await axios.get('/api/lastfm', {
