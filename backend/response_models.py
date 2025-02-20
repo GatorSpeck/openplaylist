@@ -356,6 +356,7 @@ class RequestedAlbumEntry(PlaylistEntryBase):
                 year=obj.details.year,
                 publisher=obj.details.publisher,
                 tracks=[AlbumTrack.from_orm(t) for t in obj.details.tracks],
+                art_url=obj.details.art_url,
             ),
         )
 

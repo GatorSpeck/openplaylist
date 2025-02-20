@@ -4,7 +4,7 @@ import Snackbar from '../Snackbar';
 import mapToTrackModel from '../../lib/mapToTrackModel';
 import '../../styles/PlaylistGrid.css';
 import SearchResultsGrid from '../search/SearchResultsGrid';
-import PlaylistItemContextMenu from './PlaylistItemContextMenu';
+import ContextMenu from '../common/ContextMenu';
 import { FaUndo, FaRedo } from 'react-icons/fa';
 import { useParams, useNavigate } from 'react-router-dom';
 import PlaylistModal from './PlaylistModal';
@@ -13,6 +13,10 @@ import InfiniteScroll from 'react-infinite-scroll-component';
 import PlaylistEntryRow from './PlaylistEntryRow';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList as List } from 'react-window';
+import TrackDetailsModal from '../common/TrackDetailsModal';
+import openAIRepository from '../../repositories/OpenAIRepository';
+import lastFMRepository from '../../repositories/LastFMRepository';
+import libraryRepository from '../../repositories/LibraryRepository';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -64,6 +68,120 @@ const Row = memo(({ data, index, style }) => {
   );
 });
 
+const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
+  const [selectedTracks, setSelectedTracks] = useState(new Set());
+  const [position, setPosition] = useState({ x, y });
+
+  useEffect(() => {
+    const popup = document.querySelector('.similar-tracks-popup');
+    if (!popup) return;
+
+    const rect = popup.getBoundingClientRect();
+    const viewport = {
+      width: window.innerWidth,
+      height: window.innerHeight
+    };
+
+    let newY = y;
+    let newX = x + 200;
+
+    // Check vertical overflow
+    if (y + rect.height > viewport.height) {
+      newY = Math.max(0, viewport.height - rect.height);
+    }
+
+    // Check horizontal overflow
+    if (x + 200 + rect.width > viewport.width) {
+      newX = Math.max(0, x - rect.width);
+    }
+
+    setPosition({ x: newX, y: newY });
+  }, [x, y]);
+
+  const toggleTrack = (e, idx) => {
+    e.stopPropagation(); // Stop event from bubbling up
+    setSelectedTracks(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(idx)) {
+        newSet.delete(idx);
+      } else {
+        newSet.add(idx);
+      }
+      return newSet;
+    });
+  };
+
+  const handleAddSelected = () => {
+    // for tracks that have linked music files, add as a music file instead of Last.fm
+    let fixedUpTracks = tracks.filter((_, idx) => selectedTracks.has(idx));
+    fixedUpTracks.forEach((track) => {
+      if (track.music_file_id) {
+        track.entry_type = "music_file";
+        track.id = track.music_file_id;
+
+        track.path = ""; // need a dummy value here to make the backend happy
+      }
+    });
+
+    onAddTracks(fixedUpTracks);
+    setSelectedTracks(new Set());
+    onClose();
+  };
+
+  return (
+    <div className="similar-tracks-popup"
+      onClick={e => e.stopPropagation()} // Stop clicks within popup from closing menu
+      style={{
+        position: 'fixed',
+        left: position.x,
+        top: position.y,
+        zIndex: 1000,
+        background: 'white',
+        color: 'black',
+        padding: '1rem',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+        borderRadius: '4px',
+        maxHeight: '80vh',
+        overflowY: 'auto'
+      }}
+    >
+      <h3>Similar Tracks</h3>
+      <ul style={{ listStyle: 'none', padding: 0 }}>
+        {tracks.map((track, idx) => (
+          <li key={idx} onClick={e => toggleTrack(e, idx)}
+            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <input
+              type="checkbox"
+              checked={selectedTracks.has(idx)}
+              style={{ marginRight: '0.5rem' }}
+              readOnly
+            />
+            <span>{track.artist} - {track.title}{track.path ? (<span> (in library)</span>) : null}</span>
+          </li>
+        ))}
+      </ul>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
+        <button
+          onClick={handleAddSelected}
+          disabled={selectedTracks.size === 0}
+          style={{
+            padding: '0.5rem 1rem',
+            background: '#4CAF50',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: selectedTracks.size === 0 ? 'not-allowed' : 'pointer',
+            opacity: selectedTracks.size === 0 ? 0.5 : 1
+          }}
+        >
+          Add Selected ({selectedTracks.size})
+        </button>
+        <button onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+};
+
 const PlaylistGrid = ({ playlistID }) => {
   const [sortColumn, setSortColumn] = useState('order');
   const [sortDirection, setSortDirection] = useState('asc');
@@ -88,6 +206,12 @@ const PlaylistGrid = ({ playlistID }) => {
   const gridContentRef = useRef(null);
   const [displayedItems, setDisplayedItems] = useState(50);
   const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [openAILoading, setOpenAILoading] = useState(false);
+  const [similarTracks, setSimilarTracks] = useState(null);
+  const [showTrackDetails, setShowTrackDetails] = useState(false);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [selectedTrack, setSelectedTrack] = useState(null);
 
   useEffect(() => {
     fetchPlaylistDetails(playlistID);
@@ -164,11 +288,18 @@ const PlaylistGrid = ({ playlistID }) => {
   };
 
   const onRemoveByAlbum = async (album) => {
-    setEntries(entries.filter(entry => entry.album === album).map(entry => entry.order));
+    // identify indexes of tracks to remove
+    const indexes = entries.map((entry, idx) => entry.album === album ? idx : null).filter(idx => idx !== null);
+    
+    playlistRepository.removeTracks(playlistID, indexes.map(i => entries[i]));
+    setEntries(entries.filter((entry, idx) => !indexes.includes(idx)));
   }
 
   const onRemoveByArtist = async (artist) => {
-    setEntries(entries.filter(entry => entry.artist === artist).map(entry => entry.order));
+    const indexes = entries.map((entry, idx) => entry.artist === artist ? idx : null).filter(idx => idx !== null);
+
+    playlistRepository.removeTracks(playlistID, indexes.map(i => entries[i]));
+    setEntries(entries.filter((entry, idx) => !indexes.includes(idx)));
   }
 
   const addSongsToPlaylist = async (songs) => {
@@ -273,21 +404,6 @@ const PlaylistGrid = ({ playlistID }) => {
     setAllTracksSelected(!allPlaylistEntriesSelected);
   };
 
-  const handleShowTrackDetails = (track) => {
-    setSelectedTrack(track);
-    setShowTrackDetails(true);
-  };
-
-  const handleContextMenu = (e, track) => {
-    e.preventDefault();
-    setContextMenu({
-      visible: true,
-      x: e.clientX,
-      y: e.clientY,
-      track: track
-    });
-  };
-
   const handleSnackbarClose = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
@@ -361,16 +477,66 @@ const PlaylistGrid = ({ playlistID }) => {
     }
   }
 
-  const fetchMoreData = () => {
-    if (displayedItems >= filteredEntries.length) {
-      setHasMore(false);
-      return;
-    }
-    
-    setTimeout(() => {
-      setDisplayedItems(displayedItems + 50);
-    }, 500);
+  const findSimilarTracksWithOpenAI = async (track) => {
+    setOpenAILoading(true);
+
+    const similars = await openAIRepository.findSimilarTracks(track);
+    const localFiles = await libraryRepository.findLocalFiles(similars);
+
+    // prefer local files
+    setSimilarTracks(localFiles);
+
+    setPosition({ x, y });
+    setOpenAILoading(false);
   };
+
+  const findSimilarTracks = async (track) => {
+    setLoading(true);
+
+    const similars = await lastFMRepository.findSimilarTracks(track);
+    const localFiles = await libraryRepository.findLocalFiles(similars);
+
+    // prefer local files
+    setSimilarTracks(localFiles);
+
+    setPosition({ x, y });
+    setLoading(false);
+  };
+
+  const addSimilarTracks = (tracks) => {
+    addSongsToPlaylist(tracks);
+    setSimilarTracks(null);
+  }
+
+  const handleShowDetails = (track) => {
+    setSelectedTrack(track);
+    setShowTrackDetails(true);
+  }
+
+  const handleContextMenu = (e, track) => {
+    e.preventDefault();
+
+    const isAlbum = track.entry_type === 'requested_album' || track.entry_type === 'album';
+
+    const options = [
+      { label: 'Details', onClick: () => handleShowDetails(track) },
+      { label: 'Send to Search', onClick: () => searchFor(track.title) },
+      !isAlbum ? { label: 'Find Similar Tracks (Last.fm)', onClick: () => findSimilarTracks(track) } : null,
+      !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: () => findSimilarTracksWithOpenAI(track) } : null,
+      { label: 'Search for Album', onClick: () => searchFor(track.album) },
+      { label: 'Search for Artist', onClick: () => searchFor(track.artist) },
+      { label: 'Remove', onClick: () => removeSongsFromPlaylist([track.order]) },
+      { label: 'Remove by Artist', onClick: () => onRemoveByArtist(track.artist) },
+      { label: 'Remove by Album', onClick: () => onRemoveByAlbum(track.album) }
+    ];
+
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      options
+    });
+  }
 
   const listRef = useRef(null);
 
@@ -455,6 +621,7 @@ const PlaylistGrid = ({ playlistID }) => {
                 isDragging={snapshot.isDragging}
                 track={filteredEntries[rubric.source.index]}
                 isChecked={selectedEntries.includes(rubric.source.index)}
+                handleContextMenu={handleContextMenu}
                 className="playlist-grid-row"
               />
             )}
@@ -475,9 +642,9 @@ const PlaylistGrid = ({ playlistID }) => {
                       itemData={{
                         entries: filteredEntries,
                         toggleTrackSelection,
-                        handleContextMenu,
                         selectedEntries,
                         sortColumn,
+                        handleContextMenu: handleContextMenu,
                         isDraggingOver: snapshot.isDraggingOver
                       }}
                       overscanCount={5}
@@ -500,14 +667,29 @@ const PlaylistGrid = ({ playlistID }) => {
       />
 
       {contextMenu.visible && (
-        <PlaylistItemContextMenu
+        <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
           track={contextMenu.track}
           onClose={() => setContextMenu({ visible: false })}
-          onFilterByAlbum={() => searchFor(contextMenu.track.album)}
-          onFilterByArtist={() => searchFor(contextMenu.track.artist)}
-          onAddTracks={(tracks) => addSongsToPlaylist(tracks)}
+          options={contextMenu.options}
+        />
+      )}
+
+      {similarTracks && (
+        <SimilarTracksPopup
+          x={position.x}
+          y={position.y}
+          tracks={similarTracks}
+          onClose={() => setSimilarTracks(null)}
+          onAddTracks={(tracks) => addSimilarTracks(tracks)}
+        />
+      )}
+
+      {showTrackDetails && (
+        <TrackDetailsModal
+          track={selectedTrack}
+          onClose={() => setShowTrackDetails(false)}
         />
       )}
 
