@@ -226,3 +226,13 @@ class AlbumEntryDB(PlaylistEntryDB):
     details = relationship("AlbumDB", foreign_keys=[album_id], passive_deletes=True)
 
     __mapper_args__ = {"polymorphic_identity": "album"}
+
+class RequestedAlbumEntryDB(PlaylistEntryDB):
+    __tablename__ = "requested_album_entries"
+
+    id = Column(Integer, ForeignKey("playlist_entries.id", ondelete="CASCADE"), primary_key=True)
+
+    album_id = Column(Integer, ForeignKey("albums.id", ondelete="SET NULL"))
+    details = relationship("AlbumDB", foreign_keys=[album_id], passive_deletes=True)
+
+    __mapper_args__ = {"polymorphic_identity": "requested_album"}

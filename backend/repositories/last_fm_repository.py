@@ -1,13 +1,31 @@
 import urllib
 from http.client import HTTPException
 import logging
-from response_models import LastFMTrack
+from response_models import LastFMTrack, Album, AlbumTrack
 import os
 import warnings
 import json
+from typing import Optional
 
 import dotenv
 dotenv.load_dotenv(override=True)
+
+def from_json(payload) -> Optional[Album]:
+    if "album" not in payload:
+        return None
+
+    tracks = []
+    if "track" in payload.get("album", {}).get("tracks", {}):
+        for i, track in enumerate(payload.get("album").get("tracks").get("track")):
+            linked_track = LastFMTrack(title=track.get("name"), artist=track.get("artist").get("name"), url=track.get("url"))
+            tracks.append(AlbumTrack(order=i, linked_track=linked_track))
+
+    return Album(
+        title=payload.get("album").get("name"),
+        artist=payload.get("album").get("artist"),
+        image_url=payload.get("album").get("image")[-1].get("#text"),
+        tracks=tracks
+    )
 
 class AlbumAndArtist:
     def __init__(self, album, artist):
@@ -108,7 +126,7 @@ class last_fm_repository:
         else:
             return {"image_url": None}
 
-    def get_album_info(self, artist, album, redis_session=None):
+    def get_album_info(self, artist, album, redis_session=None) -> Optional[Album]:
         if os.getenv("LASTFM_API_KEY") is None:
             raise ValueError("LASTFM_API_KEY environment variable is not set")
         
@@ -117,7 +135,7 @@ class last_fm_repository:
         if redis_session:
             cached_info = redis_session.get(str(pair))
             if cached_info is not None:
-                return json.loads(cached_info)
+                return from_json(json.loads(cached_info))
         
         logging.info(f"Fetching album info from Last.FM for {pair}")
         url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={pair.artist}&album={pair.album}&format=json"
@@ -128,4 +146,4 @@ class last_fm_repository:
             if redis_session:
                 redis_session.set(str(pair), json.dumps(album_info))
         
-        return album_info
+        return from_json(album_info) if album_info else None

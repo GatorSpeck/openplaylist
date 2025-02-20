@@ -5,6 +5,7 @@ import '../../styles/LastFMSearch.css';
 const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
+  const [searchType, setSearchType] = useState('track');
   const [searchResult, setSearchResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -13,7 +14,9 @@ const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await LastFMRepository.searchTrack(title, artist);
+      const result = searchType === 'track' 
+        ? await LastFMRepository.searchTrack(title, artist)
+        : await LastFMRepository.searchAlbum(title, artist);
       setSearchResult(result);
     } catch (error) {
       setError(error.message);
@@ -27,10 +30,30 @@ const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
     <div className="lastfm-modal">
       <div className="lastfm-modal-content">
         <h2>Search Last.FM</h2>
+        <div className="search-type">
+          <label>
+            <input
+              type="radio"
+              value="track"
+              checked={searchType === 'track'}
+              onChange={(e) => setSearchType(e.target.value)}
+            />
+            Track
+          </label>
+          <label>
+            <input
+              type="radio"
+              value="album"
+              checked={searchType === 'album'}
+              onChange={(e) => setSearchType(e.target.value)}
+            />
+            Album
+          </label>
+        </div>
         <div className="search-inputs">
           <input
             type="text"
-            placeholder="Track Title"
+            placeholder={searchType === 'track' ? 'Track Title' : 'Album Title'}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
@@ -57,7 +80,9 @@ const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
                 View on Last.FM
               </a>
             )}
-            <button onClick={() => onAddToPlaylist(searchResult)}>Add to Playlist</button>
+            <button onClick={() => onAddToPlaylist(searchResult)}>
+              Add {searchResult.entry_type === 'track' ? 'Track' : 'Album'} to Playlist
+            </button>
           </div>
         )}
 
