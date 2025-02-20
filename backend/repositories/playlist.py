@@ -12,6 +12,7 @@ from models import (
     BaseNode,
     AlbumDB,
     AlbumTrackDB,
+    RequestedAlbumEntryDB
 )
 from response_models import (
     Playlist,
@@ -20,7 +21,8 @@ from response_models import (
     NestedPlaylistEntry,
     LastFMEntry,
     RequestedTrackEntry,
-    AlbumEntry
+    AlbumEntry,
+    RequestedAlbumEntry
 )
 from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 from sqlalchemy import select
@@ -46,7 +48,7 @@ def playlist_orm_to_response(playlist: PlaylistEntryDB):
     elif playlist.entry_type == "album":
         return AlbumEntry.from_orm(playlist)
     elif playlist.entry_type == "requested_album":
-        return AlbumEntry.from_orm(playlist)
+        return RequestedAlbumEntry.from_orm(playlist)
     else:
         raise ValueError(f"Unknown entry type: {playlist.entry_type}")
 
@@ -57,6 +59,16 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
     def _get_playlist_query(self, playlist_id: int, details=False, limit=None, offset=None):
         query = (self.session.query(PlaylistDB)
             .filter(PlaylistDB.id == playlist_id)
+            .options(
+                # Load RequestedAlbumEntry details and tracks
+                joinedload(PlaylistDB.entries.of_type(RequestedAlbumEntryDB))
+                .joinedload(RequestedAlbumEntryDB.details)
+                .joinedload(AlbumDB.tracks)
+                .joinedload(AlbumTrackDB.linked_track),
+
+                joinedload(PlaylistDB.entries.of_type(RequestedTrackEntryDB))
+                .joinedload(RequestedTrackEntryDB.details)
+            )
         )
 
         if limit is not None and offset is not None:
@@ -145,7 +157,6 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             
             entry.details = track
         elif entry.entry_type == "requested_album":
-            entry.entry_type = "album"
             this_album = AlbumDB(artist=entry.details.artist, title=entry.details.title)
             self.session.add(this_album)
             self.session.commit()
@@ -154,12 +165,13 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 for i, track in enumerate(entry.details.tracks):
                     # add new requested track
                     artist = track.linked_track.artist if track.linked_track.artist else track.linked_track.album_artist
-                    new_track = RequestedTrackDB(artist=artist, title=track.linked_track.title)
+                    new_track = RequestedTrackDB(artist=artist, title=track.linked_track.title, entry_type="requested_track")
                     self.session.add(new_track)
                     self.session.commit()
 
                     this_album.tracks.append(AlbumTrackDB(
                         order=i,
+                        linked_track_id = new_track.id,
                         linked_track=new_track,
                         album_id=this_album.id
                     ))
