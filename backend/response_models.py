@@ -17,6 +17,7 @@ from models import (
     AlbumDB,
     AlbumTrackDB,
     AlbumEntryDB,
+    RequestedAlbumEntryDB
 )
 from abc import ABC, abstractmethod
 
@@ -83,10 +84,12 @@ class AlbumTrack(MusicEntity):
         if obj.linked_track is not None:
             if obj.linked_track.entry_type == "music_file":
                 this_track = MusicFile.from_orm(obj.linked_track)
-            elif obj.linked_track.entry_type == "requested":
+            elif obj.linked_track.entry_type == "requested_track":
                 this_track = RequestedTrack.from_orm(obj.linked_track)
             elif obj.linked_track.entry_type == "lastfm":
                 this_track = LastFMTrack.from_orm(obj.linked_track)
+            else:
+                raise ValueError(f"Unknown linked track type: {obj.linked_track.entry_type}")
 
         return cls(
             id=obj.id,
@@ -334,8 +337,8 @@ class RequestedAlbumEntry(PlaylistEntryBase):
     entry_type: Literal["requested_album"]
     details: Optional[Album] = None
 
-    def to_playlist(self, playlist_id) -> AlbumEntryDB:
-        return AlbumEntryDB(
+    def to_playlist(self, playlist_id) -> RequestedAlbumEntryDB:
+        return RequestedAlbumEntryDB(
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             details=self.details

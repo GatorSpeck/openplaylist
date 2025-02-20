@@ -190,38 +190,32 @@ def test_playlist_pagination(playlist_repo, test_db):
     assert len(result.entries) == 2
 
 def test_add_album_entry(test_db, playlist_repo, sample_playlist):
-    tracks = [add_music_file(test_db, f"Test Song {i}") for i in range(5)]
+    tracks = [{"title": f"Test Song {i}", "artist": "Artist"} for i in range(5)]
 
-    album = AlbumDB(
+    album = Album(
         title="Test Album",
         artist="Test Artist",
         art_url="/test/album_art.jpg",
+        tracks = [{"order": i, "linked_track": track} for i, track in enumerate(tracks)]
     )
-    test_db.add(album)
-    test_db.commit()
 
-    for i, t in enumerate(tracks):
-        album_track = AlbumTrackDB(linked_track_id=t.id, order=i, album_id=album.id)
-        album.tracks.append(album_track)
-        test_db.add(album_track)
-
-    test_db.commit()
-
-    entry = AlbumEntry(
+    entry = RequestedAlbumEntry(
         order=0,
         entry_type="requested_album",
-        album_id=album.id,
-        details=Album.from_orm(album)
+        details=album
     )
     
     playlist_repo.add_entry(sample_playlist.id, entry)
     result = playlist_repo.get_with_entries(sample_playlist.id)
     
     assert len(result.entries) == 1
-    assert result.entries[0].entry_type == "album"
-    assert result.entries[0].album_id == album.id
+    assert result.entries[0].entry_type == "requested_album"
+    assert result.entries[0].details.title == "Test Album"
+    assert result.entries[0].details.tracks[0].linked_track.title == "Test Song 0"
 
     first_entry = playlist_repo.get_playlist_entry_details(sample_playlist.id, [0])[0]
     assert first_entry.details.title == "Test Album"
     assert len(first_entry.details.tracks) == 5
+    print(first_entry.details.tracks[0].__dict__)
+
     assert first_entry.details.tracks[0].linked_track.title == "Test Song 0"
