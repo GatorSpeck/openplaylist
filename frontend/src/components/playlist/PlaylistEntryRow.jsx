@@ -19,11 +19,16 @@ const PlaylistEntryRow = forwardRef(({
     const fetchAlbumArt = async () => {
         const artistToFetch = track.album_artist || track.artist;
         const url = await lastFMRepository.fetchAlbumArt(artistToFetch, track.album);
+        if (!url) return;
         setImageUrl(url.image_url);
     }
 
     fetchAlbumArt();
-  }, [track])
+  }, [track]);
+
+  const contents = track.entry_type === "album" ? (
+    track.details.tracks.map(track => track.linked_track.title).join(', ')
+  ) : track.title;
 
   return (
     <div 
@@ -55,7 +60,7 @@ const PlaylistEntryRow = forwardRef(({
         </div>
       </div>
       <div className="grid-cell truncate-text" overflow="auto">
-        {track.title}
+        <span>{contents}</span>
       </div>
     </div>
   );
