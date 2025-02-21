@@ -18,6 +18,7 @@ import openAIRepository from '../../repositories/OpenAIRepository';
 import lastFMRepository from '../../repositories/LastFMRepository';
 import libraryRepository from '../../repositories/LibraryRepository';
 import SimilarTracksPopup from '../common/SimilarTracksPopup';
+import AlbumArtGrid from './AlbumArtGrid';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -99,6 +100,7 @@ const PlaylistGrid = ({ playlistID }) => {
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [selectedTrack, setSelectedTrack] = useState(null);
+  const [albumArtList, setAlbumArtList] = useState([]);
 
   useEffect(() => {
     fetchPlaylistDetails(playlistID);
@@ -109,7 +111,25 @@ const PlaylistGrid = ({ playlistID }) => {
       const playlist = await playlistRepository.getPlaylistDetails(playlistId);
       setName(playlist.name);
       setIsInitialLoad(true);  // Set flag before updating entries
-      setEntries(playlist.entries.map(entry => mapToTrackModel(entry)))
+
+      const newEntries = playlist.entries.map(entry => mapToTrackModel(entry));
+      setEntries(newEntries);
+
+      let artistAlbums = new Map();
+      let albumArtList = [];
+      newEntries.forEach(entry => {
+        const album = entry.album || entry.details.album;
+        const artist = entry.artist || entry.details.artist;
+        if (album && artist) {
+          if (!artistAlbums.has(artist+album)) {
+            albumArtList.push({ album, artist });
+          }
+          artistAlbums.set(artist+album, { album, artist });
+        }
+      });
+
+      const albumThumbnails = await lastFMRepository.generatePlaylistThumbnail([...albumArtList]);
+      setAlbumArtList(albumThumbnails);        
     } catch (error) {
       console.error('Error fetching playlist details:', error);
     }
@@ -420,7 +440,12 @@ const PlaylistGrid = ({ playlistID }) => {
 
   return (
     <div>
-      <h2>{name}</h2>
+      <div style={{"justifyContent": "center", "alignItems": "center", "display": "flex"}}>
+        <AlbumArtGrid
+          artList={albumArtList.map(album => album.image_url)}
+        />
+        <h2 style={{"width": "50%"}}>{name}</h2>
+      </div>
       <div className="playlist-controls">
         <div className="history-controls">
           <button 
