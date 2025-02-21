@@ -6,8 +6,13 @@ import axios from 'axios';
 import debounce from 'lodash/debounce';
 import { ClipLoader } from 'react-spinners';
 import LastFMSearch from '../search/LastFMSearch';
-import SearchResultContextMenu from './SearchResultContextMenu';
 import playlistRepository from '../../repositories/PlaylistRepository';
+import openAIRepository from '../../repositories/OpenAIRepository';
+import lastFMRepository from '../../repositories/LastFMRepository';
+import libraryRepository from '../../repositories/LibraryRepository';
+import ContextMenu from '../common/ContextMenu';
+import SimilarTracksPopup from '../common/SimilarTracksPopup';
+import TrackDetailsModal from '../common/TrackDetailsModal';
 
 const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
   const [filterQuery, setFilterQuery] = useState(filter);
@@ -20,6 +25,11 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
   const [showLastFMSearch, setShowLastFMSearch] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [showTrackDetails, setShowTrackDetails] = useState(false);
+  const [similarTracks, setSimilarTracks] = useState(null);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [loading, setLoading] = useState(false);
+  const [openAILoading, setOpenAILoading] = useState(false);
   const panelRef = useRef(null);
 
   const extractSearchResults = (response) => {
@@ -62,6 +72,32 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
     } catch (error) {
       console.error('Error filtering by album:', error);
     }
+  };
+
+  const findSimilarTracksWithOpenAI = async (e, track) => {
+    setOpenAILoading(true);
+
+    const similars = await openAIRepository.findSimilarTracks(track);
+    const localFiles = await libraryRepository.findLocalFiles(similars);
+
+    // prefer local files
+    setSimilarTracks(localFiles);
+
+    setPosition({ x: e.clientX, y: e.clientY });
+    setOpenAILoading(false);
+  };
+
+  const findSimilarTracks = async (e, track) => {
+    setLoading(true);
+
+    const similars = await lastFMRepository.findSimilarTracks(track);
+    const localFiles = await libraryRepository.findLocalFiles(similars);
+
+    // prefer local files
+    setSimilarTracks(localFiles);
+
+    setPosition({ xj: e.clientX, y: e.clientY });
+    setLoading(false);
   };
 
   const handleFilterByArtist = async (artist) => {
@@ -115,6 +151,11 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
     debouncedFetchSongs(query);
   };
 
+  const searchFor = (query) => {
+    setFilterQuery(query);
+    fetchSongs(query);
+  }
+
   const addSongs = (tracks) => {
     onAddSongs(tracks);
     clearSelectedSongs();
@@ -124,13 +165,38 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
     // TODO: adding songs should remove them from the search results
   }
 
-  const openContextMenu = (e, track) => {
-    e.preventDefault();
-    setContextMenu({ visible: true, x: e.clientX, y: e.clientY, track });
+  const handleShowDetails = (track) => {
+    setSelectedTrack(track);
+    setShowTrackDetails(true);
   }
 
-  const closeContextMenu = () => {
-    setContextMenu({ visible: false });
+  const handleContextMenu = (e, track) => {
+    e.preventDefault();
+
+    // Get the parent container's position
+    const rect = e.currentTarget.getBoundingClientRect();
+    
+    // Calculate position relative to the clicked element
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const isAlbum = track.entry_type === 'requested_album' || track.entry_type === 'album';
+
+    const options = [
+      { label: 'Details', onClick: () => handleShowDetails(track) },
+      { label: 'Send to Search', onClick: () => searchFor(track.title) },
+      !isAlbum ? { label: 'Find Similar Tracks (Last.fm)', onClick: (e) => findSimilarTracks(e, track) } : null,
+      !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: (e) => findSimilarTracksWithOpenAI(e, track) } : null,
+      { label: 'Search for Album', onClick: () => handleFilterByAlbum(track.album) },
+      { label: 'Search for Artist', onClick: () => handleFilterByArtist(track.artist) }
+    ];
+
+    setContextMenu({
+      visible: true,
+      x,
+      y,
+      options
+    });
   }
 
   useEffect(() => {
@@ -239,7 +305,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
                     <div><i>{song.album}</i></div>
                   </div>
                   <div className="grid-cell clickable" 
-                    onContextMenu={(e) => openContextMenu(e, song)}
+                    onContextMenu={(e) => handleContextMenu(e, song)}
                   >
                     {song.missing ? <s>{song.title}</s> : song.title}
                   </div>
@@ -260,18 +326,33 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
         )}
 
         {contextMenu.visible && (
-          <SearchResultContextMenu
+          <ContextMenu
+            options={contextMenu.options}
             x={contextMenu.x}
             y={contextMenu.y}
             track={contextMenu.track}
             onClose={() => setContextMenu({ visible: false })}
-            onFilterByAlbum={handleFilterByAlbum}
-            onFilterByArtist={handleFilterByArtist}
+          />
+        )}
+
+        {similarTracks && (
+          <SimilarTracksPopup
+            x={position.x}
+            y={position.y}
+            tracks={similarTracks}
+            onClose={() => setSimilarTracks(null)}
             onAddTracks={(tracks) => onAddSongs(tracks)}
           />
         )}
 
-        <button onClick={() => playlistRepository.dumpLibrary(playlistID)}>TEST ONLY: Dump full library into this playlist</button>
+        {showTrackDetails && (
+          <TrackDetailsModal
+            track={selectedTrack}
+            onClose={() => setShowTrackDetails(false)}
+          />
+        )}
+
+        <button onClick={() => window.confirm("Really?") && playlistRepository.dumpLibrary(playlistID)}>TEST ONLY: Dump full library into this playlist</button>
       </div>
     </>
   );

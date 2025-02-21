@@ -17,6 +17,7 @@ import TrackDetailsModal from '../common/TrackDetailsModal';
 import openAIRepository from '../../repositories/OpenAIRepository';
 import lastFMRepository from '../../repositories/LastFMRepository';
 import libraryRepository from '../../repositories/LibraryRepository';
+import SimilarTracksPopup from '../common/SimilarTracksPopup';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -68,120 +69,6 @@ const Row = memo(({ data, index, style }) => {
   );
 });
 
-const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
-  const [selectedTracks, setSelectedTracks] = useState(new Set());
-  const [position, setPosition] = useState({ x, y });
-
-  useEffect(() => {
-    const popup = document.querySelector('.similar-tracks-popup');
-    if (!popup) return;
-
-    const rect = popup.getBoundingClientRect();
-    const viewport = {
-      width: window.innerWidth,
-      height: window.innerHeight
-    };
-
-    let newY = y;
-    let newX = x + 200;
-
-    // Check vertical overflow
-    if (y + rect.height > viewport.height) {
-      newY = Math.max(0, viewport.height - rect.height);
-    }
-
-    // Check horizontal overflow
-    if (x + 200 + rect.width > viewport.width) {
-      newX = Math.max(0, x - rect.width);
-    }
-
-    setPosition({ x: newX, y: newY });
-  }, [x, y]);
-
-  const toggleTrack = (e, idx) => {
-    e.stopPropagation(); // Stop event from bubbling up
-    setSelectedTracks(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(idx)) {
-        newSet.delete(idx);
-      } else {
-        newSet.add(idx);
-      }
-      return newSet;
-    });
-  };
-
-  const handleAddSelected = () => {
-    // for tracks that have linked music files, add as a music file instead of Last.fm
-    let fixedUpTracks = tracks.filter((_, idx) => selectedTracks.has(idx));
-    fixedUpTracks.forEach((track) => {
-      if (track.music_file_id) {
-        track.entry_type = "music_file";
-        track.id = track.music_file_id;
-
-        track.path = ""; // need a dummy value here to make the backend happy
-      }
-    });
-
-    onAddTracks(fixedUpTracks);
-    setSelectedTracks(new Set());
-    onClose();
-  };
-
-  return (
-    <div className="similar-tracks-popup"
-      onClick={e => e.stopPropagation()} // Stop clicks within popup from closing menu
-      style={{
-        position: 'fixed',
-        left: position.x,
-        top: position.y,
-        zIndex: 1000,
-        background: 'white',
-        color: 'black',
-        padding: '1rem',
-        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-        borderRadius: '4px',
-        maxHeight: '80vh',
-        overflowY: 'auto'
-      }}
-    >
-      <h3>Similar Tracks</h3>
-      <ul style={{ listStyle: 'none', padding: 0 }}>
-        {tracks.map((track, idx) => (
-          <li key={idx} onClick={e => toggleTrack(e, idx)}
-            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
-            <input
-              type="checkbox"
-              checked={selectedTracks.has(idx)}
-              style={{ marginRight: '0.5rem' }}
-              readOnly
-            />
-            <span>{track.artist} - {track.title}{track.path ? (<span> (in library)</span>) : null}</span>
-          </li>
-        ))}
-      </ul>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
-        <button
-          onClick={handleAddSelected}
-          disabled={selectedTracks.size === 0}
-          style={{
-            padding: '0.5rem 1rem',
-            background: '#4CAF50',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: selectedTracks.size === 0 ? 'not-allowed' : 'pointer',
-            opacity: selectedTracks.size === 0 ? 0.5 : 1
-          }}
-        >
-          Add Selected ({selectedTracks.size})
-        </button>
-        <button onClick={onClose}>Close</button>
-      </div>
-    </div>
-  );
-};
-
 const PlaylistGrid = ({ playlistID }) => {
   const [sortColumn, setSortColumn] = useState('order');
   const [sortDirection, setSortDirection] = useState('asc');
@@ -225,14 +112,6 @@ const PlaylistGrid = ({ playlistID }) => {
       setEntries(playlist.entries.map(entry => mapToTrackModel(entry)))
     } catch (error) {
       console.error('Error fetching playlist details:', error);
-    }
-  };
-
-  const writeToDB = async () => {
-    try {
-      await playlistRepository.updateEntries(playlistID, entries);
-    } catch (error) {
-      console.error('Error writing playlist to DB:', error);
     }
   };
 
@@ -306,12 +185,11 @@ const PlaylistGrid = ({ playlistID }) => {
     const songsArray = Array.isArray(songs) ? songs : [songs];
     await addTracksToPlaylist(songsArray);
     
-    // Scroll to bottom after state update
+    // Scroll to bottom using the List ref instead
     setTimeout(() => {
-      gridContentRef.current?.scrollTo({
-        top: gridContentRef.current.scrollHeight,
-        behavior: 'smooth'
-      });
+      if (listRef.current) {
+        listRef.current.scrollToItem(filteredEntries.length - 1);
+      }
     }, 100);
   };
 
@@ -477,7 +355,7 @@ const PlaylistGrid = ({ playlistID }) => {
     }
   }
 
-  const findSimilarTracksWithOpenAI = async (track) => {
+  const findSimilarTracksWithOpenAI = async (e, track) => {
     setOpenAILoading(true);
 
     const similars = await openAIRepository.findSimilarTracks(track);
@@ -486,11 +364,11 @@ const PlaylistGrid = ({ playlistID }) => {
     // prefer local files
     setSimilarTracks(localFiles);
 
-    setPosition({ x, y });
+    setPosition({ x: e.clientX, y: e.clientY });
     setOpenAILoading(false);
   };
 
-  const findSimilarTracks = async (track) => {
+  const findSimilarTracks = async (e, track) => {
     setLoading(true);
 
     const similars = await lastFMRepository.findSimilarTracks(track);
@@ -499,7 +377,7 @@ const PlaylistGrid = ({ playlistID }) => {
     // prefer local files
     setSimilarTracks(localFiles);
 
-    setPosition({ x, y });
+    setPosition({ x: e.clientX, y: e.clientY });
     setLoading(false);
   };
 
@@ -521,8 +399,8 @@ const PlaylistGrid = ({ playlistID }) => {
     const options = [
       { label: 'Details', onClick: () => handleShowDetails(track) },
       { label: 'Send to Search', onClick: () => searchFor(track.title) },
-      !isAlbum ? { label: 'Find Similar Tracks (Last.fm)', onClick: () => findSimilarTracks(track) } : null,
-      !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: () => findSimilarTracksWithOpenAI(track) } : null,
+      !isAlbum ? { label: 'Find Similar Tracks (Last.fm)', onClick: (e) => findSimilarTracks(e, track) } : null,
+      !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: (e) => findSimilarTracksWithOpenAI(e, track) } : null,
       { label: 'Search for Album', onClick: () => searchFor(track.album) },
       { label: 'Search for Artist', onClick: () => searchFor(track.artist) },
       { label: 'Remove', onClick: () => removeSongsFromPlaylist([track.order]) },
@@ -658,6 +536,12 @@ const PlaylistGrid = ({ playlistID }) => {
           </Droppable>
         </DragDropContext>
       </div>
+
+      <BatchActions 
+        selectedCount={selectedEntries.length}
+        onRemove={removeSelectedTracks}
+        onClear={clearTrackSelection}
+      />
 
       <SearchResultsGrid
         filter={searchFilter}
