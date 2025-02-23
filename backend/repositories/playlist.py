@@ -29,6 +29,7 @@ from sqlalchemy import select
 from typing import List, Optional
 import warnings
 import os
+import json
 
 import dotenv
 dotenv.load_dotenv(override=True)
@@ -261,6 +262,17 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 continue
 
         return m3u
+
+    def export_to_json(self, playlist_id: int):
+        playlist = self.get_with_entries(playlist_id)
+        if playlist is None:
+            return None
+
+        return json.dumps({
+            "id": playlist.id,
+            "name": playlist.name,
+            "entries": [e.model_dump() for e in playlist.entries]
+        }, indent=4, default=str, sort_keys=True)
     
     def get_playlist_entry_details(self, playlist_id: int, entry_ids: List[int]):
         playlist = (

@@ -462,20 +462,24 @@ def delete_playlist(playlist_id: int):
 
 
 @router.get("/playlists/{playlist_id}/export", response_class=StreamingResponse)
-def export_playlist(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
+def export_playlist(playlist_id: int, type: str = Query("m3u"), repo: PlaylistRepository = Depends(get_playlist_repository)):
     try:
-        m3u_content = repo.export_to_m3u(
-            playlist_id, mapping_source=os.getenv("PLEX_MAP_SOURCE"), mapping_target=os.getenv("PLEX_MAP_TARGET")
-        )
+        export_content = None
+        if type == "m3u":
+            export_content = repo.export_to_m3u(playlist_id, mapping_source=os.getenv("PLEX_MAP_SOURCE"), mapping_target=os.getenv("PLEX_MAP_TARGET"))
+        elif type == "json":
+            export_content = repo.export_to_json(playlist_id)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid export type")
 
         playlist = repo.get_by_id(playlist_id)
 
         # Create a StreamingResponse to return the .m3u file
         response = StreamingResponse(
-            io.StringIO(m3u_content), media_type="audio/x-mpegurl"
+            io.StringIO(export_content), media_type="audio/x-mpegurl"
         )
         response.headers["Content-Disposition"] = (
-            f"attachment; filename={playlist.name}.m3u"
+            f"attachment; filename={playlist.name}.{type}"
         )
         return response
     except Exception as e:

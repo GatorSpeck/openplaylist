@@ -71,22 +71,31 @@ export class PlaylistRepository {
         await axios.post(`/api/playlists/rename/${id}`, { new_name: name, description: "" });
     }
 
-    async export(id) {
-        try {
-            const response = await axios.get(`/api/playlists/${id}/export`, {
-                responseType: 'blob'
-            }).data;
+    async export(id, type) {
+        if (type == 'm3u') {}
+        else if (type == "json") {}
+        else {
+            window.alert('Invalid export type:', type);
+            return;
+        }
 
-              const url = window.URL.createObjectURL(new Blob([response]));
-              const link = document.createElement('a');
-              link.href = url;
-              link.setAttribute('download', `${name}.m3u`);
-              document.body.appendChild(link);
-              link.click();
-              link.remove();
-            } catch (error) {
-              console.error('Error exporting playlist:', error);
-            }
+        try {
+            const { name } = (await this.getPlaylists()).find(playlist => playlist.id === id);
+
+            const response = await axios.get(`/api/playlists/${id}/export?type=${type}`, {
+                responseType: 'blob'
+            });
+
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `${name}.${type}`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            console.error('Error exporting playlist:', error);
+        }
     }
 
     async syncToPlex(id) {
