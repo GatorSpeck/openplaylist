@@ -14,7 +14,6 @@ const Playlists = () => {
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [selectedPlaylistID, setSelectedPlaylistID] = useState(null);
   const [showPlaylistSelectModal, setShowPlaylistSelectModal] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
   const [newPlaylistModalVisible, setNewPlaylistModalVisible] = useState(false);
   const [newPlaylistNameModal, setNewPlaylistNameModal] = useState('');
   const [cloneModalVisible, setCloneModalVisible] = useState(false);
@@ -27,14 +26,6 @@ const Playlists = () => {
     severity: 'info'
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [libraryStats, setLibraryStats] = useState({
-    visible: false,
-    trackCount: 0,
-    albumCount: 0,
-    artistCount: 0,
-    totalLength: 0,
-    missingTracks: 0
-  });
 
   const handleSnackbarClose = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
@@ -54,7 +45,6 @@ const Playlists = () => {
 
   useEffect(() => {
     fetchPlaylists();
-    getLibraryStats();
   }, []); // Only run on mount
 
   useEffect(() => {
@@ -68,13 +58,6 @@ const Playlists = () => {
     }
   }, [playlistName, playlists]); // Only depends on these two values
 
-  const secondsToDaysHoursMins = (seconds) => {
-    const days = Math.floor(seconds / (3600 * 24));
-    const hours = Math.floor(seconds % (3600 * 24) / 3600);
-    const minutes = Math.floor(seconds % 3600 / 60);
-    return `${days} days, ${hours} hours, ${minutes} minutes`;
-  }
-
   const deletePlaylist = async (playlistId) => {
     if (window.confirm('Are you sure you want to delete this playlist?')) {
       try {
@@ -86,50 +69,6 @@ const Playlists = () => {
       } catch (error) {
         console.error('Error deleting playlist:', error);
       }
-    }
-  };
-
-  const getLibraryStats = async () => {
-    const stats = await libraryRepository.getStats();
-    setLibraryStats({...stats, visible: true});
-  }
-
-  const scanMusic = async (full) => {
-    setIsScanning(true);
-    try {
-      libraryRepository.scan(full);
-
-      setSnackbar({
-        open: true,
-        message: 'Scan completed successfully',
-        severity: 'success'
-      });
-
-      const stats = libraryRepository.getStats();
-      setLibraryStats({...stats, visible: true});
-    } catch (error) {
-      console.error('Error scanning music:', error);
-      alert('Error scanning music.');
-    } finally {
-      setIsScanning(false);
-    }
-  };
-
-  const purgeData = async () => {
-    if (!window.confirm('Are you sure you want to purge all data?')) {
-      return;
-    }
-
-    try {
-      await axios.get(`/api/purge`);
-
-      setSnackbar({
-        open: true,
-        message: 'Data purged successfully',
-        severity: 'success'
-      });
-    } catch (error) {
-      console.error('Error purging data:', error);
     }
   };
 
@@ -182,9 +121,6 @@ const Playlists = () => {
         onNewPlaylist={() => setNewPlaylistModalVisible(true)}
         onClonePlaylist={handleClonePlaylist}
         onDeletePlaylist={deletePlaylist}
-        onScan={() => scanMusic(false)}
-        onFullScan={() => scanMusic(true)} 
-        onPurge={purgeData}
       />
       
       <div className="editor-panel">
@@ -192,24 +128,6 @@ const Playlists = () => {
           <PlaylistGrid
             playlistID={selectedPlaylistID}
           />
-        )}
-
-        {isScanning && (
-          <div className="scan-overlay">
-            <div className="scan-spinner"></div>
-            <h2>Scanning...</h2>
-          </div>
-        )}
-
-        {libraryStats.visible && (
-          <div>
-            <h2>Library Stats</h2>
-            <p>{libraryStats.trackCount} tracks</p>
-            <p>{libraryStats.albumCount} albums</p>
-            <p>{libraryStats.artistCount} artists</p>
-            <p>{secondsToDaysHoursMins(libraryStats.totalLength)} total length</p>
-            <p>{libraryStats.missingTracks} missing tracks</p>
-          </div>
         )}
       </div>
       {newPlaylistModalVisible && (

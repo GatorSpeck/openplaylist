@@ -41,6 +41,7 @@ class RequestedTrack(MusicEntity, TrackDetails):
     @classmethod
     def from_orm(cls, obj: RequestedTrackDB):
         return cls(
+            entry_type="requested_track",
             id=obj.id,
             title=obj.title,
             artist=obj.artist,

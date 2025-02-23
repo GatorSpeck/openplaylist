@@ -14,7 +14,14 @@ import ContextMenu from '../common/ContextMenu';
 import SimilarTracksPopup from '../common/SimilarTracksPopup';
 import TrackDetailsModal from '../common/TrackDetailsModal';
 
-const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
+const secondsToDaysHoursMins = (seconds) => {
+  const days = Math.floor(seconds / (3600 * 24));
+  const hours = Math.floor(seconds % (3600 * 24) / 3600);
+  const minutes = Math.floor(seconds % 3600 / 60);
+  return `${days} days, ${hours} hours, ${minutes} minutes`;
+}
+
+const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackbar }) => {
   const [filterQuery, setFilterQuery] = useState(filter);
   const [selectedSearchResults, setSelectedSearchResults] = useState([]);
   const [selectedPlaylistEntries, setSelectedPlaylistEntries] = useState([]);
@@ -31,6 +38,15 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
   const [loading, setLoading] = useState(false);
   const [openAILoading, setOpenAILoading] = useState(false);
   const panelRef = useRef(null);
+  const [libraryStats, setLibraryStats] = useState({
+    visible: false,
+    trackCount: 0,
+    albumCount: 0,
+    artistCount: 0,
+    totalLength: 0,
+    missingTracks: 0
+  });
+  const [isScanning, setIsScanning] = useState(false);
 
   const extractSearchResults = (response) => {
     const results = response.data.map(s => mapToTrackModel({...s, music_file_id: s.id, entry_type: "music_file"}));
@@ -170,6 +186,45 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
     setShowTrackDetails(true);
   }
 
+  const scanMusic = async (full) => {
+    setIsScanning(true);
+    try {
+      libraryRepository.scan(full);
+
+      setSnackbar({
+        open: true,
+        message: 'Scan completed successfully',
+        severity: 'success'
+      });
+
+      const stats = await libraryRepository.getStats();
+      setLibraryStats({...stats, visible: true});
+    } catch (error) {
+      console.error('Error scanning music:', error);
+      alert('Error scanning music.');
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const purgeData = async () => {
+    if (!window.confirm('Are you sure you want to purge all data?')) {
+      return;
+    }
+
+    try {
+      await axios.get(`/api/purge`);
+
+      setSnackbar({
+        open: true,
+        message: 'Data purged successfully',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error purging data:', error);
+    }
+  };
+
   const handleContextMenu = (e, track) => {
     e.preventDefault();
 
@@ -230,6 +285,20 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
       handleFilterChange({ target: { value: filter } });
     }
   }, [visible, filter]);
+
+  useEffect(() => {
+    // Fetch library stats
+    const fetchLibraryStats = async () => {
+      const stats = await libraryRepository.getStats();
+      setLibraryStats({
+        visible: true,
+        ...stats
+      });
+    };
+
+    fetchLibraryStats();
+  }
+  , []);
 
   return (
     <>
@@ -351,6 +420,28 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
             onClose={() => setShowTrackDetails(false)}
           />
         )}
+
+        {isScanning && (
+          <div className="scan-overlay">
+            <div className="scan-spinner"></div>
+            <h2>Scanning...</h2>
+          </div>
+        )}
+
+        {libraryStats.visible && (
+          <div>
+            <h2>Library Stats</h2>
+            <p>{libraryStats.trackCount} tracks</p>
+            <p>{libraryStats.albumCount} albums</p>
+            <p>{libraryStats.artistCount} artists</p>
+            <p>{secondsToDaysHoursMins(libraryStats.totalLength)} total length</p>
+            <p>{libraryStats.missingTracks} missing tracks</p>
+          </div>
+        )}
+
+        <button onClick={() => scanMusic(false)}>Scan Music</button>
+        <button onClick={() => scanMusic(true)}>Full Scan Music</button>
+        <button onClick={purgeData}>Purge Data</button>
 
         <button onClick={() => window.confirm("Really?") && playlistRepository.dumpLibrary(playlistID)}>TEST ONLY: Dump full library into this playlist</button>
       </div>

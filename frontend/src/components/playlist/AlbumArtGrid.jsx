@@ -10,7 +10,7 @@ export const AlbumArtGrid = ({artList}) => {
     }
 
     return (
-        <div class={gridClass}>
+        <div className={gridClass}>
             {artList.map((art, index) => (
                 <div key={index} className="album-art" style={{ borderRadius: 0 }}>
                     <img src={art} alt="Album Art" />

@@ -7,7 +7,7 @@ import SearchResultsGrid from '../search/SearchResultsGrid';
 import ContextMenu from '../common/ContextMenu';
 import { FaUndo, FaRedo } from 'react-icons/fa';
 import { useParams, useNavigate } from 'react-router-dom';
-import PlaylistModal from './PlaylistModal';
+import BaseModal from '../common/BaseModal';
 import playlistRepository from '../../repositories/PlaylistRepository';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import PlaylistEntryRow from './PlaylistEntryRow';
@@ -230,8 +230,12 @@ const PlaylistGrid = ({ playlistID }) => {
   }
 
   const exportPlaylist = async (id) => {
-    playlistRepository.export(id);
+    playlistRepository.export(id, "m3u");
   };
+
+  const exportPlaylistToJson = async (id) => {
+    playlistRepository.export(id, "json");
+  }
 
   const onSyncToPlex = async () => {
     try {
@@ -573,6 +577,7 @@ const PlaylistGrid = ({ playlistID }) => {
         onAddSongs={addSongsToPlaylist}
         visible={searchPanelOpen}
         playlistID={playlistID}
+        setSnackbar={setSnackbar}
       />
 
       {contextMenu.visible && (
@@ -603,11 +608,15 @@ const PlaylistGrid = ({ playlistID }) => {
       )}
 
       {playlistModalVisible && (
-        <PlaylistModal
-          open={playlistModalVisible}
+        <BaseModal
+          title="Playlist Options"
+          options={[
+            { label: 'Export to m3u', action: () => exportPlaylist(playlistID) },
+            { label: 'Export to JSON', action: () => exportPlaylistToJson(playlistID) },
+            { label: 'Sync to Plex', action: onSyncToPlex },
+            { label: 'Delete Playlist', action: onDeletePlaylist }
+          ]}
           onClose={() => setPlaylistModalVisible(false)}
-          onSyncToPlex={onSyncToPlex}
-          onDelete={onDeletePlaylist}
         />
       )}
 
