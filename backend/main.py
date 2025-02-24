@@ -528,7 +528,7 @@ def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(g
 def find_local_files(tracks: List[TrackDetails], repo: MusicFileRepository = Depends(get_music_file_repository)):
     return repo.find_local_files(tracks)
 
-@router.get("/lastfm", response_model=LastFMTrack | None)
+@router.get("/lastfm", response_model=List[LastFMTrack])
 def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
