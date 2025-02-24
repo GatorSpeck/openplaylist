@@ -448,7 +448,7 @@ const PlaylistGrid = ({ playlistID }) => {
     <div className="main-playlist-view">
       <div className="playlist-header">
         <AlbumArtGrid
-          artList={albumArtList.map(album => album.image_url)}
+          artList={albumArtList ? albumArtList.map(album => album.image_url) : []}
         />
         <h2 className="playlist-name">{name}</h2>
       </div>
