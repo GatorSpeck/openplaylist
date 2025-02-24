@@ -83,7 +83,7 @@ class last_fm_repository:
         data = response.json()
         tracks = data.get("results", {}).get("trackmatches", {}).get("track", [])
 
-        logging.debug(data)
+        logging.info(data)
 
         if tracks:
             return [LastFMTrack(title=track.get("name", ""), artist=track.get("artist", ""), url=track.get("url")) for track in tracks]
@@ -134,6 +134,7 @@ class last_fm_repository:
         logging.info(f"Fetching album info from Last.FM for {pair}")
         url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={pair.artist}&album={pair.album}&format=json&autocorrect=1"
         response = self.requests_cache_session.get(url)
+        logging.info(response)
         album_info = None
         if response.status_code == 200:
             album_info = response.json()
