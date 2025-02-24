@@ -74,7 +74,7 @@ class last_fm_repository:
         encoded_artist = urllib.parse.quote(artist)
 
         # Make request to Last.FM API
-        url = f"http://ws.audioscrobbler.com/2.0/?method=track.search&track={encoded_title}&artist={encoded_artist}&api_key={self.api_key}&format=json&limit=1"
+        url = f"http://ws.audioscrobbler.com/2.0/?method=track.search&track={encoded_title}&artist={encoded_artist}&api_key={self.api_key}&format=json&limit=10"
         response = self.requests_cache_session.get(url)
 
         if response.status_code != 200:
@@ -85,14 +85,8 @@ class last_fm_repository:
 
         logging.debug(data)
 
-        # Return first matching track
         if tracks:
-            track = tracks[0]
-            return LastFMTrack(
-                title=track.get("name", ""),
-                artist=track.get("artist", ""),
-                url=track.get("url"),
-            )
+            return [LastFMTrack(title=track.get("name", ""), artist=track.get("artist", ""), url=track.get("url")) for track in tracks]
 
         return None
 
@@ -110,7 +104,7 @@ class last_fm_repository:
                 return {"image_url": image_url}
         
         logging.info(f"Fetching album info from Last.FM for {pair}")
-        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={pair.artist}&album={pair.album}&format=json"
+        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={pair.artist}&album={pair.album}&format=json&autocorrect=1"
         response = self.requests_cache_session.get(url)
         image_url = None
         if response.status_code == 200:
@@ -138,7 +132,7 @@ class last_fm_repository:
                 return from_json(json.loads(cached_info))
         
         logging.info(f"Fetching album info from Last.FM for {pair}")
-        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={pair.artist}&album={pair.album}&format=json"
+        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={pair.artist}&album={pair.album}&format=json&autocorrect=1"
         response = self.requests_cache_session.get(url)
         album_info = None
         if response.status_code == 200:

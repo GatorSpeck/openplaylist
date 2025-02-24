@@ -156,9 +156,11 @@ const PlaylistGrid = ({ playlistID }) => {
   };
 
   const addTracksToPlaylist = async (tracks) => {
+    const newOrder = entries.length ? entries[entries.length - 1].order + 1 : 0;
+
     const tracksToAdd = (Array.isArray(tracks) ? tracks : [tracks]).map((track, idx) => ({
       ...mapToTrackModel(track),
-      order: idx + entries.length, music_file_id: track.id, 
+      order: idx + newOrder, music_file_id: track.id, 
       entry_type: track.entry_type, url: track.url, details: track
     }));
 

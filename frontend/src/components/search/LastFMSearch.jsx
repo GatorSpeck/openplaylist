@@ -17,6 +17,12 @@ const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
       const result = searchType === 'track' 
         ? await LastFMRepository.searchTrack(title, artist)
         : await LastFMRepository.searchAlbum(title, artist);
+        
+      if (!result) {
+        setError('No results found');
+        return;
+      }
+
       setSearchResult(result);
     } catch (error) {
       setError(error.message);
@@ -72,7 +78,8 @@ const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
         {error && <div className="error">{error}</div>}
         
         {searchResult && (
-          <div className="search-result">
+          <div className="search-result album-art">
+            {searchResult.art_url ? <img src={searchResult.art_url} alt={searchResult.title} /> : null}
             <h3>{searchResult.title}</h3>
             <p>Artist: {searchResult.artist}</p>
             {searchResult.url && (
@@ -80,8 +87,8 @@ const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
                 View on Last.FM
               </a>
             )}
-            <button onClick={() => onAddToPlaylist(searchResult)}>
-              Add {searchResult.entry_type === 'track' ? 'Track' : 'Album'} to Playlist
+            <button onClick={() => onAddToPlaylist(searchResult) && onClose()}>
+              Add {searchType === 'track' ? 'Track' : 'Album'} to Playlist
             </button>
           </div>
         )}

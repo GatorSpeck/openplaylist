@@ -59,8 +59,14 @@ export class LastFMRepository {
             const response = await axios.get('/api/lastfm', {
                 params: { title, artist }
             });
+
+            if (!response.data) {
+                window.alert('No results found');
+                return null;
+            }
+
             return {
-                ...response.data,
+                ...response.data[0],
                 entry_type: 'lastfm'
             };
         } catch (error) {
