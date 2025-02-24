@@ -31,8 +31,8 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
     def __init__(self, session):
         super().__init__(session, MusicFileDB)
 
-    def search(self, query: str, limit: int = 50) -> list[MusicFile]:
-        query_package = SearchQuery(full_search=query, limit=limit)
+    def search(self, query: str, limit: int = 50, offset: int = 0) -> list[MusicFile]:
+        query_package = SearchQuery(full_search=query, limit=limit, offset=offset)
         start_time = time.time()
 
         search_query = urllib.parse.unquote(query_package.full_search or "")
@@ -82,7 +82,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
 
         # Order by relevance score
         results = (
-            query.order_by(text("relevance DESC")).limit(query_package.limit).all()
+            query.order_by(text("relevance DESC")).limit(query_package.limit).offset(query_package.offset).all()
         )
 
         logging.info(

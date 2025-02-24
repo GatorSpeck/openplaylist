@@ -443,12 +443,12 @@ const PlaylistGrid = ({ playlistID }) => {
   const listRef = useRef(null);
 
   return (
-    <div>
-      <div style={{"justifyContent": "center", "alignItems": "center", "display": "flex"}}>
+    <div className="main-playlist-view">
+      <div className="playlist-header">
         <AlbumArtGrid
           artList={albumArtList.map(album => album.image_url)}
         />
-        <h2 style={{"width": "50%"}}>{name}</h2>
+        <h2 className="playlist-name">{name}</h2>
       </div>
       <div className="playlist-controls">
         <div className="history-controls">

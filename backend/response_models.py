@@ -390,6 +390,7 @@ class SearchQuery(BaseModel):
     title: Optional[str] = None
     artist: Optional[str] = None
     limit: Optional[int] = 50
+    offset: Optional[int] = 0
 
 class ScanResults(BaseModel):
     files_scanned: int

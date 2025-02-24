@@ -306,9 +306,10 @@ def filter_music_files(
 def search_music_files(
     query: str = Query(..., min_length=1),
     limit: int = 50,
+    offset: int = 0,
     repo: MusicFileRepository = Depends(get_music_file_repository),
 ):
-    return repo.search(query=query, limit=limit)
+    return repo.search(query=query, limit=limit, offset=offset)
 
 
 @router.post("/playlists", response_model=Playlist)
