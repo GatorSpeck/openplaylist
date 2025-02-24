@@ -25,6 +25,22 @@
   z-index: 2;
 }
 
+.playlist-controls {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.playlist-header {
+  justify-content: center;
+  align-items: center;
+  display: flex;
+}
+
+.playlist-header h2 {
+  margin: 1em;
+}
+
 .playlist-grid-content {
   flex: 1;
   overflow: hidden;
@@ -67,8 +83,6 @@
 
 .history-controls {
   display: flex;
-  gap: 8px;
-  margin-right: 16px;
 }
 
 .history-controls button {
@@ -113,8 +127,6 @@
     font-size: 0.8em;
   }
 }
-
-
 
 .truncate-text {
   animation: scroll-text 3s linear infinite;

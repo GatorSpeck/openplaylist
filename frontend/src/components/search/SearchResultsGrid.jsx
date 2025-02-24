@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback, useRef} from 'react';
+import React, {useState, useEffect, useCallback, useRef, memo} from 'react';
 import { Droppable, Draggable } from 'react-beautiful-dnd';
 import '../../styles/SearchResultsGrid.css';
 import mapToTrackModel from '../../lib/mapToTrackModel';
@@ -13,6 +13,9 @@ import libraryRepository from '../../repositories/LibraryRepository';
 import ContextMenu from '../common/ContextMenu';
 import SimilarTracksPopup from '../common/SimilarTracksPopup';
 import TrackDetailsModal from '../common/TrackDetailsModal';
+import { FixedSizeList as List } from 'react-window';
+import InfiniteLoader from 'react-window-infinite-loader';
+import AutoSizer from 'react-virtualized-auto-sizer';
 
 const secondsToDaysHoursMins = (seconds) => {
   const days = Math.floor(seconds / (3600 * 24));
@@ -24,7 +27,6 @@ const secondsToDaysHoursMins = (seconds) => {
 const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackbar }) => {
   const [filterQuery, setFilterQuery] = useState(filter);
   const [selectedSearchResults, setSelectedSearchResults] = useState([]);
-  const [selectedPlaylistEntries, setSelectedPlaylistEntries] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [allSearchResultsSelected, setAllSongsSelected] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState(null);
@@ -35,8 +37,6 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [similarTracks, setSimilarTracks] = useState(null);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [loading, setLoading] = useState(false);
-  const [openAILoading, setOpenAILoading] = useState(false);
   const panelRef = useRef(null);
   const [libraryStats, setLibraryStats] = useState({
     visible: false,
@@ -47,13 +47,16 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
     missingTracks: 0
   });
   const [isScanning, setIsScanning] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const ITEMS_PER_PAGE = 50;
 
   const extractSearchResults = (response) => {
     const results = response.data.map(s => mapToTrackModel({...s, music_file_id: s.id, entry_type: "music_file"}));
     return results;
   }
 
-  const fetchSongs = async (query = '') => {
+  const fetchSongs = async (query = '', pageNum = 1) => {
     if (query.length < 3) {
       return;
     }
@@ -62,11 +65,21 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
       const response = await axios.get(`/api/search`, {
         params: { 
           query: encodeURIComponent(query),
-          limit: 50  // Optional: limit results 
+          offset: (pageNum - 1) * ITEMS_PER_PAGE,
+          limit: ITEMS_PER_PAGE
         }
       });
 
-      setSearchResults(extractSearchResults(response));
+      const results = extractSearchResults(response);
+      
+      if (pageNum === 1) {
+        setSearchResults(results);
+      } else {
+        setSearchResults(prev => [...prev, ...results]);
+      }
+
+      setHasMore(results.length === ITEMS_PER_PAGE);
+      setPage(pageNum);
       
     } catch (error) {
       console.error('Error fetching songs:', error);
@@ -175,7 +188,6 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
   const addSongs = (tracks) => {
     onAddSongs(tracks);
     clearSelectedSongs();
-    closeContextMenu();
 
     // TODO: filter out songs that are already in the playlist
     // TODO: adding songs should remove them from the search results
@@ -300,6 +312,98 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
   }
   , []);
 
+  const Row = memo(({ index, style }) => {
+    const song = searchResults[index];
+    if (!song) return null;
+
+    useEffect(() => {
+      const fn = async () => {
+        if (song.artist && song.album) {
+          const artwork = await lastFMRepository.fetchAlbumArt(song.artist, song.album);
+          if (artwork) {
+            song.image_url = artwork.image_url;
+          }
+        }
+      }
+      
+      fn();
+    }, [song.artist, song.album]);
+
+    const isSelected = selectedSearchResults.some(s => s.id === song.id);
+
+    const image = song.image_url;
+
+    const artwork = (isSelected || !image) ? (
+      <input 
+        type="checkbox"
+        checked={isSelected}
+        readOnly
+      />
+    ) : (
+      <img style={{height: 40}} src={image} alt=""/>
+    );
+
+    return (
+      <div style={style}>
+        <div 
+          className="search-grid-row"
+          onClick={() => toggleSongSelection(song)}
+        >
+          <div className="grid-cell">
+            {artwork}
+          </div>
+          <div className="grid-cell">
+            <div>{song.artist || song.album_artist}</div>
+            <div><i>{song.album}</i></div>
+          </div>
+          <div 
+            className="grid-cell clickable" 
+            onContextMenu={(e) => handleContextMenu(e, song)}
+          >
+            {song.missing ? <s>{song.title}</s> : song.title}
+          </div>
+        </div>
+      </div>
+    );
+  });
+
+  const renderSearchResults = () => (
+    <div style={{ height: '600px' }}> {/* Adjust height as needed */}
+      <AutoSizer>
+        {({ height, width }) => (
+          <InfiniteLoader
+            isItemLoaded={index => index < searchResults.length}
+            itemCount={hasMore ? searchResults.length + 1 : searchResults.length}
+            loadMoreItems={() => {
+              if (!isLoading && hasMore) {
+                return fetchSongs(filterQuery, page + 1);
+              }
+              return Promise.resolve();
+            }}
+          >
+            {({ onItemsRendered, ref }) => (
+              <List
+                ref={ref}
+                height={height}
+                itemCount={searchResults.length}
+                itemSize={80} // Adjust based on your row height
+                width={width}
+                onItemsRendered={onItemsRendered}
+              >
+                {Row}
+              </List>
+            )}
+          </InfiniteLoader>
+        )}
+      </AutoSizer>
+    </div>
+  );
+
+  const clearSearchResults = () => {
+    setFilterQuery('');
+    setSearchResults([]);
+  };
+
   return (
     <>
       <button 
@@ -331,7 +435,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
             value={filterQuery}
             onChange={handleFilterChange}
           />
-          <button onClick={() => setFilterQuery('')}>Clear</button>
+          <button onClick={() => clearSearchResults()}>Clear</button>
         </div>
 
         <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedSearchResults.length > 0 ? 'visible' : 'hidden' }}>
@@ -355,33 +459,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
           <div className="grid-cell">Title</div>
         </div>
 
-        <div className="search-grid-content">
-          {searchResults.map((song) => (
-            <div key={song.id}>
-                <div className="search-grid-row"
-                  onClick={() => toggleSongSelection(song)}
-                >
-                  <div className="grid-cell">
-                    <input 
-                      type="checkbox"
-                      checked={selectedSearchResults.some(s => s.id === song.id)}
-                      readOnly
-                    />
-                  </div>
-                  <div className="grid-cell">
-                    {song.image_url && <div><img style={{height: 40}} src={song.image_url}/></div>}
-                    <div>{song.artist || song.album_artist}</div>
-                    <div><i>{song.album}</i></div>
-                  </div>
-                  <div className="grid-cell clickable" 
-                    onContextMenu={(e) => handleContextMenu(e, song)}
-                  >
-                    {song.missing ? <s>{song.title}</s> : song.title}
-                  </div>
-                </div>
-              </div>
-          ))} 
-        </div>
+        {renderSearchResults()}
 
         {showLastFMSearch && (
           <LastFMSearch

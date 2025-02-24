@@ -25,7 +25,7 @@ const Playlists = () => {
     message: '',
     severity: 'info'
   });
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const handleSnackbarClose = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
@@ -109,7 +109,7 @@ const Playlists = () => {
   };
 
   const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistID);
-
+ 
   return (
     <div className="playlists-container">
       <PlaylistSidebar
