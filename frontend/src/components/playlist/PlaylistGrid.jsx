@@ -116,19 +116,19 @@ const PlaylistGrid = ({ playlistID }) => {
       setEntries(newEntries);
 
       let artistAlbums = new Map();
-      let albumArtList = [];
+      let artList = [];
       newEntries.forEach(entry => {
         const album = entry.album || entry.details.album;
         const artist = entry.artist || entry.details.artist;
         if (album && artist) {
           if (!artistAlbums.has(artist+album)) {
-            albumArtList.push({ album, artist });
+            artList.push({ album, artist });
           }
           artistAlbums.set(artist+album, { album, artist });
         }
       });
 
-      const albumThumbnails = await lastFMRepository.generatePlaylistThumbnail([...albumArtList]);
+      const albumThumbnails = await lastFMRepository.generatePlaylistThumbnail([...artList]);
       setAlbumArtList(albumThumbnails);        
     } catch (error) {
       console.error('Error fetching playlist details:', error);

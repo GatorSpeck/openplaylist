@@ -49,6 +49,8 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
   const [isScanning, setIsScanning] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [openAILoading, setOpenAILoading] = useState(false);
+
   const ITEMS_PER_PAGE = 50;
 
   const extractSearchResults = (response) => {
@@ -117,7 +119,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
   };
 
   const findSimilarTracks = async (e, track) => {
-    setLoading(true);
+    setIsLoading(true);
 
     const similars = await lastFMRepository.findSimilarTracks(track);
     const localFiles = await libraryRepository.findLocalFiles(similars);
@@ -126,7 +128,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
     setSimilarTracks(localFiles);
 
     setPosition({ xj: e.clientX, y: e.clientY });
-    setLoading(false);
+    setIsLoading(false);
   };
 
   const handleFilterByArtist = async (artist) => {
