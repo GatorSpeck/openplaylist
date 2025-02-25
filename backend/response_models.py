@@ -31,6 +31,9 @@ class TrackDetails(BaseModel):
     length: Optional[int] = None
     publisher: Optional[str] = None
     genres: List[str] = []
+    exact_release_date: Optional[datetime] = None
+    release_year: Optional[int] = None
+    rating: Optional[int] = None
 
 class MusicEntity(BaseModel):
     id: Optional[int] = None
@@ -52,8 +55,14 @@ class RequestedTrack(MusicEntity, TrackDetails):
 class MusicFile(MusicEntity, TrackDetails):
     path: str
     kind: Optional[str] = None
+    first_scanned: Optional[datetime] = None
     last_scanned: Optional[datetime] = None
     missing: Optional[bool] = False  # True if the track was previously scanned and is now missing from the index
+    rating: Optional[int] = None
+    size: Optional[int] = None
+    exact_release_date: Optional[datetime] = None
+    release_year: Optional[int] = None
+    playlists: List[int] = []
 
     @classmethod
     def from_orm(cls, obj: MusicFileDB):
@@ -61,6 +70,7 @@ class MusicFile(MusicEntity, TrackDetails):
             id=obj.id,
             path=obj.path,
             kind=obj.kind,
+            first_scanned=obj.first_scanned,
             last_scanned=obj.last_scanned,
             title=obj.title,
             artist=obj.artist,
@@ -71,6 +81,11 @@ class MusicFile(MusicEntity, TrackDetails):
             publisher=obj.publisher,
             genres=[str(s.genre) for s in obj.genres],
             missing=obj.missing,
+            rating=obj.rating,
+            exact_release_date=obj.exact_release_date,
+            release_year=obj.release_year,
+            size=obj.size,
+            playlists=[p.playlist.id for p in obj.playlists],
         )
 
 class AlbumTrack(MusicEntity):
@@ -128,6 +143,7 @@ class PlaylistEntryBase(BaseModel, ABC):
     id: Optional[int] = None
     image_url: Optional[str] = None
     order: Optional[int] = None
+    date_added: Optional[datetime] = None
 
     @abstractmethod
     def to_playlist(self, playlist_id):
@@ -161,20 +177,8 @@ class MusicFileEntry(PlaylistEntryBase):
             id=obj.id,
             order=obj.order,
             music_file_id=obj.music_file_id,
-            details=MusicFile(
-                path=obj.details.path,
-                kind=obj.details.kind,
-                last_scanned=obj.details.last_scanned,
-                title=obj.details.title,
-                artist=obj.details.artist,
-                album_artist=obj.details.album_artist,
-                album=obj.details.album,
-                year=obj.details.year,
-                length=obj.details.length,
-                publisher=obj.details.publisher,
-                genres=[str(s.genre) for s in obj.details.genres],
-                missing=obj.details.missing,
-            ) if obj.details is not None else None,
+            date_added=obj.date_added,
+            details=MusicFile.from_orm(obj.details) if obj.details is not None else None,
         )
 
 
