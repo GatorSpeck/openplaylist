@@ -33,6 +33,7 @@ from repositories.last_fm_repository import last_fm_repository
 from plexapi.server import PlexServer
 from plexapi.playlist import Playlist as PlexPlaylist
 from redis import Redis
+import re
 
 class TimingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable):
@@ -174,6 +175,23 @@ def scan_directory(directory: str, full=False):
         if not metadata:
             continue
 
+        file_size = os.path.getsize(full_path)
+
+        year = metadata.get("year")
+        release_year = None
+        exact_release_date = None
+
+        # try to infer the exact release date
+        if len(year) > 4:
+            try:
+                exact_release_date = datetime.strptime(year, "%Y-%m-%d")
+                release_year = exact_release_date.year
+                exact_release_date = exact_release_date
+            except ValueError:
+                pass
+        elif len(year) == 4:
+            release_year = int(year)
+
         # Update or add the file in the database
         if existing_file:
             existing_file.last_modified = last_modified_time
@@ -181,11 +199,15 @@ def scan_directory(directory: str, full=False):
             existing_file.artist = metadata.get("artist")
             existing_file.album = metadata.get("album")
             existing_file.album_artist = metadata.get("album_artist")
-            existing_file.year = metadata.get("year")
+            existing_file.year = year
             existing_file.length = metadata.get("length")
             existing_file.publisher = metadata.get("publisher")
             existing_file.kind = metadata.get("kind")
             existing_file.last_scanned = datetime.now()
+            existing_file.exact_release_date = exact_release_date
+            existing_file.release_year = release_year
+            existing_file.size = file_size
+            existing_file.rating = metadata.get("rating")
             existing_file.genres = [
                 TrackGenreDB(parent_type="music_file", genre=genre)
                 for genre in metadata.get("genres", [])
@@ -204,11 +226,16 @@ def scan_directory(directory: str, full=False):
                         for genre in metadata.get("genres", [])
                     ],
                     album_artist=metadata.get("album_artist"),
-                    year=metadata.get("year"),
+                    year=year,
                     length=metadata.get("length"),
                     publisher=metadata.get("publisher"),
                     kind=metadata.get("kind"),
+                    first_scanned=datetime.now(),
                     last_scanned=datetime.now(),
+                    exact_release_date=exact_release_date,
+                    release_year=release_year,
+                    size=file_size,
+                    rating=metadata.get("rating"),
                 )
             )
 

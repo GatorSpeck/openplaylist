@@ -34,15 +34,33 @@ class TrackDetailsMixin:
 
     @declared_attr
     def year(cls) -> Mapped[Optional[str]]:
+        """Track metadata year field as string"""
         return mapped_column(String, index=True, nullable=True)
+    
+    @declared_attr
+    def exact_release_date(cls) -> Mapped[Optional[DateTime]]:
+        """Derived from year, if exists"""
+        return mapped_column(DateTime, index=True, nullable=True)
+    
+    @declared_attr
+    def release_year(cls) -> Mapped[Optional[int]]:
+        """Derived from year, if exists"""
+        return mapped_column(Integer, index=True, nullable=True)
 
     @declared_attr
     def length(cls) -> Mapped[Optional[int]]:
+        """Length of the track in seconds"""
         return mapped_column(Integer, index=True, nullable=True)
 
     @declared_attr
     def publisher(cls) -> Mapped[Optional[str]]:
+        """Record label"""
         return mapped_column(String, index=True, nullable=True)
+    
+    @declared_attr
+    def rating(cls) -> Mapped[Optional[int]]:
+        """Rating out of 100"""
+        return mapped_column(Integer, index=True, nullable=True)
 
 
 class BaseNode(Base):
@@ -72,7 +90,9 @@ class MusicFileDB(BaseNode, TrackDetailsMixin):
     id = Column(Integer, ForeignKey("base_elements.id"), primary_key=True)
     path = Column(String, index=True)
     kind = Column(String, index=True)
+    first_scanned = Column(DateTime)
     last_scanned = Column(DateTime, index=True)
+    size = Column(Integer)  # size in bytes
     genres = relationship(
         "TrackGenreDB",
         primaryjoin="and_(TrackGenreDB.music_file_id==MusicFileDB.id, TrackGenreDB.parent_type=='music_file')",
@@ -164,6 +184,8 @@ class PlaylistEntryDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     entry_type = Column(String(50), nullable=False)
     order = Column(Integer)
+
+    date_added = Column(DateTime)  # date added to playlist
 
     playlist_id: Mapped[int] = mapped_column(ForeignKey("playlists.id"))
     playlist: Mapped["PlaylistDB"] = relationship("PlaylistDB", back_populates="entries")

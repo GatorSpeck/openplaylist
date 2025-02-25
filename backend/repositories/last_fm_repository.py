@@ -63,7 +63,7 @@ class last_fm_repository:
             )
 
         similar_data = similar_response.json()
-        logging.debug(similar_data)
+        logging.info(similar_data)
         similar_tracks = similar_data.get("similartracks", {}).get("track", [])
 
         return [LastFMTrack(title=track.get("name", ""), artist=track.get("artist", {}).get("name", ""), url=track.get("url")) for track in similar_tracks]

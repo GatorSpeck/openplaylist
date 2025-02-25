@@ -30,6 +30,7 @@ from typing import List, Optional
 import warnings
 import os
 import json
+from datetime import datetime
 
 import dotenv
 dotenv.load_dotenv(override=True)
@@ -188,6 +189,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         )
 
         playlist_entry = entry.to_playlist(playlist_id)
+        playlist_entry.date_added = datetime.now()
         this_playlist.entries.append(playlist_entry)
 
         if commit:
