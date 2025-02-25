@@ -58,8 +58,6 @@ export const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
         }
         });
 
-        console.log(fixedUpTracks);
-
         onAddTracks(fixedUpTracks);
         setSelectedTracks(new Set());
         onClose();
@@ -85,7 +83,7 @@ export const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
         <h3>Similar Tracks</h3>
         <ul style={{ listStyle: 'none', padding: 0 }}>
             {tracks.map((track, idx) => (
-            <li key={track.url} onClick={e => toggleTrack(e, idx)}
+            <li key={idx} onClick={e => toggleTrack(e, idx)}
                 style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <input
                 type="checkbox"

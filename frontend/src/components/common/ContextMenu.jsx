@@ -72,7 +72,7 @@ const ContextMenu = ({ x, y, options, onClose }) => {
         <div
           key={index}
           className="context-menu-item"
-          onClick={() => handleItemClick(option.onClick)}
+          onClick={option.onClick}
           style={{
             padding: '8px 16px',
             cursor: 'pointer',

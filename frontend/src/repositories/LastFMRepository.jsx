@@ -91,7 +91,7 @@ export class LastFMRepository {
                 return albumThumbnails.slice(0, 4);
             }
             else if (albumThumbnails.length >= 1) {
-                return albumThumbnails[0];
+                return albumThumbnails.slice(0, 1);
             }
             else {
                 return null;
