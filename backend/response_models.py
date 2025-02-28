@@ -85,7 +85,7 @@ class MusicFile(MusicEntity, TrackDetails):
             exact_release_date=obj.exact_release_date,
             release_year=obj.release_year,
             size=obj.size,
-            playlists=[p.playlist.id for p in obj.playlists],
+            playlists=[]
         )
 
 class AlbumTrack(MusicEntity):
@@ -397,11 +397,12 @@ class SearchQuery(BaseModel):
     offset: Optional[int] = 0
 
 class ScanResults(BaseModel):
-    files_scanned: int
-    files_indexed: int
-    new_files_added: int
-    files_updated: int
-    files_missing: int
+    in_progress: bool = False
+    files_added: int = 0
+    files_indexed: int = 0
+    files_updated: int = 0
+    files_missing: int = 0
+    progress: float = 0
 
 class LibraryStats(BaseModel):
     trackCount: int

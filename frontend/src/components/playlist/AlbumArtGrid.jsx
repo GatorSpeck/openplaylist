@@ -11,7 +11,7 @@ export const AlbumArtGrid = ({artList}) => {
 
     return (
         <div className={gridClass}>
-            {artList.map((art, index) => (
+            {artList.slice(0, 4).map((art, index) => (
                 <div key={index} className="album-art" style={{ borderRadius: 0 }}>
                     <img src={art} alt="Album Art" />
                 </div>

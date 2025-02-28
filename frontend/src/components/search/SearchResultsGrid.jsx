@@ -203,21 +203,55 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
   const scanMusic = async (full) => {
     setIsScanning(true);
     try {
-      libraryRepository.scan(full);
+      // Start the scan
+      await libraryRepository.scan(full);
 
-      setSnackbar({
-        open: true,
-        message: 'Scan completed successfully',
-        severity: 'success'
-      });
+      // Start polling for progress
+      let polling = false;
+      const pollInterval = setInterval(async () => {
+        if (polling) return;
+        polling = true;
+        try {
+          const response = (await axios.get('/api/scan/progress')).data;
+          
+          // Update snackbar with progress
+          setSnackbar({
+            open: true,
+            message: `Scanning: ${response.progress}% - ${response.files_indexed} files indexed, ${response.files_updated} updated, ${response.files_missing} missing`,
+            severity: 'info'
+          });
 
-      const stats = await libraryRepository.getStats();
-      setLibraryStats({...stats, visible: true});
+          // Stop polling when scan is complete
+          if (!response.in_progress) {
+            clearInterval(pollInterval);
+            setIsScanning(false);
+            setSnackbar({
+              open: true,
+              message: 'Scan completed successfully',
+              severity: 'success'
+            });
+            
+            // Refresh library stats after scan completes
+            const stats = await libraryRepository.getStats();
+            setLibraryStats({
+              visible: true,
+              ...stats
+            });
+          }
+
+          setTimeout(() => polling = false, 0);
+        } catch (error) {
+          console.error('Error polling scan progress:', error);
+        }
+      }, 1000); // Poll every second
+
     } catch (error) {
       console.error('Error scanning music:', error);
-      alert('Error scanning music.');
-    } finally {
-      setIsScanning(false);
+      setSnackbar({
+        open: true,
+        message: 'Error scanning music',
+        severity: 'error'
+      });
     }
   };
 

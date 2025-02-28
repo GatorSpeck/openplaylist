@@ -66,6 +66,7 @@ const Playlists = () => {
         if (selectedPlaylistID && selectedPlaylistID === playlistId) {
           setSelectedPlaylistID(null);
         }
+        navigate("/");
       } catch (error) {
         console.error('Error deleting playlist:', error);
       }
@@ -75,13 +76,15 @@ const Playlists = () => {
   const handleCreateNewPlaylist = async () => {
     try {
       const response = await playlistRepository.create(newPlaylistNameModal);
+      const name = response.data.name;
 
-      setPlaylists([...playlists, response]);
+      setPlaylists([...playlists, response.data]);
 
       setNewPlaylistNameModal('');
       setNewPlaylistModalVisible(false);
 
-      navigate(`/playlist/${response.name}`);
+      navigate(`/playlist/${name}`);
+      setSelectedPlaylistID(response.data.id);
     } catch (error) {
       console.error('Error creating new playlist:', error);
     }
