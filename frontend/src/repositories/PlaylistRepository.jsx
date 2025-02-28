@@ -30,6 +30,16 @@ export class PlaylistRepository {
         }
     }
 
+    async getPlaylistDetailsUnpaginated(playlistID) {
+        try {
+            const response = await axios.get(`/api/playlists/${playlistID}`);
+
+            return response;
+        } catch (error) {
+            console.error('Error fetching playlist details:', error);
+        }
+    }
+
     // get playlist names and IDs
     async getPlaylists() {
         try {

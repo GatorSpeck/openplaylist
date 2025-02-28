@@ -61,6 +61,16 @@ class TrackDetailsMixin:
     def rating(cls) -> Mapped[Optional[int]]:
         """Rating out of 100"""
         return mapped_column(Integer, index=True, nullable=True)
+    
+    @declared_attr
+    def notes(cls) -> Mapped[Optional[str]]:
+        """User notes"""
+        return mapped_column(Text, nullable=True)
+    
+    @declared_attr
+    def comments(cls) -> Mapped[Optional[str]]:
+        """Comments on track file"""
+        return mapped_column(Text, nullable=True)
 
 
 class BaseNode(Base):

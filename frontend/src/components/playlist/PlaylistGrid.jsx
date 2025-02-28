@@ -108,28 +108,12 @@ const PlaylistGrid = ({ playlistID }) => {
 
   const fetchPlaylistDetails = async (playlistId) => {
     try {
-      const playlist = await playlistRepository.getPlaylistDetails(playlistId);
+      const playlist = await playlistRepository.getPlaylistDetailsUnpaginated(playlistId);
       setName(playlist.name);
       setIsInitialLoad(true);  // Set flag before updating entries
 
       const newEntries = playlist.entries.map(entry => mapToTrackModel(entry));
-      setEntries(newEntries);
-
-      let artistAlbums = new Map();
-      let artList = [];
-      newEntries.forEach(entry => {
-        const album = entry.album || entry.details.album;
-        const artist = entry.artist || entry.details.artist;
-        if (album && artist) {
-          if (!artistAlbums.has(artist+album)) {
-            artList.push({ album, artist });
-          }
-          artistAlbums.set(artist+album, { album, artist });
-        }
-      });
-
-      const albumThumbnails = await lastFMRepository.generatePlaylistThumbnail([...artList]);
-      setAlbumArtList(albumThumbnails);        
+      setEntries(newEntries);    
     } catch (error) {
       console.error('Error fetching playlist details:', error);
     }

@@ -2,10 +2,12 @@ import os
 import pathlib
 import logging
 import urllib.parse
-from fastapi import FastAPI, Query, APIRouter, Request, Depends
+from fastapi import FastAPI, Query, APIRouter, Request, Depends, BackgroundTasks
 import uvicorn
 from mutagen.easyid3 import EasyID3
 from mutagen.flac import FLAC
+from mutagen.wave import WAVE
+from mutagen.mp4 import MP4
 import dotenv
 from typing import Optional, List, Callable
 import time
@@ -120,16 +122,24 @@ def extract_metadata(file_path, extractor):
 
     return {}
 
+# singleton
+scan_results = ScanResults()
 
 def scan_directory(directory: str, full=False):
     directory = pathlib.Path(directory)
     if not directory.exists():
         logging.error(f"Directory {directory} does not exist")
-        return []
+        return
+    
+    if scan_results.in_progress:
+        return
+    
+    scan_results.in_progress = True
+    scan_results.files_missing = 0
+    scan_results.files_updated = 0
 
     logging.info(f"Scanning directory {directory}")
     start_time = time.time()
-    new_adds = 0
 
     # Get a list of all files in the directory
     all_files = [
@@ -141,12 +151,12 @@ def scan_directory(directory: str, full=False):
     db = Database.get_session()
 
     files_seen = 0
-    files_skipped = 0
+    total_files = float(len(all_files))
     for full_path in tqdm(all_files, desc="Scanning files"):
+        files_seen += 1
+        scan_results.progress = round(files_seen / total_files * 100, 1)
         if not full_path.lower().endswith(SUPPORTED_FILETYPES):
             continue
-
-        files_seen += 1
 
         last_modified_time = datetime.fromtimestamp(os.path.getmtime(full_path))
         existing_file = (
@@ -159,7 +169,6 @@ def scan_directory(directory: str, full=False):
             existing_file.missing = False
 
         if (not full) and (not found_existing_file) and existing_file and existing_file.last_scanned >= last_modified_time:
-            files_skipped += 1
             continue  # Skip files that have not changed
 
         metadata = {}
@@ -168,6 +177,10 @@ def scan_directory(directory: str, full=False):
             metadata = extract_metadata(full_path, EasyID3)
         elif full_path.lower().endswith(".flac"):
             metadata = extract_metadata(full_path, FLAC)
+        elif full_path.lower().endswith(".wav"):
+            metadata = extract_metadata(full_path, WAVE)
+        elif full_path.lower().endswith(".m4a"):
+            metadata = extract_metadata(full_path, MP4)
         else:
             logging.debug(f"Skipping file {full_path} with unsupported file type")
             continue
@@ -182,18 +195,21 @@ def scan_directory(directory: str, full=False):
         exact_release_date = None
 
         # try to infer the exact release date
-        if len(year) > 4:
-            try:
-                exact_release_date = datetime.strptime(year, "%Y-%m-%d")
-                release_year = exact_release_date.year
-                exact_release_date = exact_release_date
-            except ValueError:
-                pass
-        elif len(year) == 4:
-            release_year = int(year)
+        if year:
+            if len(year) > 4:
+                try:
+                    exact_release_date = datetime.strptime(year, "%Y-%m-%d")
+                    release_year = exact_release_date.year
+                    exact_release_date = exact_release_date
+                except ValueError:
+                    pass
+            elif len(year) == 4:
+                release_year = int(year)
 
         # Update or add the file in the database
         if existing_file:
+            scan_results.files_updated += 1
+
             existing_file.last_modified = last_modified_time
             existing_file.title = metadata.get("title")
             existing_file.artist = metadata.get("artist")
@@ -212,8 +228,10 @@ def scan_directory(directory: str, full=False):
                 TrackGenreDB(parent_type="music_file", genre=genre)
                 for genre in metadata.get("genres", [])
             ]
+            existing_file.comments = metadata.get("comments")
         else:
-            new_adds += 1
+            scan_results.files_indexed += 1
+            scan_results.files_added += 1
 
             db.add(
                 MusicFileDB(
@@ -236,23 +254,14 @@ def scan_directory(directory: str, full=False):
                     release_year=release_year,
                     size=file_size,
                     rating=metadata.get("rating"),
+                    comments = metadata.get("comments")
                 )
             )
-
-    logging.info(
-        f"Scanned {files_seen} music files ({files_seen - files_skipped} existing, {new_adds} new) in {time.time() - start_time:.2f} seconds"
-    )
 
     db.commit()
     db.close()
 
-    return {
-        "files_scanned": files_seen,
-        "files_indexed": files_seen - files_skipped,
-        "new_files_added": new_adds,
-        "files_updated": files_seen - files_skipped - new_adds,
-    }
-
+    scan_results.in_progress = False
 
 router = APIRouter()
 
@@ -264,20 +273,23 @@ def purge_data():
     Base.metadata.create_all(bind=engine)
 
 
-@router.get("/scan", response_model=ScanResults)
-def scan(repo: PlaylistRepository = Depends(get_playlist_repository), music_files: MusicFileRepository = Depends(get_music_file_repository)):
-    scan_results = scan_directory(os.getenv("MUSIC_PATH", "/music"), full=False)
-    prune_results = prune_music_files()
+@router.get("/scan")
+def scan(background_tasks: BackgroundTasks):
+    background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), full=False)
+    background_tasks.add_task(prune_music_files)
 
-    return ScanResults(**scan_results, **prune_results)
+    return HTTPException(status_code=202, detail="Scan started")
 
+@router.get("/fullscan")
+def full_scan(background_tasks: BackgroundTasks):
+    background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), full=False)
+    background_tasks.add_task(prune_music_files)
 
-@router.get("/fullscan", response_model=ScanResults)
-def full_scan(repo: PlaylistRepository = Depends(get_playlist_repository), music_files: MusicFileRepository = Depends(get_music_file_repository)):
-    scan_results = scan_directory(os.getenv("MUSIC_PATH", "/music"), full=True)
-    prune_results = prune_music_files()
+    return HTTPException(status_code=202, detail="Scan started")
 
-    return ScanResults(**scan_results, **prune_results)
+@router.get("/scan/progress", response_model=ScanResults)
+def scan_progress():
+    return scan_results
 
 def drop_music_files():
     db = Database.get_session()
@@ -394,7 +406,7 @@ async def get_stats():
         trackCount=track_count,
         albumCount=album_count,
         artistCount=artist_count,
-        totalLength=total_length,
+        totalLength=total_length if total_length else 0,
         missingTracks=missing_tracks
     )
 
@@ -604,9 +616,15 @@ def get_similar_tracks_with_openai(title: str = Query(...), artist: str = Query(
     return repo.get_similar_tracks(artist, title)
 
 @router.get("/testing/dumpLibrary/{playlistID}")
-def dump_library(playlistID: int, repo: PlaylistRepository = Depends(get_playlist_repository), music_files: MusicFileRepository = Depends(get_music_file_repository)):
+def dump_library(
+    playlistID: int,
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+    music_files: MusicFileRepository = Depends(get_music_file_repository),
+    background_tasks: BackgroundTasks = None
+):
     playlist = repo.get_by_id(playlistID)
-    music_files.dump_library_to_playlist(playlist, repo)
+
+    background_tasks.add_task(music_files.dump_library_to_playlist, playlist, repo)
 
 @app.get("/api/music-files")
 async def get_music_files(
