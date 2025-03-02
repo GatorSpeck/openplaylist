@@ -191,19 +191,25 @@ class PlaylistDB(Base):
 
 class PlaylistEntryDB(Base):
     __tablename__ = "playlist_entries"
-    id = Column(Integer, primary_key=True, index=True)
-    entry_type = Column(String(50), nullable=False)
-    order = Column(Integer)
+    id = Column(Integer, primary_key=True)
+    entry_type = Column(String(50), nullable=False, index=True)
+    order = Column(Integer, index=True)
 
     date_added = Column(DateTime)  # date added to playlist
 
-    playlist_id: Mapped[int] = mapped_column(ForeignKey("playlists.id"))
+    playlist_id: Mapped[int] = mapped_column(ForeignKey("playlists.id"), index=True)
     playlist: Mapped["PlaylistDB"] = relationship("PlaylistDB", back_populates="entries")
     
     details_id = Column(Integer, ForeignKey("base_elements.id"), nullable=True)
     details = relationship("BaseNode", foreign_keys=[details_id])
 
     __mapper_args__ = {"polymorphic_on": entry_type, "polymorphic_identity": "entry"}
+
+    # Add these indexes
+    __table_args__ = (
+        Index('idx_playlist_entries_playlist_order', 'playlist_id', 'order'),
+        Index('idx_playlist_entries_entry_type', 'entry_type')
+    )
 
 Index("playlist_entries_playlist_idx", PlaylistEntryDB.playlist_id)
 

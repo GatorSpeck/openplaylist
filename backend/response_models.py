@@ -160,6 +160,7 @@ class MusicFileEntry(PlaylistEntryBase):
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             music_file_id=self.music_file_id,
+            date_added = datetime.now()
         )
 
     def to_db(self) -> MusicFileDB:
@@ -190,7 +191,8 @@ class NestedPlaylistEntry(PlaylistEntryBase):
     def to_playlist(self, playlist_id) -> NestedPlaylistEntryDB:
         return NestedPlaylistEntryDB(
             entry_type=self.entry_type,
-            playlist_id=playlist_id
+            playlist_id=playlist_id,
+            date_added = datetime.now()
         )
 
     def to_db(self) -> NestedPlaylistDB:
@@ -223,7 +225,8 @@ class LastFMEntry(PlaylistEntryBase):
         return LastFMEntryDB(
             playlist_id=playlist_id,
             entry_type=self.entry_type,
-            lastfm_track_id=self.lastfm_track_id
+            lastfm_track_id=self.lastfm_track_id,
+            date_added = datetime.now()
         )
 
     def to_db(self) -> LastFMTrackDB:
@@ -264,7 +267,8 @@ class RequestedTrackEntry(PlaylistEntryBase):
         return RequestedTrackEntryDB(
             playlist_id=playlist_id,
             entry_type=self.entry_type,
-            requested_track_id=self.requested_track_id
+            requested_track_id=self.requested_track_id,
+            date_added = datetime.now()
         )
 
     def to_db(self) -> RequestedTrackDB:
@@ -307,7 +311,8 @@ class AlbumEntry(PlaylistEntryBase):
         return AlbumEntryDB(
             playlist_id=playlist_id,
             entry_type=self.entry_type,
-            album_id=self.album_id
+            album_id=self.album_id,
+            date_added = datetime.now()
         )
 
     def to_db(self) -> AlbumDB:
@@ -345,7 +350,8 @@ class RequestedAlbumEntry(PlaylistEntryBase):
         return RequestedAlbumEntryDB(
             playlist_id=playlist_id,
             entry_type=self.entry_type,
-            album_id=self.requested_album_id
+            album_id=self.requested_album_id,
+            date_added = datetime.now()
         )
 
     @classmethod
@@ -384,7 +390,7 @@ class Playlist(PlaylistBase):
             else:
                 raise ValueError(f"Unknown entry type: {entry.entry_type}")
 
-        return cls(id=obj.id, name=obj.name, entries=entries if details else list())
+        return cls(id=obj.id, name=obj.name, entries=entries)
 
 
 class SearchQuery(BaseModel):

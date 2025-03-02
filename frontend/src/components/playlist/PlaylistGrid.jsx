@@ -108,7 +108,7 @@ const PlaylistGrid = ({ playlistID }) => {
 
   const fetchPlaylistDetails = async (playlistId) => {
     try {
-      const playlist = await playlistRepository.getPlaylistDetailsUnpaginated(playlistId);
+      const playlist = (await playlistRepository.getPlaylistDetailsUnpaginated(playlistId)).data;
       setName(playlist.name);
       setIsInitialLoad(true);  // Set flag before updating entries
 
