@@ -5,6 +5,7 @@ from response_models import MusicFileEntry, MusicFile
 from models import Base, MusicFileDB, TrackGenreDB, PlaylistDB, MusicFileEntryDB
 import datetime
 import time
+import logging
 
 @pytest.fixture
 def playlist_repo(test_db):
@@ -37,13 +38,17 @@ def sample_music_file(test_db):
 
 @pytest.mark.slow
 def test_large_playlist_performance(test_db, sample_playlist, playlist_repo):
-    ITERS = 1000
+    ITERS = 10000
+
+    logging.info("Creating music files")
 
     music_files = []
     for i in range(ITERS):
         music_files.append(add_music_file(test_db, f"Test Song{i}", commit=False))
     
     test_db.commit()
+
+    logging.info("Adding to playlist")
     
     start_time = time.time()
     playlist_repo.add_entries(sample_playlist.id, [
@@ -71,4 +76,4 @@ def test_large_playlist_performance(test_db, sample_playlist, playlist_repo):
     assert add_duration < 10.0
     assert without_details_duration < 1.0
     assert with_details_duration < 2.0
-    assert False
+    

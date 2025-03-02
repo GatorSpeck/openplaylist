@@ -80,6 +80,13 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 selectinload(PlaylistDB.entries.of_type(LastFMEntryDB)).selectinload(LastFMEntryDB.details),
                 selectinload(PlaylistDB.entries.of_type(RequestedAlbumEntryDB)).selectinload(RequestedAlbumEntryDB.details)
             ])
+        else:
+            loader_options.extend([
+                selectinload(PlaylistDB.entries.of_type(MusicFileEntryDB)),
+                selectinload(PlaylistDB.entries.of_type(RequestedTrackEntryDB)),
+                selectinload(PlaylistDB.entries.of_type(LastFMEntryDB)),
+                selectinload(PlaylistDB.entries.of_type(RequestedAlbumEntryDB))
+            ])
         
         # Apply all loader options
         query = query.options(*loader_options)
