@@ -5,6 +5,7 @@ from repositories.playlist import PlaylistRepository
 from models import *
 from response_models import *
 import datetime
+from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 
 @pytest.fixture
 def playlist_repo(test_db):
@@ -46,7 +47,7 @@ def test_add_music_file_entry(playlist_repo, sample_playlist, sample_music_file)
         details=MusicFile.from_orm(sample_music_file)
     )
     
-    playlist_repo.add_entry(sample_playlist.id, entry)
+    playlist_repo.add_entries(sample_playlist.id, [entry])
     result = playlist_repo.get_with_entries(sample_playlist.id)
     
     assert len(result.entries) == 1
@@ -55,6 +56,13 @@ def test_add_music_file_entry(playlist_repo, sample_playlist, sample_music_file)
 
     first_entry = playlist_repo.get_playlist_entry_details(sample_playlist.id, [0])[0]
     assert first_entry.details.title == "Test Song"
+
+    result = playlist_repo.get_without_details(sample_playlist.id)
+
+    assert len(result.entries) == 1
+    assert result.entries[0].entry_type == "music_file"
+    assert result.entries[0].music_file_id == sample_music_file.id
+    assert result.entries[0].details is None
 
 def test_add_multiple_entries(playlist_repo, sample_playlist, sample_music_file):
     entries = [
@@ -125,7 +133,7 @@ def test_replace_with_empty_list(playlist_repo, sample_playlist, sample_music_fi
         music_file_id=sample_music_file.id,
         details=MusicFile.from_orm(sample_music_file)
     )
-    playlist_repo.add_entry(sample_playlist.id, initial_entry)
+    playlist_repo.add_entries(sample_playlist.id, [initial_entry])
     
     # Replace with empty list
     result = playlist_repo.replace_entries(sample_playlist.id, [])
@@ -205,11 +213,12 @@ def test_add_album_entry(test_db, playlist_repo, sample_playlist):
         details=album
     )
     
-    playlist_repo.add_entry(sample_playlist.id, entry)
+    playlist_repo.add_entries(sample_playlist.id, [entry])
     result = playlist_repo.get_with_entries(sample_playlist.id)
     
     assert len(result.entries) == 1
     assert result.entries[0].entry_type == "requested_album"
+    assert result.entries[0].details is not None
     assert result.entries[0].details.title == "Test Album"
     assert result.entries[0].details.tracks[0].linked_track.title == "Test Song 0"
 

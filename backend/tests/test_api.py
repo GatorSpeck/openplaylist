@@ -143,6 +143,9 @@ def test_add_lastfm_to_playlist(client, test_tracks):
     assert response.status_code == 200
 
     response = client.get(f"/api/playlists/{playlist_id}")
+    assert response.status_code == 200
+
+    assert response.json()["entries"] is not None    
     assert response.json()["entries"][0]["details"]["title"] == "Test Song"
 
 def test_delete_playlist(client):
