@@ -38,19 +38,19 @@ dotenv.load_dotenv(override=True)
 import logging
 logger = logging.getLogger(__name__)
 
-def playlist_orm_to_response(playlist: PlaylistEntryDB):
+def playlist_orm_to_response(playlist: PlaylistEntryDB, details: bool = True):
     if playlist.entry_type == "music_file":
-        return MusicFileEntry.from_orm(playlist)
+        return MusicFileEntry.from_orm(playlist, details=details)
     elif playlist.entry_type == "nested_playlist":
-        return NestedPlaylistEntry.from_orm(playlist)
+        return NestedPlaylistEntry.from_orm(playlist, details=details)
     elif playlist.entry_type == "lastfm":
-        return LastFMEntry.from_orm(playlist)
+        return LastFMEntry.from_orm(playlist, details=details)
     elif playlist.entry_type == "requested":
-        return RequestedTrackEntry.from_orm(playlist)
+        return RequestedTrackEntry.from_orm(playlist, details=details)
     elif playlist.entry_type == "album":
-        return AlbumEntry.from_orm(playlist)
+        return AlbumEntry.from_orm(playlist, details=details)
     elif playlist.entry_type == "requested_album":
-        return RequestedAlbumEntry.from_orm(playlist)
+        return RequestedAlbumEntry.from_orm(playlist, details=details)
     else:
         raise ValueError(f"Unknown entry type: {playlist.entry_type}")
 
@@ -61,16 +61,6 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
     def _get_playlist_query(self, playlist_id: int, details=False, limit=None, offset=None):
         query = (self.session.query(PlaylistDB)
             .filter(PlaylistDB.id == playlist_id)
-            .options(
-                # Load RequestedAlbumEntry details and tracks
-                joinedload(PlaylistDB.entries.of_type(RequestedAlbumEntryDB))
-                .joinedload(RequestedAlbumEntryDB.details)
-                .joinedload(AlbumDB.tracks)
-                .joinedload(AlbumTrackDB.linked_track),
-
-                joinedload(PlaylistDB.entries.of_type(RequestedTrackEntryDB))
-                .joinedload(RequestedTrackEntryDB.details)
-            )
         )
 
         if limit is not None and offset is not None:
@@ -84,10 +74,24 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             subquery = subquery.subquery("subquery")
 
             query = query.outerjoin(PlaylistEntryDB, PlaylistDB.entries.any() & (PlaylistEntryDB.id.in_(select(subquery.c.id))))
-        elif details:
-            query = query.outerjoin(PlaylistEntryDB, PlaylistDB.entries)
         
-        
+        if details:
+            query = query.options(
+                # Load RequestedAlbumEntry details and tracks
+                selectinload(PlaylistDB.entries.of_type(RequestedAlbumEntryDB))
+                .joinedload(RequestedAlbumEntryDB.details)
+                .joinedload(AlbumDB.tracks)
+                .joinedload(AlbumTrackDB.linked_track),
+
+                selectinload(PlaylistDB.entries.of_type(MusicFileEntryDB))
+                .joinedload(MusicFileEntryDB.details),
+
+                selectinload(PlaylistDB.entries.of_type(RequestedTrackEntryDB))
+                .joinedload(RequestedTrackEntryDB.details),
+
+                selectinload(PlaylistDB.entries.of_type(LastFMEntryDB))
+                .joinedload(LastFMEntryDB.details)
+            )
 
         return query
     
@@ -100,7 +104,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         if result is None:
             return None
 
-        entries = [playlist_orm_to_response(e) for e in result.entries]
+        entries = [playlist_orm_to_response(e, details=False) for e in result.entries]
         return Playlist(id=result.id, name=result.name, entries=entries)
 
     def get_with_entries(self, playlist_id: int, limit=None, offset=None) -> Optional[Playlist]:
@@ -128,72 +132,66 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         self.session.add(playlist_db)
         self.session.commit()
 
-        for entry in playlist.entries:
-            self.add_entry(playlist_db.id, entry)
+        self.add_entries(playlist_db.id, entries=playlist.entries)
 
         self.session.commit()
         self.session.refresh(playlist_db)
-        return Playlist.from_orm(playlist_db)
+        return Playlist.from_orm(playlist_db, details=True)
 
-    def add_entry(self, playlist_id: int, entry: PlaylistEntryBase, commit=False) -> None:
-        if entry.entry_type == "lastfm":
-            track = (
-                self.session.query(LastFMTrackDB)
-                .filter(LastFMTrackDB.url == entry.url)
-                .first()
-            )
-            if not track:
-                track = entry.to_db()
-                self.session.add(track)
-                self.session.commit()
-
-            entry.details = track
-        elif entry.entry_type == "requested":
-            track = (
-                self.session.query(RequestedTrackDB).filter(RequestedTrackDB.artist == entry.details.artist, RequestedTrackDB.title == entry.details.title).first()
-            )
-            if not track:
-                track = entry.to_db()
-                self.session.add(track)
-                self.session.commit()
-            
-            entry.details = track
-        elif entry.entry_type == "requested_album":
-            this_album = AlbumDB(artist=entry.details.artist, title=entry.details.title, art_url=entry.details.art_url)
-            self.session.add(this_album)
-            self.session.commit()
-
-            if entry.details.tracks:
-                for i, track in enumerate(entry.details.tracks):
-                    # add new requested track
-                    artist = track.linked_track.artist if track.linked_track.artist else track.linked_track.album_artist
-                    new_track = RequestedTrackDB(artist=artist, title=track.linked_track.title, entry_type="requested_track")
-                    self.session.add(new_track)
-                    self.session.commit()
-
-                    this_album.tracks.append(AlbumTrackDB(
-                        order=i,
-                        linked_track_id = new_track.id,
-                        linked_track=new_track,
-                        album_id=this_album.id
-                    ))
+    def create_entry_dependencies(self, entries: List[PlaylistEntryBase]):
+        for entry_idx, entry in enumerate(entries):
+            if entry.entry_type == "lastfm":
+                track = (
+                    self.session.query(LastFMTrackDB)
+                    .filter(LastFMTrackDB.url == entry.details.url)
+                    .first()
+                )
                 
-                self.session.commit()
-            
-            entry.details = this_album
-        else:
-            pass  # no need to hook up any new data
+                if not track:
+                    track = entry.to_db()
+                    self.session.add(track)
+                    self.session.flush()
 
-        this_playlist = (
-            self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
-        )
+                entries[entry_idx].lastfm_track_id = track.id
+            elif entry.entry_type == "requested":
+                track = (
+                    self.session.query(RequestedTrackDB).filter(RequestedTrackDB.artist == entry.details.artist, RequestedTrackDB.title == entry.details.title).first()
+                )
+                if not track:
+                    track = entry.to_db()
+                    self.session.add(track)
+                    self.session.flush()
+                
+                entries[entry_idx].requested_track_id = track.id
+            elif entry.entry_type == "requested_album":
+                this_album = AlbumDB(artist=entry.details.artist, title=entry.details.title, art_url=entry.details.art_url)
+                self.session.add(this_album)
+                self.session.flush()
 
-        playlist_entry = entry.to_playlist(playlist_id)
-        playlist_entry.date_added = datetime.now()
-        this_playlist.entries.append(playlist_entry)
+                if entry.details.tracks:
+                    for i, track in enumerate(entry.details.tracks):
+                        # add new requested track
+                        artist = track.linked_track.artist if track.linked_track.artist else track.linked_track.album_artist
+                        new_track = RequestedTrackDB(artist=artist, title=track.linked_track.title, entry_type="requested_track")
+                        self.session.add(new_track)
+                        self.session.flush()
 
-        if commit:
-            self.session.commit()
+                        this_album.tracks.append(AlbumTrackDB(
+                            order=i,
+                            linked_track_id = new_track.id,
+                            linked_track=new_track,
+                            album_id=this_album.id
+                        ))
+                    
+                    self.session.flush()
+                
+                entries[entry_idx].requested_album_id = this_album.id
+            else:
+                pass  # no need to hook up any new data
+
+        self.session.commit()
+        
+        return entries
 
     def add_entries(
         self, playlist_id: int, entries: List[PlaylistEntryBase], undo=False
@@ -204,8 +202,15 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         if not entries:
             return Playlist(id=playlist_id, name="", entries=[])
 
+        entries = self.create_entry_dependencies(entries)
+
+        playlist = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
+
+        playlist_entries = []
         for entry in entries:
-            self.add_entry(playlist_id, entry, commit=False)
+            playlist_entry = entry.to_playlist(playlist_id)
+            playlist_entry.date_added = datetime.now()
+            playlist.entries.append(playlist_entry)
         
         self.session.commit()
     
