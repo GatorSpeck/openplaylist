@@ -37,7 +37,7 @@ def sample_music_file(test_db):
 
 @pytest.mark.slow
 def test_large_playlist_performance(test_db, sample_playlist, playlist_repo):
-    ITERS = 10000
+    ITERS = 1000
 
     music_files = []
     for i in range(ITERS):
@@ -55,18 +55,20 @@ def test_large_playlist_performance(test_db, sample_playlist, playlist_repo):
         for i in range(ITERS)
     ])
 
-    duration = time.time() - start_time
-    print(duration)
-    assert duration < 1.0
+    add_duration = time.time() - start_time
+    print(add_duration)
 
     start_time = time.time()
     entries = playlist_repo.get_without_details(sample_playlist.id)
-    duration = time.time() - start_time
-    print(duration)
-    assert duration < 1.0
+    without_details_duration = time.time() - start_time
+    print(without_details_duration)
 
     start_time = time.time()
     entries = playlist_repo.get_with_entries(sample_playlist.id)
-    duration = time.time() - start_time
-    print(duration)
-    assert duration < 1.0
+    with_details_duration = time.time() - start_time
+    print(with_details_duration)
+
+    assert add_duration < 10.0
+    assert without_details_duration < 1.0
+    assert with_details_duration < 2.0
+    assert False

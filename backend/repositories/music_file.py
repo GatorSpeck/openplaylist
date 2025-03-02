@@ -212,12 +212,5 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         # get all music files
         music_files = self.session.query(MusicFileDB).all()
 
-        i = len(playlist.entries)
-        for music_file in music_files:
-            repo.add_entry(playlist.id, MusicFileEntry(entry_type="music_file", order=i, music_file_id=music_file.id, details=MusicFile.from_orm(music_file)), commit=False)
-            i+= 1
-
-            if i % 100 == 0:
-                self.session.commit()
-
-        self.session.commit()
+        repo.add_entries(playlist.id, [MusicFileEntry(entry_type="music_file", order=i, music_file_id=music_file.id, details=MusicFile.from_orm(music_file)) for i, music_file in enumerate(music_files)])
+        

@@ -25,7 +25,7 @@ from response_models import (
     RequestedAlbumEntry
 )
 from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
-from sqlalchemy import select
+from sqlalchemy import select, tuple_, and_, func
 from typing import List, Optional
 import warnings
 import os
@@ -59,53 +59,44 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         super().__init__(session, PlaylistDB)
     
     def _get_playlist_query(self, playlist_id: int, details=False, limit=None, offset=None):
-        query = (self.session.query(PlaylistDB)
+        # Start with a simple query for the playlist
+        query = (
+            self.session.query(PlaylistDB)
             .filter(PlaylistDB.id == playlist_id)
         )
-
-        if limit is not None and offset is not None:
-            subquery = (
-                self.session.query(PlaylistEntryDB.id)
-                    .filter(PlaylistEntryDB.playlist_id == playlist_id)
-                    .order_by(PlaylistEntryDB.order)
-                    .limit(limit).offset(offset)
-            )
-            
-            subquery = subquery.subquery("subquery")
-
-            query = query.outerjoin(PlaylistEntryDB, PlaylistDB.entries.any() & (PlaylistEntryDB.id.in_(select(subquery.c.id))))
+        
+        # Create a list for loader options
+        loader_options = []
+        
+        # First add the selectinload for the entries relationship
+        entry_loader = selectinload(PlaylistDB.entries)
+        loader_options.append(entry_loader)
         
         if details:
-            query = query.options(
-                # Load RequestedAlbumEntry details and tracks
-                selectinload(PlaylistDB.entries.of_type(RequestedAlbumEntryDB))
-                .joinedload(RequestedAlbumEntryDB.details)
-                .joinedload(AlbumDB.tracks)
-                .joinedload(AlbumTrackDB.linked_track),
-
-                selectinload(PlaylistDB.entries.of_type(MusicFileEntryDB))
-                .joinedload(MusicFileEntryDB.details),
-
-                selectinload(PlaylistDB.entries.of_type(RequestedTrackEntryDB))
-                .joinedload(RequestedTrackEntryDB.details),
-
-                selectinload(PlaylistDB.entries.of_type(LastFMEntryDB))
-                .joinedload(LastFMEntryDB.details)
-            )
-
+            # Add detail loaders for each type separately
+            loader_options.extend([
+                selectinload(PlaylistDB.entries.of_type(MusicFileEntryDB)).selectinload(MusicFileEntryDB.details).selectinload(MusicFileDB.genres),
+                selectinload(PlaylistDB.entries.of_type(RequestedTrackEntryDB)).selectinload(RequestedTrackEntryDB.details),
+                selectinload(PlaylistDB.entries.of_type(LastFMEntryDB)).selectinload(LastFMEntryDB.details),
+                selectinload(PlaylistDB.entries.of_type(RequestedAlbumEntryDB)).selectinload(RequestedAlbumEntryDB.details)
+            ])
+        
+        # Apply all loader options
+        query = query.options(*loader_options)
+        
         return query
     
     def get_count(self, playlist_id: int):
         return {"count": self.session.query(PlaylistEntryDB).filter(PlaylistEntryDB.playlist_id == playlist_id).count()}
     
     def get_without_details(self, playlist_id: int) -> Optional[Playlist]:
-        result = self.session.query(self.model).filter(self.model.id == playlist_id).first()
-
+        query = self._get_playlist_query(playlist_id, details=False)
+        
+        result = query.first()
         if result is None:
             return None
 
-        entries = [playlist_orm_to_response(e, details=False) for e in result.entries]
-        return Playlist(id=result.id, name=result.name, entries=entries)
+        return Playlist.from_orm(result, details=False)
 
     def get_with_entries(self, playlist_id: int, limit=None, offset=None) -> Optional[Playlist]:
         query = self._get_playlist_query(playlist_id, details=True, limit=limit, offset=offset)
@@ -113,13 +104,15 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         
         if result is None:
             return None
-        
-        results_to_use = result.entries if (limit is None and offset is None) else result.entries[offset:offset+limit]
-
+            
+        entries = result.entries
+        if limit is not None and offset is not None:
+            entries = sorted(entries, key=lambda x: x.order)[offset:offset + limit]
+            
         return Playlist(
             id=result.id,
             name=result.name,
-            entries=[playlist_orm_to_response(e) for e in results_to_use]
+            entries=[playlist_orm_to_response(e) for e in entries]
         )
 
     def get_all(self):
@@ -139,63 +132,101 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         return Playlist.from_orm(playlist_db, details=True)
 
     def create_entry_dependencies(self, entries: List[PlaylistEntryBase]):
+        # Group entries by type for bulk processing
+        lastfm_entries = []
+        requested_entries = []
+        album_entries = []
+        
         for entry_idx, entry in enumerate(entries):
             if entry.entry_type == "lastfm":
-                track = (
-                    self.session.query(LastFMTrackDB)
-                    .filter(LastFMTrackDB.url == entry.details.url)
-                    .first()
-                )
-                
-                if not track:
-                    track = entry.to_db()
-                    self.session.add(track)
-                    self.session.flush()
-
-                entries[entry_idx].lastfm_track_id = track.id
+                lastfm_entries.append((entry_idx, entry))
             elif entry.entry_type == "requested":
-                track = (
-                    self.session.query(RequestedTrackDB).filter(RequestedTrackDB.artist == entry.details.artist, RequestedTrackDB.title == entry.details.title).first()
-                )
-                if not track:
+                requested_entries.append((entry_idx, entry))
+            elif entry.entry_type == "requested_album":
+                album_entries.append((entry_idx, entry))
+
+        # Bulk process LastFM tracks
+        if lastfm_entries:
+            urls = [e.details.url for _, e in lastfm_entries]
+            existing_tracks = {
+                t.url: t for t in self.session.query(LastFMTrackDB)
+                .filter(LastFMTrackDB.url.in_(urls)).all()
+            }
+            
+            tracks_to_add = []
+            for idx, entry in lastfm_entries:
+                if entry.details.url not in existing_tracks:
                     track = entry.to_db()
                     self.session.add(track)
                     self.session.flush()
-                
-                entries[entry_idx].requested_track_id = track.id
-            elif entry.entry_type == "requested_album":
-                this_album = AlbumDB(artist=entry.details.artist, title=entry.details.title, art_url=entry.details.art_url)
-                self.session.add(this_album)
-                self.session.flush()
+                    existing_tracks[entry.details.url] = track
+                entries[idx].lastfm_track_id = existing_tracks[entry.details.url].id
 
+        # Similar bulk processing for requested tracks
+        if requested_entries:
+            track_keys = [(e.details.artist, e.details.title) for _, e in requested_entries]
+            existing_tracks = {
+                (t.artist, t.title): t for t in self.session.query(RequestedTrackDB)
+                .filter(tuple_(RequestedTrackDB.artist, RequestedTrackDB.title).in_(track_keys)).all()
+            }
+            
+            tracks_to_add = []
+            for idx, entry in requested_entries:
+                key = (entry.details.artist, entry.details.title)
+                if key not in existing_tracks:
+                    track = entry.to_db()
+                    self.session.add(track)
+                    self.session.flush()
+                    existing_tracks[key] = track
+                entries[idx].requested_track_id = existing_tracks[key].id
+
+        # Bulk create albums and their tracks
+        if album_entries:
+            albums_to_add = []
+            tracks_to_add = []
+            album_tracks_to_add = []
+            
+            for idx, entry in album_entries:
+                album = AlbumDB(
+                    artist=entry.details.artist,
+                    title=entry.details.title,
+                    art_url=entry.details.art_url
+                )
+                # Add album to session to get its ID
+                self.session.add(album)
+                self.session.flush()
+                
+                albums_to_add.append(album)
+                entries[idx].requested_album_id = album.id
+                    
                 if entry.details.tracks:
                     for i, track in enumerate(entry.details.tracks):
-                        # add new requested track
-                        artist = track.linked_track.artist if track.linked_track.artist else track.linked_track.album_artist
-                        new_track = RequestedTrackDB(artist=artist, title=track.linked_track.title, entry_type="requested_track")
+                        artist = track.linked_track.artist or track.linked_track.album_artist
+                        new_track = RequestedTrackDB(
+                            artist=artist,
+                            title=track.linked_track.title,
+                            entry_type="requested_track"
+                        )
+                        # Add track to session to get its ID
                         self.session.add(new_track)
                         self.session.flush()
-
-                        this_album.tracks.append(AlbumTrackDB(
+                        
+                        tracks_to_add.append(new_track)
+                        
+                        # Create album track with valid IDs
+                        album_track = AlbumTrackDB(
                             order=i,
-                            linked_track_id = new_track.id,
-                            linked_track=new_track,
-                            album_id=this_album.id
-                        ))
-                    
-                    self.session.flush()
-                
-                entries[entry_idx].requested_album_id = this_album.id
-            else:
-                pass  # no need to hook up any new data
+                            linked_track_id=new_track.id,
+                            album_id=album.id
+                        )
+                        album.tracks.append(album_track)
 
-        self.session.commit()
-        
+            # No need for bulk_save_objects since we're adding to session directly
+            self.session.flush()
+
         return entries
 
-    def add_entries(
-        self, playlist_id: int, entries: List[PlaylistEntryBase], undo=False
-    ) -> None:
+    def add_entries(self, playlist_id: int, entries: List[PlaylistEntryBase], undo=False) -> None:
         if undo:
             return self.undo_add_entries(playlist_id, entries)
         
@@ -204,14 +235,20 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
         entries = self.create_entry_dependencies(entries)
 
-        playlist = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
-
-        playlist_entries = []
-        for entry in entries:
-            playlist_entry = entry.to_playlist(playlist_id)
-            playlist_entry.date_added = datetime.now()
-            playlist.entries.append(playlist_entry)
-        
+        # Batch process entries in chunks
+        CHUNK_SIZE = 1000
+        for i in range(0, len(entries), CHUNK_SIZE):
+            chunk = entries[i:i + CHUNK_SIZE]
+            
+            # Create all entries for this chunk
+            playlist_entries = [
+                entry.to_playlist(playlist_id)
+                for entry in chunk
+            ]
+            
+            # Bulk insert the chunk
+            self.session.bulk_save_objects(playlist_entries)
+                
         self.session.commit()
     
     def remove_entries(
