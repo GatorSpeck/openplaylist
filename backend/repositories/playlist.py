@@ -38,7 +38,8 @@ dotenv.load_dotenv(override=True)
 import logging
 logger = logging.getLogger(__name__)
 
-def playlist_orm_to_response(playlist: PlaylistEntryDB, details: bool = True):
+def playlist_orm_to_response(playlist: PlaylistEntryDB, order=0, details: bool = True):
+    playlist.order = order
     if playlist.entry_type == "music_file":
         return MusicFileEntry.from_orm(playlist, details=details)
     elif playlist.entry_type == "nested_playlist":
@@ -106,20 +107,53 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         return Playlist.from_orm(result, details=False)
 
     def get_with_entries(self, playlist_id: int, limit=None, offset=None) -> Optional[Playlist]:
-        query = self._get_playlist_query(playlist_id, details=True, limit=limit, offset=offset)
-        result = query.first()
-        
-        if result is None:
+        # First, get the basic playlist info without entries
+        playlist = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
+        if playlist is None:
             return None
-            
-        entries = result.entries
+        
+        # Get just the paginated entries without loading details yet
+        entries_query = (
+            self.session.query(PlaylistEntryDB)
+            .filter(PlaylistEntryDB.playlist_id == playlist_id)
+        )
+        
+        # Apply pagination at the database level
         if limit is not None and offset is not None:
-            entries = sorted(entries, key=lambda x: x.order)[offset:offset + limit]
-            
+            entries_query = entries_query.limit(limit).offset(offset)
+        
+        # Get the basic entries first
+        entry_ids = [entry.id for entry in entries_query.all()]
+        
+        if not entry_ids:
+            # Return empty playlist if no entries found
+            return Playlist(id=playlist.id, name=playlist.name, entries=[])
+        
+        # Now load the full entries with details in one efficient query
+        poly_entity = with_polymorphic(
+            PlaylistEntryDB,
+            [MusicFileEntryDB, RequestedTrackEntryDB, LastFMEntryDB, RequestedAlbumEntryDB]
+        )
+        
+        full_entries = (
+            self.session.query(poly_entity)
+            .filter(poly_entity.id.in_(entry_ids))
+            .options(
+                # Load details for each type
+                selectinload(poly_entity.MusicFileEntryDB.details).selectinload(MusicFileDB.genres),
+                selectinload(poly_entity.RequestedTrackEntryDB.details),
+                selectinload(poly_entity.LastFMEntryDB.details),
+                selectinload(poly_entity.RequestedAlbumEntryDB.details)
+            )
+        ).all()
+
+        order_offset = 0 if offset is None else offset
+        
+        # Create the response object
         return Playlist(
-            id=result.id,
-            name=result.name,
-            entries=[playlist_orm_to_response(e) for e in entries]
+            id=playlist.id,
+            name=playlist.name,
+            entries=[playlist_orm_to_response(e, order=i + order_offset) for i, e in enumerate(full_entries)]
         )
 
     def get_all(self):
@@ -290,7 +324,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             .filter(PlaylistEntryDB.playlist_id == playlist_id)
             .all()
         )
-        for record in current_records:
+        for record in current_records: 
             self.session.delete(record)
 
         self.session.commit()
@@ -330,14 +364,13 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             self._get_playlist_query(playlist_id, details=False)
             .filter(PlaylistDB.id == playlist_id)
             .join(PlaylistDB.entries)
-            .filter(PlaylistEntryDB.order.in_(entry_ids))
             .first()
         )
         
         if playlist is None:
             return []
 
-        entries = [entry for entry in playlist.entries if entry.order in entry_ids]
+        entries = [entry for i, entry in enumerate(playlist.entries) if i in entry_ids]
 
         return [playlist_orm_to_response(e) for e in entries]
     

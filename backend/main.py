@@ -152,111 +152,121 @@ def scan_directory(directory: str, full=False):
 
     files_seen = 0
     total_files = float(len(all_files))
+    ops = 0
     for full_path in tqdm(all_files, desc="Scanning files"):
-        files_seen += 1
-        scan_results.progress = round(files_seen / total_files * 100, 1)
-        if not full_path.lower().endswith(SUPPORTED_FILETYPES):
-            continue
+        try:
+            files_seen += 1
+            scan_results.progress = round(files_seen / total_files * 100, 1)
+            if not full_path.lower().endswith(SUPPORTED_FILETYPES):
+                continue
 
-        last_modified_time = datetime.fromtimestamp(os.path.getmtime(full_path))
-        existing_file = (
-            db.query(MusicFileDB).filter(MusicFileDB.path == full_path).first()
-        )
-
-        found_existing_file = False
-        if existing_file and existing_file.missing:
-            found_existing_file = True
-            existing_file.missing = False
-
-        if (not full) and (not found_existing_file) and existing_file and existing_file.last_scanned >= last_modified_time:
-            continue  # Skip files that have not changed
-
-        metadata = {}
-
-        if full_path.lower().endswith(".mp3"):
-            metadata = extract_metadata(full_path, EasyID3)
-        elif full_path.lower().endswith(".flac"):
-            metadata = extract_metadata(full_path, FLAC)
-        elif full_path.lower().endswith(".wav"):
-            metadata = extract_metadata(full_path, WAVE)
-        elif full_path.lower().endswith(".m4a"):
-            metadata = extract_metadata(full_path, MP4)
-        else:
-            logging.debug(f"Skipping file {full_path} with unsupported file type")
-            continue
-
-        if not metadata:
-            continue
-
-        file_size = os.path.getsize(full_path)
-
-        year = metadata.get("year")
-        release_year = None
-        exact_release_date = None
-
-        # try to infer the exact release date
-        if year:
-            if len(year) > 4:
-                try:
-                    exact_release_date = datetime.strptime(year, "%Y-%m-%d")
-                    release_year = exact_release_date.year
-                    exact_release_date = exact_release_date
-                except ValueError:
-                    pass
-            elif len(year) == 4:
-                release_year = int(year)
-
-        # Update or add the file in the database
-        if existing_file:
-            scan_results.files_updated += 1
-
-            existing_file.last_modified = last_modified_time
-            existing_file.title = metadata.get("title")
-            existing_file.artist = metadata.get("artist")
-            existing_file.album = metadata.get("album")
-            existing_file.album_artist = metadata.get("album_artist")
-            existing_file.year = year
-            existing_file.length = metadata.get("length")
-            existing_file.publisher = metadata.get("publisher")
-            existing_file.kind = metadata.get("kind")
-            existing_file.last_scanned = datetime.now()
-            existing_file.exact_release_date = exact_release_date
-            existing_file.release_year = release_year
-            existing_file.size = file_size
-            existing_file.rating = metadata.get("rating")
-            existing_file.genres = [
-                TrackGenreDB(parent_type="music_file", genre=genre)
-                for genre in metadata.get("genres", [])
-            ]
-            existing_file.comments = metadata.get("comments")
-        else:
-            scan_results.files_indexed += 1
-            scan_results.files_added += 1
-
-            db.add(
-                MusicFileDB(
-                    path=full_path,
-                    title=metadata.get("title"),
-                    artist=metadata.get("artist"),
-                    album=metadata.get("album"),
-                    genres=[
-                        TrackGenreDB(parent_type="music_file", genre=genre)
-                        for genre in metadata.get("genres", [])
-                    ],
-                    album_artist=metadata.get("album_artist"),
-                    year=year,
-                    length=metadata.get("length"),
-                    publisher=metadata.get("publisher"),
-                    kind=metadata.get("kind"),
-                    first_scanned=datetime.now(),
-                    last_scanned=datetime.now(),
-                    exact_release_date=exact_release_date,
-                    release_year=release_year,
-                    size=file_size,
-                    rating=metadata.get("rating"),
-                    comments = metadata.get("comments")
-                )
+            last_modified_time = datetime.fromtimestamp(os.path.getmtime(full_path))
+            existing_file = (
+                db.query(MusicFileDB).filter(MusicFileDB.path == full_path).first()
             )
+
+            found_existing_file = False
+            if existing_file and existing_file.missing:
+                found_existing_file = True
+                existing_file.missing = False
+
+            if (not full) and (not found_existing_file) and existing_file and existing_file.last_scanned >= last_modified_time:
+                continue  # Skip files that have not changed
+
+            metadata = {}
+
+            if full_path.lower().endswith(".mp3"):
+                metadata = extract_metadata(full_path, EasyID3)
+            elif full_path.lower().endswith(".flac"):
+                metadata = extract_metadata(full_path, FLAC)
+            elif full_path.lower().endswith(".wav"):
+                metadata = extract_metadata(full_path, WAVE)
+            elif full_path.lower().endswith(".m4a"):
+                metadata = extract_metadata(full_path, MP4)
+            else:
+                logging.debug(f"Skipping file {full_path} with unsupported file type")
+                continue
+
+            if not metadata:
+                continue
+
+            file_size = os.path.getsize(full_path)
+
+            year = metadata.get("year")
+            release_year = None
+            exact_release_date = None
+
+            # try to infer the exact release date
+            if year:
+                if len(year) > 4:
+                    try:
+                        exact_release_date = datetime.strptime(year, "%Y-%m-%d")
+                        release_year = exact_release_date.year
+                        exact_release_date = exact_release_date
+                    except ValueError:
+                        pass
+                elif len(year) == 4:
+                    release_year = int(year)
+
+            # Update or add the file in the database
+            if existing_file:
+                scan_results.files_updated += 1
+
+                existing_file.last_modified = last_modified_time
+                existing_file.title = metadata.get("title")
+                existing_file.artist = metadata.get("artist")
+                existing_file.album = metadata.get("album")
+                existing_file.album_artist = metadata.get("album_artist")
+                existing_file.year = year
+                existing_file.length = metadata.get("length")
+                existing_file.publisher = metadata.get("publisher")
+                existing_file.kind = metadata.get("kind")
+                existing_file.last_scanned = datetime.now()
+                existing_file.exact_release_date = exact_release_date
+                existing_file.release_year = release_year
+                existing_file.size = file_size
+                existing_file.rating = metadata.get("rating")
+                existing_file.genres = [
+                    TrackGenreDB(parent_type="music_file", genre=genre)
+                    for genre in metadata.get("genres", [])
+                ]
+                existing_file.comments = metadata.get("comments")
+            else:
+                scan_results.files_indexed += 1
+                scan_results.files_added += 1
+
+                db.add(
+                    MusicFileDB(
+                        path=full_path,
+                        title=metadata.get("title"),
+                        artist=metadata.get("artist"),
+                        album=metadata.get("album"),
+                        genres=[
+                            TrackGenreDB(parent_type="music_file", genre=genre)
+                            for genre in metadata.get("genres", [])
+                        ],
+                        album_artist=metadata.get("album_artist"),
+                        year=year,
+                        length=metadata.get("length"),
+                        publisher=metadata.get("publisher"),
+                        kind=metadata.get("kind"),
+                        first_scanned=datetime.now(),
+                        last_scanned=datetime.now(),
+                        exact_release_date=exact_release_date,
+                        release_year=release_year,
+                        size=file_size,
+                        rating=metadata.get("rating"),
+                        comments = metadata.get("comments")
+                    )
+                )
+            
+            ops += 1
+            if ops > 100:
+                db.commit()
+                ops = 0
+        
+        except Exception as e:
+            logging.error(f"Failed to scan file {full_path}: {e}", exc_info=True)
 
     db.commit()
     db.close()
