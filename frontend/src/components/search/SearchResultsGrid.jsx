@@ -243,7 +243,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
         } catch (error) {
           console.error('Error polling scan progress:', error);
         }
-      }, 1000); // Poll every second
+      }, 5000); // Poll every second
 
     } catch (error) {
       console.error('Error scanning music:', error);

@@ -80,7 +80,7 @@ def test_add_multiple_entries(playlist_repo, sample_playlist, sample_music_file)
     
     assert len(result.entries) == 3
     assert all(e.entry_type == "music_file" for e in result.entries)
-    assert [e.order for e in result.entries] == [0, 1, 2]
+    assert [e.details.title for e in result.entries] == ["Test Song"] * 3
 
     playlist_repo.undo_add_entries(sample_playlist.id, entries)
 
@@ -113,7 +113,7 @@ def test_replace_entries(playlist_repo, sample_playlist, sample_music_file, samp
     result = playlist_repo.get_with_entries(sample_playlist.id)
     
     assert len(result.entries) == 1
-    assert result.entries[0].order == 0
+    assert result.entries[0].details.title == "Test Song2"
 
 def test_empty_entries_list(playlist_repo, sample_playlist):
     result = playlist_repo.add_entries(sample_playlist.id, [])

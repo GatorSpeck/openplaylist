@@ -11,14 +11,13 @@ export class PlaylistRepository {
 
             while (firstRun || (response.entries.length < count)) {
                 const offset = firstRun ? 0 : response.entries.length;
-                const chunk = await axios.get(`/api/playlists/${playlistID}?limit=100&offset=${offset}`, {
-                });
+                const chunk = (await axios.get(`/api/playlists/${playlistID}?limit=1000&offset=${offset}`)).data;
 
                 if (!response) {
-                    response = chunk.data;
+                    response = chunk;
                 }
                 else {
-                    response.entries = response.entries.concat(chunk.data.entries);
+                    response.entries = response.entries.concat(chunk.entries);
                 }
 
                 firstRun = false;

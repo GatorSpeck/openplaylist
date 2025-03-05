@@ -205,12 +205,6 @@ class PlaylistEntryDB(Base):
 
     __mapper_args__ = {"polymorphic_on": entry_type, "polymorphic_identity": "entry"}
 
-    # Add these indexes
-    __table_args__ = (
-        Index('idx_playlist_entries_playlist_order', 'playlist_id', 'order'),
-        Index('idx_playlist_entries_entry_type', 'entry_type')
-    )
-
 Index("playlist_entries_playlist_idx", PlaylistEntryDB.playlist_id)
 
 class MusicFileEntryDB(PlaylistEntryDB):
