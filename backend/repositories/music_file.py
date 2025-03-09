@@ -24,6 +24,8 @@ def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
         genres=[g.genre for g in music_file_db.genres] or [],
         last_scanned=music_file_db.last_scanned,
         missing=music_file_db.missing,
+        track_number=music_file_db.track_number,
+        disc_number=music_file_db.disc_number,
     )
 
 
@@ -137,6 +139,8 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             publisher=music_file.publisher,
             kind=music_file.kind,
             last_scanned=music_file.last_scanned,
+            track_number=music_file.track_number,
+            disc_number=music_file.disc_number,
         )
 
         self.session.add(music_file_db)

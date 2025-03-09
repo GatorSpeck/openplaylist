@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from repositories.playlist import PlaylistRepository
+from repositories.playlist import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
 from models import *
 from response_models import *
 import datetime
@@ -228,3 +228,51 @@ def test_add_album_entry(test_db, playlist_repo, sample_playlist):
     print(first_entry.details.tracks[0].__dict__)
 
     assert first_entry.details.tracks[0].linked_track.title == "Test Song 0"
+
+def test_filter_playlist(test_db, playlist_repo, sample_playlist):
+    initial_entries = []
+    for i in range(10):
+        f = add_music_file(test_db, f"Test Song {i}")
+        entry = MusicFileEntry(
+            entry_type="music_file",
+            music_file_id=f.id,
+            details=MusicFile.from_orm(f)
+        )
+        initial_entries.append(entry)
+
+    playlist_repo.add_entries(sample_playlist.id, initial_entries)
+
+    filter = PlaylistFilter(
+        filter="Song 5"
+    )
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+
+    assert len(results) == 1
+    assert results[0].details.title == "Test Song 5"
+
+    filter = PlaylistFilter(
+        filter="Song",
+        offset=0,
+        limit=5
+    )
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+
+    assert len(results) == 5
+    assert results[0].details.title == "Test Song 0"
+    assert results[4].details.title == "Test Song 4"
+
+    filter.offset = 5
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+
+    assert len(results) == 5
+    assert results[0].details.title == "Test Song 5"
+    assert results[4].details.title == "Test Song 9"
+
+    # now reverse it, keeping the same pagination settings
+    filter.sortDirection = PlaylistSortDirection.DESC
+
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+    
+    assert len(results) == 5
+    assert results[0].details.title == "Test Song 4"
+    assert results[4].details.title == "Test Song 0"

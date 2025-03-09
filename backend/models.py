@@ -72,6 +72,16 @@ class TrackDetailsMixin:
         """Comments on track file"""
         return mapped_column(Text, nullable=True)
 
+    @declared_attr
+    def disc_number(cls) -> Mapped[Optional[int]]:
+        """Disc number"""
+        return mapped_column(Integer, nullable=True)
+
+    @declared_attr
+    def track_number(cls) -> Mapped[Optional[int]]:
+        """Track number"""
+        return mapped_column(Integer, nullable=True)
+
 
 class BaseNode(Base):
     __tablename__ = "base_elements"

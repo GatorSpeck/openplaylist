@@ -105,6 +105,7 @@ if REDIS_HOST and REDIS_PORT:
 def extract_metadata(file_path, extractor):
     try:
         audio = extractor(file_path)
+        print(audio.tags)
         result = {
             "title": audio.get("title", [None])[0],
             "artist": audio.get("artist", [None])[0],
@@ -115,7 +116,12 @@ def extract_metadata(file_path, extractor):
             "publisher": audio.get("organization", [None])[0],
             "kind": audio.mime[0] if hasattr(audio, "mime") else None,
             "genres": audio.get("genre", list()),
+            "track_number": audio.get("tracknumber", [None])[0],
+            "disc_number": audio.get("discnumber", [None])[0],
+            "rating": audio.get("rating", [None])[0],
+            "comments": audio.get("comment", [None])[0]
         }
+        
         return result
     except Exception as e:
         logging.error(f"Failed to read metadata for {file_path}: {e}")
@@ -149,6 +155,8 @@ def scan_directory(directory: str, full=False):
     ]
 
     db = Database.get_session()
+
+    albums_and_artists_seen = {}
 
     files_seen = 0
     total_files = float(len(all_files))
@@ -207,6 +215,23 @@ def scan_directory(directory: str, full=False):
                         pass
                 elif len(year) == 4:
                     release_year = int(year)
+            
+            album = None
+
+            # create album entry if applicable
+            if metadata.get("album") and metadata.get("artist"):
+                album_and_artist = AlbumAndArtist(album=metadata.get("album"), artist=metadata.get("artist"))
+                album = albums_and_artists_seen.get(album_and_artist)
+                if not album:
+                    album = AlbumDB(
+                        artist=metadata.get("artist"),
+                        title=metadata.get("album"),
+                        year=exact_release_date if exact_release_date else release_year,
+                        tracks = []
+                    )
+                    db.add(album)
+                    db.flush()
+                    albums_and_artists_seen[album_and_artist] = album
 
             # Update or add the file in the database
             if existing_file:
@@ -231,34 +256,42 @@ def scan_directory(directory: str, full=False):
                     for genre in metadata.get("genres", [])
                 ]
                 existing_file.comments = metadata.get("comments")
+                existing_file.track_number = metadata.get("track_number")
+                existing_file.disc_number = metadata.get("disc_number")
             else:
                 scan_results.files_indexed += 1
                 scan_results.files_added += 1
 
-                db.add(
-                    MusicFileDB(
-                        path=full_path,
-                        title=metadata.get("title"),
-                        artist=metadata.get("artist"),
-                        album=metadata.get("album"),
-                        genres=[
-                            TrackGenreDB(parent_type="music_file", genre=genre)
-                            for genre in metadata.get("genres", [])
-                        ],
-                        album_artist=metadata.get("album_artist"),
-                        year=year,
-                        length=metadata.get("length"),
-                        publisher=metadata.get("publisher"),
-                        kind=metadata.get("kind"),
-                        first_scanned=datetime.now(),
-                        last_scanned=datetime.now(),
-                        exact_release_date=exact_release_date,
-                        release_year=release_year,
-                        size=file_size,
-                        rating=metadata.get("rating"),
-                        comments = metadata.get("comments")
-                    )
+                this_track = MusicFileDB(
+                    path=full_path,
+                    title=metadata.get("title"),
+                    artist=metadata.get("artist"),
+                    album=metadata.get("album"),
+                    genres=[
+                        TrackGenreDB(parent_type="music_file", genre=genre)
+                        for genre in metadata.get("genres", [])
+                    ],
+                    album_artist=metadata.get("album_artist"),
+                    year=year,
+                    length=metadata.get("length"),
+                    publisher=metadata.get("publisher"),
+                    kind=metadata.get("kind"),
+                    first_scanned=datetime.now(),
+                    last_scanned=datetime.now(),
+                    exact_release_date=exact_release_date,
+                    release_year=release_year,
+                    size=file_size,
+                    rating=metadata.get("rating"),
+                    comments = metadata.get("comments"),
+                    track_number = metadata.get("track_number"),
+                    disc_number = metadata.get("disc_number")
                 )
+
+                db.add(this_track)
+
+                if album is not None:
+                    db.flush()
+                    album.tracks.append(AlbumTrackDB(linked_track_id=this_track.id, order=len(album.tracks)))
             
             ops += 1
             if ops > 100:

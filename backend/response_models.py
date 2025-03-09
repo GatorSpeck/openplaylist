@@ -34,6 +34,9 @@ class TrackDetails(BaseModel):
     exact_release_date: Optional[datetime] = None
     release_year: Optional[int] = None
     rating: Optional[int] = None
+    track_number: Optional[int] = None
+    disc_number: Optional[int] = None
+    comments: Optional[str] = None
 
 class MusicEntity(BaseModel):
     id: Optional[int] = None
@@ -85,6 +88,9 @@ class MusicFile(MusicEntity, TrackDetails):
             exact_release_date=obj.exact_release_date,
             release_year=obj.release_year,
             size=obj.size,
+            track_number=obj.track_number,
+            disc_number=obj.disc_number,
+            comments=obj.comments,
             playlists=[]
         )
 
@@ -419,3 +425,10 @@ class LibraryStats(BaseModel):
 class AlterPlaylistDetails(BaseModel):
     new_name: Optional[str]
     description: Optional[str]
+
+class AlbumAndArtist(BaseModel):
+    album: str
+    artist: str
+
+    def __hash__(self):
+        return hash((self.album, self.artist))

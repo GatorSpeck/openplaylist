@@ -1,6 +1,6 @@
 import pytest
 from repositories.music_file import MusicFileRepository
-from repositories.playlist import PlaylistRepository
+from repositories.playlist import PlaylistRepository, PlaylistFilter
 from response_models import MusicFileEntry, MusicFile
 from models import Base, MusicFileDB, TrackGenreDB, PlaylistDB, MusicFileEntryDB
 import datetime
@@ -73,7 +73,14 @@ def test_large_playlist_performance(test_db, sample_playlist, playlist_repo):
     with_details_duration = time.time() - start_time
     print(with_details_duration)
 
+    start_time = time.time()
+    filter = PlaylistFilter()
+    entries = playlist_repo.filter_playlist(sample_playlist.id, filter)
+    filter_duration = time.time() - start_time
+    print(filter_duration)
+
     assert add_duration < 10.0
     assert without_details_duration < 1.0
     assert with_details_duration < 2.0
+    assert filter_duration < 1.0
     
