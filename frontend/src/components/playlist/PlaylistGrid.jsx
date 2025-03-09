@@ -42,15 +42,17 @@ const Row = memo(({ data, index, style }) => {
     provided 
   } = data;
   
-  // Check if this index exists in our loaded entries
-  if (index >= entries.length) {
+  // Check if we have real data for this index
+  if (index >= entries.length || !entries[index] || !entries[index].details.title) {
     // Return a placeholder/loading row
     return (
       <div 
         style={style}
         className="playlist-grid-row loading-row"
       >
+        <div className="grid-cell">{index + 1}</div>
         <div className="grid-cell">Loading...</div>
+        <div className="grid-cell"></div>
       </div>
     );
   }
@@ -123,6 +125,11 @@ const PlaylistGrid = ({ playlistID }) => {
   const [totalCount, setTotalCount] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
+  // Add these state variables to track visible ranges
+  const [visibleStartIndex, setVisibleStartIndex] = useState(0);
+  const [visibleStopIndex, setVisibleStopIndex] = useState(0);
+  const [pendingFetchPromise, setPendingFetchPromise] = useState(null);
+
   // Apply debouncing to the filter
   useEffect(() => {
     // Set a timer to update the debounced filter after typing stops
@@ -140,23 +147,50 @@ const PlaylistGrid = ({ playlistID }) => {
     fetchPlaylistDetails(true);
   }, [playlistID, debouncedFilter, sortColumn, sortDirection]); // Use debouncedFilter here
 
-  const fetchPlaylistDetails = async (isInitialLoad = false, loadMore = false) => {
+  const fetchPlaylistDetails = useCallback(async (isInitialLoad = false, targetPosition = null) => {
     try {
       if (isInitialLoad) {
         setPlaylistLoading(true);
         // Get basic playlist info for the name on initial load
         const playlistInfo = await playlistRepository.getPlaylistDetailsUnpaginated(playlistID);
         setName(playlistInfo.data.name);
+        
+        // Initialize total count to set up the virtual list
+        const countResponse = await playlistRepository.getPlaylistEntries(playlistID, {
+          filter: debouncedFilter,
+          limit: 100
+        });
+        setTotalCount(countResponse.total || 0);
+
+         console.log(countResponse.total);
+
+        // create placeholder entries
+        const placeholders = new Array(countResponse.total).fill(null).map((_, index) => ({
+          order: index,  // This is critical for sorting
+          details: {}
+        }));
+        setEntries(placeholders);
       }
       
-      if (loadMore) {
+      // Determine which range to fetch
+      let offset = 0;
+      
+      if (targetPosition !== null) {
+        // For targeted scrolling, fetch data centered around the target position
+        offset = Math.max(0, Math.floor(targetPosition - pageSize/2));
+        if (offset + pageSize > totalCount) {
+          // Adjust offset to prevent fetching beyond the end
+          offset = Math.max(0, totalCount - pageSize);
+        }
+        setIsLoadingMore(true);
+      } else if (!isInitialLoad) {
+        // For normal pagination, fetch next batch
+        offset = entries.length;
         setIsLoadingMore(true);
       }
       
-      // Calculate offset based on current entries length, not page
-      const offset = loadMore ? entries.length : 0;
+      console.log(`Fetching with offset: ${offset}, limit: ${pageSize}, targetPosition: ${targetPosition}`);
       
-      // Use the filter_playlist endpoint via getPlaylistEntries with pagination
       const filterParams = {
         filter: debouncedFilter,
         sortCriteria: sortColumn,
@@ -165,37 +199,66 @@ const PlaylistGrid = ({ playlistID }) => {
         offset: offset
       };
       
-      console.log(`Fetching with offset: ${offset}, limit: ${pageSize}`);
-      
       const response = await playlistRepository.getPlaylistEntries(playlistID, filterParams);
-      console.log(response);
       const filteredEntries = response.entries;
       const mappedEntries = filteredEntries.map(entry => mapToTrackModel(entry));
       
       // Update total count from response
-      setTotalCount(response.total || mappedEntries.length);
+      const newTotalCount = response.total || mappedEntries.length;
+      setTotalCount(newTotalCount);
       
-      // If loading more, append to existing entries
-      if (loadMore) {
-        setEntries(prevEntries => [...prevEntries, ...mappedEntries]);
-      } else {
-        // Otherwise, replace entries
+      // Create a sparse array that handles the jumped position properly
+      if (targetPosition !== null) {
+        setEntries(prevEntries => {
+          // Create a new array with the correct total size
+          const newEntries = new Array(totalCount).fill(null).map((_, index) => {
+            // Start with minimal placeholder objects
+            return {
+              order: index,
+              details: {}
+            };
+          });
+          
+          // Copy existing entries (non-placeholder) to the new array
+          prevEntries.forEach((entry, i) => {
+            if (entry && entry.details.title && i < newEntries.length) {
+              newEntries[i] = entry;
+            }
+          });
+          
+          // Place the fetched entries at their correct positions
+          mappedEntries.forEach((entry, index) => {
+            if (offset + index < newEntries.length) {
+              newEntries[offset + index] = entry;
+            }
+          });
+          
+          return newEntries;
+        });
+      } else if (isInitialLoad) {
+        // On initial load, just set the entries directly
         setEntries(mappedEntries);
-        // Reset page to 0 when doing a full reload
-        setPage(0);
+      } else {
+        // For normal pagination, append to existing entries
+        setEntries(prevEntries => [...prevEntries, ...mappedEntries]);
       }
       
-      // Increment page if this was a loadMore operation
-      if (loadMore) {
-        setPage(prevPage => prevPage + 1);
-      }
+      // Update page based on the offset we fetched
+      const newPage = Math.floor(offset / pageSize);
+      setPage(newPage);
+      
+      return { 
+        fetchedRange: { start: offset, end: offset + mappedEntries.length - 1 },
+        total: newTotalCount
+      };
     } catch (error) {
       console.error('Error fetching playlist details:', error);
+      return null;
     } finally {
       setPlaylistLoading(false);
       setIsLoadingMore(false);
     }
-  };
+  }, [playlistID, debouncedFilter, sortColumn, sortDirection, pageSize, totalCount, entries.length]);
 
   const pushToHistory = (entries) => {
     const newHistory = history.slice(0, historyIndex + 1);
@@ -384,23 +447,6 @@ const PlaylistGrid = ({ playlistID }) => {
     // The effect will trigger a re-fetch with the new sort parameters
   };
 
-  const sortedEntries = [...entries].sort((a, b) => {
-    const multiplier = sortDirection === 'asc' ? 1 : -1;
-    
-    switch (sortColumn) {
-      case 'order':
-        return (a.order - b.order) * multiplier;
-      case 'type':
-        return a.entry_type.localeCompare(b.entry_type) * multiplier;
-      case 'artist':
-        return (a.artist || a.album_artist || '').localeCompare(b.artist || b.album_artist || '') * multiplier;
-      case 'title':
-        return a.title.localeCompare(b.title) * multiplier;
-      default:
-        return 0;
-    }
-  });
-
   const searchFor = (query) => {
     setSearchFilter(query);
     setSearchPanelOpen(true);
@@ -490,16 +536,50 @@ const PlaylistGrid = ({ playlistID }) => {
 
   const listRef = useRef(null);
 
-  // Function to load more data when scrolling near the end
-  const loadMoreItems = () => {
-    // Check if we've loaded all items
-    if (entries.length >= totalCount) {
+  // Replace loadMoreItems function with this smart pagination function
+  const loadItemsForVisibleRange = useCallback(async (startIndex, stopIndex) => {
+    // If we're already loading data, skip this request
+    if (isLoadingMore) return;
+    
+    // Calculate if there are any missing entries in the visible range
+    const hasMissingEntriesInView = () => {
+      for (let i = startIndex; i <= stopIndex; i++) {
+        if (i < entries.length && (!entries[i] || !entries[i].details || !entries[i].details.title)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    
+    // Case 1: We have missing entries in the visible range
+    if (hasMissingEntriesInView()) {
+      const midpoint = Math.floor((startIndex + stopIndex) / 2);
+      console.log(`Missing entries in visible range, fetching at position ${midpoint}`);
+      await fetchPlaylistDetails(false, midpoint);
       return;
     }
     
-    // Load the next page
-    fetchPlaylistDetails(false, true);
-  };
+    // Case 2: User has jumped far beyond loaded data
+    if (startIndex >= entries.length) {
+      console.log(`Jumped to position beyond loaded data: ${startIndex}`);
+      fetchPlaylistDetails(false, startIndex);
+      return;
+    }
+    
+    // Case 3: User is scrolling backwards to unloaded entries
+    if (startIndex < 20 && entries[0] === null) {
+      console.log(`Scrolling backwards to unloaded entries, fetching at position ${startIndex}`);
+      fetchPlaylistDetails(false, startIndex);
+      return;
+    }
+    
+    // Case 4: We're approaching the end of loaded data - fetch the next batch
+    if (stopIndex >= entries.length - 20 && entries.length < totalCount) {
+      console.log(`Approaching end of loaded data, fetching next batch`);
+      fetchPlaylistDetails(false);
+      return;
+    }
+  }, [entries, isLoadingMore, totalCount, fetchPlaylistDetails]);
 
   return (
     <div className="main-playlist-view">
@@ -604,7 +684,7 @@ const PlaylistGrid = ({ playlistID }) => {
                     <List
                       ref={listRef}
                       height={height}
-                      itemCount={totalCount} // Use totalCount instead of entries.length
+                      itemCount={totalCount}
                       itemSize={50}
                       width={width}
                       itemData={{
@@ -615,17 +695,15 @@ const PlaylistGrid = ({ playlistID }) => {
                         handleContextMenu: handleContextMenu,
                         isDraggingOver: snapshot.isDraggingOver
                       }}
-                      overscanCount={10} // Increased overscan for smoother experience
+                      overscanCount={20} // Increased overscan for jumping around
                       onItemsRendered={({ visibleStartIndex, visibleStopIndex }) => {
-                        // Load more when user scrolls near the end of loaded data
-                        const lastVisibleItem = visibleStopIndex;
-                        const loadMoreThreshold = 20; // Start loading when within 20 items of the end
+                        // Store the visible range
+                        setVisibleStartIndex(visibleStartIndex);
+                        setVisibleStopIndex(visibleStopIndex);
                         
-                        if (lastVisibleItem + loadMoreThreshold >= entries.length && 
-                            entries.length < totalCount && 
-                            !isLoadingMore) {
-                          loadMoreItems();
-                        }
+                        // ALWAYS check if we need to load data for the current visible range
+                        // Don't just check for the end of the list
+                        loadItemsForVisibleRange(visibleStartIndex, visibleStopIndex);
                       }}
                     >
                       {Row}

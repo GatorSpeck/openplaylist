@@ -105,7 +105,6 @@ if REDIS_HOST and REDIS_PORT:
 def extract_metadata(file_path, extractor):
     try:
         audio = extractor(file_path)
-        print(audio.tags)
         result = {
             "title": audio.get("title", [None])[0],
             "artist": audio.get("artist", [None])[0],
@@ -677,6 +676,10 @@ def get_similar_tracks_with_openai(title: str = Query(...), artist: str = Query(
 
     return repo.get_similar_tracks(artist, title)
 
+def dump_library_to_playlist(playlist: Playlist, repo: PlaylistRepository, music_files: MusicFileRepository):
+    music_files.dump_library_to_playlist(playlist, repo)
+    logging.info("Finished playlist dump")
+
 @router.get("/testing/dumpLibrary/{playlistID}")
 def dump_library(
     playlistID: int,
@@ -686,7 +689,7 @@ def dump_library(
 ):
     playlist = repo.get_by_id(playlistID)
 
-    background_tasks.add_task(music_files.dump_library_to_playlist, playlist, repo)
+    background_tasks.add_task(self.dump_library_to_playlist(playlist, repo, music_files))
 
 @app.get("/api/music-files")
 async def get_music_files(
