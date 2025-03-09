@@ -64,10 +64,33 @@ class PlaylistSortCriteria(IntEnum):
     ARTIST = 2
     ALBUM = 3
 
+    @classmethod
+    def from_str(cls, s):
+        s = s.lower()
+        if s == "order":
+            return cls.ORDER
+        elif s == "title":
+            return cls.TITLE
+        elif s == "artist":
+            return cls.ARTIST
+        elif s == "album":
+            return cls.ALBUM
+        else:
+            return cls.ORDER
+
 class PlaylistSortDirection(IntEnum):
     ASC = 0
     DESC = 1
 
+    @classmethod
+    def from_str(cls, s):
+        s = s.lower()
+        if s == "asc":
+            return cls.ASC
+        elif s == "desc":
+            return cls.DESC
+        else:
+            return cls.ASC
 
 class PlaylistFilter(BaseModel):
     filter: Optional[str] = None  # overall filter for string fields
@@ -505,23 +528,23 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             sort_column = poly_entity.order
         elif filter.sortCriteria == PlaylistSortCriteria.TITLE:
             sort_column = case(
-                (poly_entity.type == "music_file", music_file_details.title),
-                (poly_entity.type == "requested", requested_track_details.title),
-                (poly_entity.type == "lastfm", lastfm_details.title),
-                (poly_entity.type == "requested_album", requested_album_details.title),
+                (poly_entity.entry_type == "music_file", music_file_details.title),
+                (poly_entity.entry_type == "requested", requested_track_details.title),
+                (poly_entity.entry_type == "lastfm", lastfm_details.title),
+                (poly_entity.entry_type == "requested_album", requested_album_details.title),
                 else_=None
             )
         elif filter.sortCriteria == PlaylistSortCriteria.ARTIST:
             sort_column = case(
-                (poly_entity.type == "music_file", music_file_details.artist),
-                (poly_entity.type == "requested", requested_track_details.artist),
-                (poly_entity.type == "lastfm", lastfm_details.artist),
-                (poly_entity.type == "requested_album", requested_album_details.artist),
+                (poly_entity.entry_type == "music_file", music_file_details.artist),
+                (poly_entity.entry_type == "requested", requested_track_details.artist),
+                (poly_entity.entry_type == "lastfm", lastfm_details.artist),
+                (poly_entity.entry_type == "requested_album", requested_album_details.artist),
                 else_=None
             )
         elif filter.sortCriteria == PlaylistSortCriteria.ALBUM:
             sort_column = case(
-                (poly_entity.type == "music_file", music_file_details.album),
+                (poly_entity.entry_type == "music_file", music_file_details.album),
                 else_=None
             )
         
@@ -540,4 +563,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             query = query.limit(filter.limit)
         
         results = query.all()
+
+        # convert to response models
+        results = [playlist_orm_to_response(e) for e in results]
         return results

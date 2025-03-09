@@ -39,6 +39,20 @@ export class PlaylistRepository {
         }
     }
 
+    async getPlaylistEntries(playlistID, filter) {
+        try {
+            const response = await axios.get(`/api/playlists/${playlistID}/entries`, {
+                params: {
+                    ...filter
+                }
+            });
+
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching playlist entries:', error);
+        }
+    }
+
     // get playlist names and IDs
     async getPlaylists() {
         try {
