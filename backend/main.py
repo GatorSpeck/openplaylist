@@ -29,7 +29,7 @@ import requests_cache
 from response_models import *
 from dependencies import get_music_file_repository, get_playlist_repository
 from repositories.music_file import MusicFileRepository
-from repositories.playlist import PlaylistRepository
+from repositories.playlist import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
 from repositories.open_ai_repository import open_ai_repository
 from repositories.last_fm_repository import last_fm_repository
 from plexapi.server import PlexServer
@@ -429,6 +429,25 @@ async def get_playlist(
         raise HTTPException(status_code=500, detail="Failed to get playlist")
     finally:
         db.close()
+
+@router.get("/playlists/{playlist_id}/entries", response_model=List[PlaylistEntry])
+async def get_playlist_entries(
+    playlist_id: int,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
+    filter: Optional[str] = None,
+    sortCriteria: Optional[str] = None,
+    sortDirection: Optional[str] = None,
+    repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    f = PlaylistFilter(
+        filter=filter,
+        sortCriteria=PlaylistSortCriteria.from_str(sortCriteria),
+        sortDirection=PlaylistSortDirection.from_str(sortDirection),
+        limit=limit,
+        offset=offset,
+    )
+    return repo.filter_playlist(playlist_id, f)
 
 @router.get("/playlists/{playlist_id}/count")
 async def get_playlist_count(

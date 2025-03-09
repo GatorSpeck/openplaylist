@@ -103,17 +103,28 @@ const PlaylistGrid = ({ playlistID }) => {
   const [albumArtList, setAlbumArtList] = useState([]);
 
   useEffect(() => {
-    fetchPlaylistDetails(playlistID);
-  }, [playlistID]); // Only re-fetch when playlistID changes
+    fetchPlaylistDetails();
+  }, [playlistID, filter, sortColumn, sortDirection]); // Re-fetch when these change
 
-  const fetchPlaylistDetails = async (playlistId) => {
+  const fetchPlaylistDetails = async () => {
     try {
-      const playlist = (await playlistRepository.getPlaylistDetails(playlistId));
-      setName(playlist.name);
-      setIsInitialLoad(true);  // Set flag before updating entries
-
-      const newEntries = playlist.entries.map(entry => mapToTrackModel(entry));
-      setEntries(newEntries);    
+      // Get basic playlist info for the name
+      const playlistInfo = await playlistRepository.getPlaylistDetailsUnpaginated(playlistID);
+      setName(playlistInfo.data.name);
+      
+      // Use the filter_playlist endpoint via getPlaylistEntries
+      const filterParams = {
+        filter: filter, // Text search
+        sortCriteria: sortColumn,
+        sortDirection: sortDirection,
+        // Optional pagination params if needed
+        // limit: 100,
+        // offset: 0
+      };
+      
+      const filteredEntries = await playlistRepository.getPlaylistEntries(playlistID, filterParams);
+      const mappedEntries = filteredEntries.map(entry => mapToTrackModel(entry));
+      setEntries(mappedEntries);
     } catch (error) {
       console.error('Error fetching playlist details:', error);
     }
@@ -194,7 +205,7 @@ const PlaylistGrid = ({ playlistID }) => {
     // Scroll to bottom using the List ref instead
     setTimeout(() => {
       if (listRef.current) {
-        listRef.current.scrollToItem(filteredEntries.length - 1);
+        listRef.current.scrollToItem(entries.length - 1);
       }
     }, 100);
   };
@@ -303,6 +314,7 @@ const PlaylistGrid = ({ playlistID }) => {
       setSortColumn(column);
       setSortDirection('asc');
     }
+    // The effect will trigger a re-fetch with the new sort parameters
   };
 
   const sortedEntries = [...entries].sort((a, b) => {
@@ -321,23 +333,6 @@ const PlaylistGrid = ({ playlistID }) => {
         return 0;
     }
   });
-
-  const filteredEntries = useMemo(() => {
-    if (!filter) return sortedEntries;
-    
-    const searchTerm = filter.toLowerCase();
-    return sortedEntries.filter(entry => {
-      const title = entry.details?.title?.toLowerCase() || '';
-      const artist = entry.details?.artist?.toLowerCase() || '';
-      const album = entry.details?.album?.toLowerCase() || '';
-      const source = entry.entry_type?.toLowerCase() || '';
-      
-      return title.includes(searchTerm) ||
-             artist.includes(searchTerm) ||
-             album.includes(searchTerm) ||
-             source.includes(searchTerm);
-    });
-  }, [sortedEntries, filter]);
 
   const searchFor = (query) => {
     setSearchFilter(query);
@@ -474,7 +469,7 @@ const PlaylistGrid = ({ playlistID }) => {
             </button>
           )}
           <span className="filter-count">
-            {filteredEntries.length} of {entries.length} tracks
+            {entries.length} tracks {filter ? `(filtered from all)` : ''}
           </span>
         </div>
 
@@ -512,7 +507,7 @@ const PlaylistGrid = ({ playlistID }) => {
                 {...provided.draggableProps}
                 {...provided.dragHandleProps}
                 isDragging={snapshot.isDragging}
-                track={filteredEntries[rubric.source.index]}
+                track={entries[rubric.source.index]}
                 isChecked={selectedEntries.includes(rubric.source.index)}
                 handleContextMenu={handleContextMenu}
                 className="playlist-grid-row"
@@ -529,11 +524,11 @@ const PlaylistGrid = ({ playlistID }) => {
                     <List
                       ref={listRef}
                       height={height}
-                      itemCount={filteredEntries.length}
+                      itemCount={entries.length}
                       itemSize={50}
                       width={width}
                       itemData={{
-                        entries: filteredEntries,
+                        entries: entries,
                         toggleTrackSelection,
                         selectedEntries,
                         sortColumn,
