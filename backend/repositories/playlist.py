@@ -22,7 +22,8 @@ from response_models import (
     LastFMEntry,
     RequestedTrackEntry,
     AlbumEntry,
-    RequestedAlbumEntry
+    RequestedAlbumEntry,
+    PlaylistEntriesResponse
 )
 from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 from sqlalchemy import select, tuple_, and_, func, or_, case
@@ -555,6 +556,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             elif filter.sortDirection == PlaylistSortDirection.DESC:
                 query = query.order_by(sort_column.desc())
         
+        count = query.count()
+        
         # Apply pagination
         if filter.offset:
             query = query.offset(filter.offset)
@@ -562,8 +565,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         if filter.limit:
             query = query.limit(filter.limit)
         
-        results = query.all()
+        entries = query.all()
 
         # convert to response models
-        results = [playlist_orm_to_response(e) for e in results]
-        return results
+        entries = [playlist_orm_to_response(e) for e in entries]
+        return PlaylistEntriesResponse(total=count, entries=entries)
