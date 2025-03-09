@@ -67,6 +67,8 @@ class PlaylistSortCriteria(IntEnum):
 
     @classmethod
     def from_str(cls, s):
+        if s is None:
+            s = "order"
         s = s.lower()
         if s == "order":
             return cls.ORDER
@@ -85,6 +87,8 @@ class PlaylistSortDirection(IntEnum):
 
     @classmethod
     def from_str(cls, s):
+        if s is None:
+            s = "asc"
         s = s.lower()
         if s == "asc":
             return cls.ASC
@@ -567,6 +571,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         
         entries = query.all()
 
+        offset_to_use = filter.offset or 0
+
         # convert to response models
-        entries = [playlist_orm_to_response(e, order=i) for i, e in enumerate(entries)]
+        entries = [playlist_orm_to_response(e, order=(i + offset_to_use)) for i, e in enumerate(entries)]
         return PlaylistEntriesResponse(total=count, entries=entries)
