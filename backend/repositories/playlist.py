@@ -568,5 +568,5 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         entries = query.all()
 
         # convert to response models
-        entries = [playlist_orm_to_response(e) for e in entries]
+        entries = [playlist_orm_to_response(e, order=i) for i, e in enumerate(entries)]
         return PlaylistEntriesResponse(total=count, entries=entries)
