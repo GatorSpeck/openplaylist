@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, memo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, memo, useCallback } from 'react';
 import { Droppable, Draggable, DragDropContext } from 'react-beautiful-dnd';
 import Snackbar from '../Snackbar';
 import mapToTrackModel from '../../lib/mapToTrackModel';
@@ -74,6 +74,7 @@ const PlaylistGrid = ({ playlistID }) => {
   const [sortColumn, setSortColumn] = useState('order');
   const [sortDirection, setSortDirection] = useState('asc');
   const [filter, setFilter] = useState('');
+  const [debouncedFilter, setDebouncedFilter] = useState('');
   const [entries, setEntries] = useState([]);
   const [name, setName] = useState('');
   const [snackbar, setSnackbar] = useState({
@@ -102,9 +103,21 @@ const PlaylistGrid = ({ playlistID }) => {
   const [selectedTrack, setSelectedTrack] = useState(null);
   const [albumArtList, setAlbumArtList] = useState([]);
 
+  // Apply debouncing to the filter
+  useEffect(() => {
+    // Set a timer to update the debounced filter after typing stops
+    const timer = setTimeout(() => {
+      setDebouncedFilter(filter);
+    }, 500); // 500ms debounce delay
+
+    // Clean up the timer if filter changes before timeout completes
+    return () => clearTimeout(timer);
+  }, [filter]);
+
+  // Update useEffect to use debouncedFilter instead of filter
   useEffect(() => {
     fetchPlaylistDetails();
-  }, [playlistID, filter, sortColumn, sortDirection]); // Re-fetch when these change
+  }, [playlistID, debouncedFilter, sortColumn, sortDirection]); // Use debouncedFilter here
 
   const fetchPlaylistDetails = async () => {
     try {
@@ -114,12 +127,9 @@ const PlaylistGrid = ({ playlistID }) => {
       
       // Use the filter_playlist endpoint via getPlaylistEntries
       const filterParams = {
-        filter: filter, // Text search
+        filter: debouncedFilter, // Use debouncedFilter here
         sortCriteria: sortColumn,
         sortDirection: sortDirection,
-        // Optional pagination params if needed
-        // limit: 100,
-        // offset: 0
       };
       
       const filteredEntries = await playlistRepository.getPlaylistEntries(playlistID, filterParams);
@@ -469,7 +479,9 @@ const PlaylistGrid = ({ playlistID }) => {
             </button>
           )}
           <span className="filter-count">
-            {entries.length} tracks {filter ? `(filtered from all)` : ''}
+            {entries.length} tracks {filter ? 
+              (filter !== debouncedFilter ? '(filtering...)' : '(filtered)') 
+              : ''}
           </span>
         </div>
 
