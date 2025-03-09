@@ -16,7 +16,10 @@ const mapToTrackModel = (item) => {
         music_file_id: item.music_file_id || null,
         entry_type: item.entry_type,
         order: item.order || 0,
-        missing: detailsToUse.missing || false
+        missing: detailsToUse.missing || false,
+        track_number: detailsToUse.track_number || null,
+        disc_number: detailsToUse.disc_number || null,
+        
     }
 };
 

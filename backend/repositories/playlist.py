@@ -25,12 +25,14 @@ from response_models import (
     RequestedAlbumEntry
 )
 from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
-from sqlalchemy import select, tuple_, and_, func
+from sqlalchemy import select, tuple_, and_, func, or_, case
 from typing import List, Optional
 import warnings
 import os
 import json
 from datetime import datetime
+from pydantic import BaseModel
+from enum import IntEnum
 
 import dotenv
 dotenv.load_dotenv(override=True)
@@ -54,6 +56,25 @@ def playlist_orm_to_response(playlist: PlaylistEntryDB, order=0, details: bool =
         return RequestedAlbumEntry.from_orm(playlist, details=details)
     else:
         raise ValueError(f"Unknown entry type: {playlist.entry_type}")
+    
+
+class PlaylistSortCriteria(IntEnum):
+    ORDER = 0
+    TITLE = 1
+    ARTIST = 2
+    ALBUM = 3
+
+class PlaylistSortDirection(IntEnum):
+    ASC = 0
+    DESC = 1
+
+
+class PlaylistFilter(BaseModel):
+    filter: Optional[str] = None  # overall filter for string fields
+    sortCriteria: PlaylistSortCriteria = PlaylistSortCriteria.ORDER
+    sortDirection: PlaylistSortDirection = PlaylistSortDirection.ASC
+    limit: Optional[int] = None
+    offset: Optional[int] = None
 
 class PlaylistRepository(BaseRepository[PlaylistDB]):
     def __init__(self, session):
@@ -116,6 +137,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         entries_query = (
             self.session.query(PlaylistEntryDB)
             .filter(PlaylistEntryDB.playlist_id == playlist_id)
+            .order_by(PlaylistEntryDB.order)
         )
         
         # Apply pagination at the database level
@@ -138,6 +160,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         full_entries = (
             self.session.query(poly_entity)
             .filter(poly_entity.id.in_(entry_ids))
+            .order_by(poly_entity.order)
             .options(
                 # Load details for each type
                 selectinload(poly_entity.MusicFileEntryDB.details).selectinload(MusicFileDB.genres),
@@ -276,6 +299,10 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
         entries = self.create_entry_dependencies(entries)
 
+        this_playlist = self.session.query(PlaylistDB).get(playlist_id)
+        if this_playlist is None:
+            raise ValueError(f"Playlist with ID {playlist_id} not found")
+
         # Batch process entries in chunks
         CHUNK_SIZE = 1000
         for i in range(0, len(entries), CHUNK_SIZE):
@@ -287,8 +314,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 for entry in chunk
             ]
             
-            # Bulk insert the chunk
-            self.session.bulk_save_objects(playlist_entries)
+            this_playlist.entries.extend(playlist_entries)
                 
         self.session.commit()
     
@@ -427,3 +453,91 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
     
     def undo_remove_entries(self, playlist_id: int, entries: List[PlaylistEntryBase]):
         self.add_entries(playlist_id, entries)
+    
+    def filter_playlist(self, playlist_id, filter: PlaylistFilter):
+        results = []
+
+        # Define the polymorphic entity
+        poly_entity = with_polymorphic(
+            PlaylistEntryDB,
+            [MusicFileEntryDB, RequestedTrackEntryDB, LastFMEntryDB, RequestedAlbumEntryDB]
+        )
+
+        # Alias the detail tables for explicit joins
+        music_file_details = aliased(MusicFileDB)
+        requested_track_details = aliased(RequestedTrackDB)
+        lastfm_details = aliased(LastFMTrackDB)
+        requested_album_details = aliased(AlbumDB)
+
+        # Start the base query
+        query = (
+            self.session.query(poly_entity)
+            .filter(poly_entity.playlist_id == playlist_id)
+            # Join to each type of details table
+            .outerjoin(music_file_details, poly_entity.MusicFileEntryDB.details)
+            .outerjoin(requested_track_details, poly_entity.RequestedTrackEntryDB.details)
+            .outerjoin(lastfm_details, poly_entity.LastFMEntryDB.details)
+            .outerjoin(requested_album_details, poly_entity.RequestedAlbumEntryDB.details)
+        )
+
+        # Apply text filter if provided
+        if filter.filter:
+            query = query.filter(
+                or_(
+                    # MusicFileDB conditions
+                    music_file_details.title.ilike(f"%{filter.filter}%"),
+                    music_file_details.artist.ilike(f"%{filter.filter}%"),
+                    music_file_details.album.ilike(f"%{filter.filter}%"),
+                    # RequestedTrackDB conditions
+                    requested_track_details.title.ilike(f"%{filter.filter}%"),
+                    requested_track_details.artist.ilike(f"%{filter.filter}%"),
+                    # LastFMTrackDB conditions
+                    lastfm_details.title.ilike(f"%{filter.filter}%"),
+                    lastfm_details.artist.ilike(f"%{filter.filter}%"),
+                    # AlbumDB conditions
+                    requested_album_details.title.ilike(f"%{filter.filter}%"),
+                    requested_album_details.artist.ilike(f"%{filter.filter}%")
+                )
+            )
+        
+        # Apply sorting
+        if filter.sortCriteria == PlaylistSortCriteria.ORDER:
+            sort_column = poly_entity.order
+        elif filter.sortCriteria == PlaylistSortCriteria.TITLE:
+            sort_column = case(
+                (poly_entity.type == "music_file", music_file_details.title),
+                (poly_entity.type == "requested", requested_track_details.title),
+                (poly_entity.type == "lastfm", lastfm_details.title),
+                (poly_entity.type == "requested_album", requested_album_details.title),
+                else_=None
+            )
+        elif filter.sortCriteria == PlaylistSortCriteria.ARTIST:
+            sort_column = case(
+                (poly_entity.type == "music_file", music_file_details.artist),
+                (poly_entity.type == "requested", requested_track_details.artist),
+                (poly_entity.type == "lastfm", lastfm_details.artist),
+                (poly_entity.type == "requested_album", requested_album_details.artist),
+                else_=None
+            )
+        elif filter.sortCriteria == PlaylistSortCriteria.ALBUM:
+            sort_column = case(
+                (poly_entity.type == "music_file", music_file_details.album),
+                else_=None
+            )
+        
+        # Handle sort direction
+        if sort_column is not None:
+            if filter.sortDirection == PlaylistSortDirection.ASC:
+                query = query.order_by(sort_column.asc())
+            elif filter.sortDirection == PlaylistSortDirection.DESC:
+                query = query.order_by(sort_column.desc())
+        
+        # Apply pagination
+        if filter.offset:
+            query = query.offset(filter.offset)
+        
+        if filter.limit:
+            query = query.limit(filter.limit)
+        
+        results = query.all()
+        return results

@@ -51,6 +51,8 @@ const TrackDetailsModal = ({ track, onClose }) => {
           <p><strong>Title:</strong> {details.title}</p>
           <p><strong>Artist:</strong> {details.artist}</p>
           <p><strong>Album:</strong> {details.album}</p>
+          {details.disc_number ? <p><strong>Disc:</strong>{details.disc_number}</p> : null}
+          {details.track_number ? <p><strong>Track:</strong>{details.track_number}</p> : null}
           {details.album_artist ? <p><strong>Album Artist:</strong> {details.album_artist}</p> : null}
           <p><strong>Length:</strong> {formatDuration(details.length)}</p>
           <p><strong>Release Date:</strong> {releaseDate || details.year}</p>

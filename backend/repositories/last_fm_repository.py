@@ -1,7 +1,7 @@
 import urllib
 from http.client import HTTPException
 import logging
-from response_models import LastFMTrack, Album, AlbumTrack
+from response_models import LastFMTrack, Album, AlbumTrack, AlbumAndArtist
 import os
 import warnings
 import json
@@ -26,23 +26,6 @@ def from_json(payload) -> Optional[Album]:
         art_url=payload.get("album").get("image")[-1].get("#text"),
         tracks=tracks
     )
-
-class AlbumAndArtist:
-    def __init__(self, album, artist):
-        self.album = album
-        self.artist = artist
-
-    def __str__(self):
-        return f"{self.artist} - {self.album}"
-
-    def __repr__(self):
-        return f"{self.artist} - {self.album}"
-
-    def __eq__(self, other):
-        return self.album == other.album and self.artist == other.artist
-
-    def __hash__(self):
-        return hash((self.album, self.artist))
 
 class last_fm_repository:
     def __init__(self, api_key, requests_cache_session):
@@ -95,7 +78,7 @@ class last_fm_repository:
         if os.getenv("LASTFM_API_KEY") is None:
             raise ValueError("LASTFM_API_KEY environment variable is not set")
         
-        pair = AlbumAndArtist(album, artist)
+        pair = AlbumAndArtist(album=album, artist=artist)
 
         if redis_session:
             cached_url = redis_session.get(str(pair))
@@ -124,7 +107,7 @@ class last_fm_repository:
         if os.getenv("LASTFM_API_KEY") is None:
             raise ValueError("LASTFM_API_KEY environment variable is not set")
         
-        pair = AlbumAndArtist(album, artist)
+        pair = AlbumAndArtist(album=album, artist=artist)
 
         if redis_session:
             cached_info = redis_session.get(str(pair))
