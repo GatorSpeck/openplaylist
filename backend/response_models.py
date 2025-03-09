@@ -432,3 +432,7 @@ class AlbumAndArtist(BaseModel):
 
     def __hash__(self):
         return hash((self.album, self.artist))
+
+class PlaylistEntriesResponse(BaseModel):
+    entries: List[PlaylistEntry]
+    total: int

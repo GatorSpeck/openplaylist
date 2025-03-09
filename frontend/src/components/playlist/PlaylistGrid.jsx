@@ -41,8 +41,22 @@ const Row = memo(({ data, index, style }) => {
     sortColumn,
     provided 
   } = data;
+  
+  // Check if this index exists in our loaded entries
+  if (index >= entries.length) {
+    // Return a placeholder/loading row
+    return (
+      <div 
+        style={style}
+        className="playlist-grid-row loading-row"
+      >
+        <div className="grid-cell">Loading...</div>
+      </div>
+    );
+  }
+  
   const track = entries[index];
-
+  
   return (
     <Draggable 
       key={track.order}
@@ -104,6 +118,10 @@ const PlaylistGrid = ({ playlistID }) => {
   const [selectedTrack, setSelectedTrack] = useState(null);
   const [albumArtList, setAlbumArtList] = useState([]);
   const [playlistLoading, setPlaylistLoading] = useState(false);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(100);
+  const [totalCount, setTotalCount] = useState(0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Apply debouncing to the filter
   useEffect(() => {
@@ -118,30 +136,64 @@ const PlaylistGrid = ({ playlistID }) => {
 
   // Update useEffect to use debouncedFilter instead of filter
   useEffect(() => {
-    fetchPlaylistDetails();
+    setPage(0); // Reset page on filter/sort changes
+    fetchPlaylistDetails(true);
   }, [playlistID, debouncedFilter, sortColumn, sortDirection]); // Use debouncedFilter here
 
-  const fetchPlaylistDetails = async () => {
-    setPlaylistLoading(true);
+  const fetchPlaylistDetails = async (isInitialLoad = false, loadMore = false) => {
     try {
-      // Get basic playlist info for the name
-      const playlistInfo = await playlistRepository.getPlaylistDetailsUnpaginated(playlistID);
-      setName(playlistInfo.data.name);
+      if (isInitialLoad) {
+        setPlaylistLoading(true);
+        // Get basic playlist info for the name on initial load
+        const playlistInfo = await playlistRepository.getPlaylistDetailsUnpaginated(playlistID);
+        setName(playlistInfo.data.name);
+      }
       
-      // Use the filter_playlist endpoint via getPlaylistEntries
+      if (loadMore) {
+        setIsLoadingMore(true);
+      }
+      
+      // Calculate offset based on current entries length, not page
+      const offset = loadMore ? entries.length : 0;
+      
+      // Use the filter_playlist endpoint via getPlaylistEntries with pagination
       const filterParams = {
-        filter: debouncedFilter, // Use debouncedFilter here
+        filter: debouncedFilter,
         sortCriteria: sortColumn,
         sortDirection: sortDirection,
+        limit: pageSize,
+        offset: offset
       };
       
-      const filteredEntries = await playlistRepository.getPlaylistEntries(playlistID, filterParams);
+      console.log(`Fetching with offset: ${offset}, limit: ${pageSize}`);
+      
+      const response = await playlistRepository.getPlaylistEntries(playlistID, filterParams);
+      console.log(response);
+      const filteredEntries = response.entries;
       const mappedEntries = filteredEntries.map(entry => mapToTrackModel(entry));
-      setEntries(mappedEntries);
+      
+      // Update total count from response
+      setTotalCount(response.total || mappedEntries.length);
+      
+      // If loading more, append to existing entries
+      if (loadMore) {
+        setEntries(prevEntries => [...prevEntries, ...mappedEntries]);
+      } else {
+        // Otherwise, replace entries
+        setEntries(mappedEntries);
+        // Reset page to 0 when doing a full reload
+        setPage(0);
+      }
+      
+      // Increment page if this was a loadMore operation
+      if (loadMore) {
+        setPage(prevPage => prevPage + 1);
+      }
     } catch (error) {
       console.error('Error fetching playlist details:', error);
     } finally {
       setPlaylistLoading(false);
+      setIsLoadingMore(false);
     }
   };
 
@@ -438,6 +490,17 @@ const PlaylistGrid = ({ playlistID }) => {
 
   const listRef = useRef(null);
 
+  // Function to load more data when scrolling near the end
+  const loadMoreItems = () => {
+    // Check if we've loaded all items
+    if (entries.length >= totalCount) {
+      return;
+    }
+    
+    // Load the next page
+    fetchPlaylistDetails(false, true);
+  };
+
   return (
     <div className="main-playlist-view">
       <div className="playlist-header">
@@ -484,7 +547,7 @@ const PlaylistGrid = ({ playlistID }) => {
             </button>
           )}
           <span className="filter-count">
-            {entries.length} tracks {filter ? 
+            {totalCount} tracks {filter ? 
               (filter !== debouncedFilter ? '(filtering...)' : '(filtered)') 
               : ''}
           </span>
@@ -541,7 +604,7 @@ const PlaylistGrid = ({ playlistID }) => {
                     <List
                       ref={listRef}
                       height={height}
-                      itemCount={entries.length}
+                      itemCount={totalCount} // Use totalCount instead of entries.length
                       itemSize={50}
                       width={width}
                       itemData={{
@@ -552,7 +615,18 @@ const PlaylistGrid = ({ playlistID }) => {
                         handleContextMenu: handleContextMenu,
                         isDraggingOver: snapshot.isDraggingOver
                       }}
-                      overscanCount={5}
+                      overscanCount={10} // Increased overscan for smoother experience
+                      onItemsRendered={({ visibleStartIndex, visibleStopIndex }) => {
+                        // Load more when user scrolls near the end of loaded data
+                        const lastVisibleItem = visibleStopIndex;
+                        const loadMoreThreshold = 20; // Start loading when within 20 items of the end
+                        
+                        if (lastVisibleItem + loadMoreThreshold >= entries.length && 
+                            entries.length < totalCount && 
+                            !isLoadingMore) {
+                          loadMoreItems();
+                        }
+                      }}
                     >
                       {Row}
                     </List>

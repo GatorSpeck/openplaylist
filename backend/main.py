@@ -430,7 +430,7 @@ async def get_playlist(
     finally:
         db.close()
 
-@router.get("/playlists/{playlist_id}/entries", response_model=List[PlaylistEntry])
+@router.get("/playlists/{playlist_id}/entries", response_model=PlaylistEntriesResponse)
 async def get_playlist_entries(
     playlist_id: int,
     limit: Optional[int] = None,
