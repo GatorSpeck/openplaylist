@@ -19,6 +19,7 @@ import lastFMRepository from '../../repositories/LastFMRepository';
 import libraryRepository from '../../repositories/LibraryRepository';
 import SimilarTracksPopup from '../common/SimilarTracksPopup';
 import AlbumArtGrid from './AlbumArtGrid';
+import { BiLoaderAlt } from 'react-icons/bi';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -102,6 +103,7 @@ const PlaylistGrid = ({ playlistID }) => {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [selectedTrack, setSelectedTrack] = useState(null);
   const [albumArtList, setAlbumArtList] = useState([]);
+  const [playlistLoading, setPlaylistLoading] = useState(false);
 
   // Apply debouncing to the filter
   useEffect(() => {
@@ -120,6 +122,7 @@ const PlaylistGrid = ({ playlistID }) => {
   }, [playlistID, debouncedFilter, sortColumn, sortDirection]); // Use debouncedFilter here
 
   const fetchPlaylistDetails = async () => {
+    setPlaylistLoading(true);
     try {
       // Get basic playlist info for the name
       const playlistInfo = await playlistRepository.getPlaylistDetailsUnpaginated(playlistID);
@@ -137,6 +140,8 @@ const PlaylistGrid = ({ playlistID }) => {
       setEntries(mappedEntries);
     } catch (error) {
       console.error('Error fetching playlist details:', error);
+    } finally {
+      setPlaylistLoading(false);
     }
   };
 
@@ -619,6 +624,14 @@ const PlaylistGrid = ({ playlistID }) => {
         severity={snackbar.severity}
         onClose={handleSnackbarClose}
       />
+
+      {playlistLoading && (
+        <div className="loading-overlay">
+          <div className="spinner-container">
+            <BiLoaderAlt className="spinner-icon" />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
