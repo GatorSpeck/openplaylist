@@ -14,16 +14,34 @@ const PlaylistEntryRow = forwardRef(({
   ...props 
 }, ref) => {
   const [imageUrl, setImageUrl] = useState(null);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
     const fetchAlbumArt = async () => {
+        if (track.details.art_url) {
+          setImageUrl(track.details.art_url);
+          return;
+        }
+        
         const artistToFetch = track.album_artist || track.artist;
         const url = await lastFMRepository.fetchAlbumArt(artistToFetch, track.album);
+        if (!url) return;
         setImageUrl(url.image_url);
     }
 
     fetchAlbumArt();
-  }, [track])
+  }, [track]);
+
+  const isAlbum = track.entry_type === "album" || track.entry_type === "requested_album";
+
+  const contents = isAlbum ? (
+    <div onClick={() => setIsExpanded(!isExpanded)}>
+      {isExpanded ? track.details.tracks.map(track => track.linked_track.title).join(', ') : `(${track.details.tracks.length} tracks)`}
+    </div>
+  ) : track.title;
+
+  const artistToUse = track.artist || track.album_artist;
+  const albumTitle = isAlbum ? track.title : track.album;
 
   return (
     <div 
@@ -50,12 +68,12 @@ const PlaylistEntryRow = forwardRef(({
       
       <div className="grid-cell artist-cell">
         <div className="track-info">
-          <div className="artist truncate-text">{track.artist || track.album_artist}</div>
-          <div className="album truncate-text" overflow="auto"><i>{track.album}</i></div>
+          <div className="artist truncate-text">{artistToUse}</div>
+          <div className="album truncate-text" overflow="auto"><i>{albumTitle}</i></div>
         </div>
       </div>
       <div className="grid-cell truncate-text" overflow="auto">
-        {track.title}
+        <span>{contents}</span>
       </div>
     </div>
   );

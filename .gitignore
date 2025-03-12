@@ -21,3 +21,7 @@ data/
 
 docker-compose.yml
 compose.yml
+
+**/*.http
+
+*.sh

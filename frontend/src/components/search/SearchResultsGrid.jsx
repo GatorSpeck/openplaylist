@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback, useRef} from 'react';
+import React, {useState, useEffect, useCallback, useRef, memo} from 'react';
 import { Droppable, Draggable } from 'react-beautiful-dnd';
 import '../../styles/SearchResultsGrid.css';
 import mapToTrackModel from '../../lib/mapToTrackModel';
@@ -6,13 +6,27 @@ import axios from 'axios';
 import debounce from 'lodash/debounce';
 import { ClipLoader } from 'react-spinners';
 import LastFMSearch from '../search/LastFMSearch';
-import SearchResultContextMenu from './SearchResultContextMenu';
 import playlistRepository from '../../repositories/PlaylistRepository';
+import openAIRepository from '../../repositories/OpenAIRepository';
+import lastFMRepository from '../../repositories/LastFMRepository';
+import libraryRepository from '../../repositories/LibraryRepository';
+import ContextMenu from '../common/ContextMenu';
+import SimilarTracksPopup from '../common/SimilarTracksPopup';
+import TrackDetailsModal from '../common/TrackDetailsModal';
+import { FixedSizeList as List } from 'react-window';
+import InfiniteLoader from 'react-window-infinite-loader';
+import AutoSizer from 'react-virtualized-auto-sizer';
 
-const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
+const secondsToDaysHoursMins = (seconds) => {
+  const days = Math.floor(seconds / (3600 * 24));
+  const hours = Math.floor(seconds % (3600 * 24) / 3600);
+  const minutes = Math.floor(seconds % 3600 / 60);
+  return `${days} days, ${hours} hours, ${minutes} minutes`;
+}
+
+const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackbar }) => {
   const [filterQuery, setFilterQuery] = useState(filter);
   const [selectedSearchResults, setSelectedSearchResults] = useState([]);
-  const [selectedPlaylistEntries, setSelectedPlaylistEntries] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [allSearchResultsSelected, setAllSongsSelected] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState(null);
@@ -20,14 +34,31 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
   const [showLastFMSearch, setShowLastFMSearch] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [showTrackDetails, setShowTrackDetails] = useState(false);
+  const [similarTracks, setSimilarTracks] = useState(null);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
   const panelRef = useRef(null);
+  const [libraryStats, setLibraryStats] = useState({
+    visible: false,
+    trackCount: 0,
+    albumCount: 0,
+    artistCount: 0,
+    totalLength: 0,
+    missingTracks: 0
+  });
+  const [isScanning, setIsScanning] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [openAILoading, setOpenAILoading] = useState(false);
+
+  const ITEMS_PER_PAGE = 50;
 
   const extractSearchResults = (response) => {
     const results = response.data.map(s => mapToTrackModel({...s, music_file_id: s.id, entry_type: "music_file"}));
     return results;
   }
 
-  const fetchSongs = async (query = '') => {
+  const fetchSongs = async (query = '', pageNum = 1) => {
     if (query.length < 3) {
       return;
     }
@@ -36,11 +67,21 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
       const response = await axios.get(`/api/search`, {
         params: { 
           query: encodeURIComponent(query),
-          limit: 50  // Optional: limit results 
+          offset: (pageNum - 1) * ITEMS_PER_PAGE,
+          limit: ITEMS_PER_PAGE
         }
       });
 
-      setSearchResults(extractSearchResults(response));
+      const results = extractSearchResults(response);
+      
+      if (pageNum === 1) {
+        setSearchResults(results);
+      } else {
+        setSearchResults(prev => [...prev, ...results]);
+      }
+
+      setHasMore(results.length === ITEMS_PER_PAGE);
+      setPage(pageNum);
       
     } catch (error) {
       console.error('Error fetching songs:', error);
@@ -62,6 +103,32 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
     } catch (error) {
       console.error('Error filtering by album:', error);
     }
+  };
+
+  const findSimilarTracksWithOpenAI = async (e, track) => {
+    setOpenAILoading(true);
+
+    const similars = await openAIRepository.findSimilarTracks(track);
+    const localFiles = await libraryRepository.findLocalFiles(similars);
+
+    // prefer local files
+    setSimilarTracks(localFiles);
+
+    setPosition({ x: e.clientX, y: e.clientY });
+    setOpenAILoading(false);
+  };
+
+  const findSimilarTracks = async (e, track) => {
+    setIsLoading(true);
+
+    const similars = await lastFMRepository.findSimilarTracks(track);
+    const localFiles = await libraryRepository.findLocalFiles(similars);
+
+    // prefer local files
+    setSimilarTracks(localFiles);
+
+    setPosition({ xj: e.clientX, y: e.clientY });
+    setIsLoading(false);
   };
 
   const handleFilterByArtist = async (artist) => {
@@ -115,22 +182,124 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
     debouncedFetchSongs(query);
   };
 
+  const searchFor = (query) => {
+    setFilterQuery(query);
+    fetchSongs(query);
+  }
+
   const addSongs = (tracks) => {
     onAddSongs(tracks);
     clearSelectedSongs();
-    closeContextMenu();
 
     // TODO: filter out songs that are already in the playlist
     // TODO: adding songs should remove them from the search results
   }
 
-  const openContextMenu = (e, track) => {
-    e.preventDefault();
-    setContextMenu({ visible: true, x: e.clientX, y: e.clientY, track });
+  const handleShowDetails = (track) => {
+    setSelectedTrack(track);
+    setShowTrackDetails(true);
   }
 
-  const closeContextMenu = () => {
-    setContextMenu({ visible: false });
+  const scanMusic = async (full) => {
+    setIsScanning(true);
+    try {
+      // Start the scan
+      await libraryRepository.scan(full);
+
+      // Start polling for progress
+      let polling = false;
+      const pollInterval = setInterval(async () => {
+        if (polling) return;
+        polling = true;
+        try {
+          const response = (await axios.get('/api/scan/progress')).data;
+          
+          // Update snackbar with progress
+          setSnackbar({
+            open: true,
+            message: `Scanning: ${response.progress}% - ${response.files_indexed} files indexed, ${response.files_updated} updated, ${response.files_missing} missing`,
+            severity: 'info'
+          });
+
+          // Stop polling when scan is complete
+          if (!response.in_progress) {
+            clearInterval(pollInterval);
+            setIsScanning(false);
+            setSnackbar({
+              open: true,
+              message: 'Scan completed successfully',
+              severity: 'success'
+            });
+            
+            // Refresh library stats after scan completes
+            const stats = await libraryRepository.getStats();
+            setLibraryStats({
+              visible: true,
+              ...stats
+            });
+          }
+
+          setTimeout(() => polling = false, 0);
+        } catch (error) {
+          console.error('Error polling scan progress:', error);
+        }
+      }, 5000); // Poll every second
+
+    } catch (error) {
+      console.error('Error scanning music:', error);
+      setSnackbar({
+        open: true,
+        message: 'Error scanning music',
+        severity: 'error'
+      });
+    }
+  };
+
+  const purgeData = async () => {
+    if (!window.confirm('Are you sure you want to purge all data?')) {
+      return;
+    }
+
+    try {
+      await axios.get(`/api/purge`);
+
+      setSnackbar({
+        open: true,
+        message: 'Data purged successfully',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error purging data:', error);
+    }
+  };
+
+  const handleContextMenu = (e, track) => {
+    e.preventDefault();
+
+    // Get the parent container's position
+    const rect = e.currentTarget.getBoundingClientRect();
+    
+    // Calculate position relative to the clicked element
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const isAlbum = track.entry_type === 'requested_album' || track.entry_type === 'album';
+
+    const options = [
+      { label: 'Details', onClick: () => handleShowDetails(track) },
+      { label: 'Send to Search', onClick: () => searchFor(track.title) },
+      !isAlbum ? { label: 'Find Similar Tracks (Last.fm)', onClick: (e) => findSimilarTracks(e, track) } : null,
+      !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: (e) => findSimilarTracksWithOpenAI(e, track) } : null,
+      { label: 'Search for Album', onClick: () => handleFilterByAlbum(track.album) },
+      { label: 'Search for Artist', onClick: () => handleFilterByArtist(track.artist) }
+    ];
+
+    setContextMenu({
+      visible: true,
+      x,
+      y,
+      options
+    });
   }
 
   useEffect(() => {
@@ -160,10 +329,116 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
       setIsPanelOpen(true);
     }
 
-    if (filter.length) {
+    if (filter && filter.length) {
       handleFilterChange({ target: { value: filter } });
     }
   }, [visible, filter]);
+
+  useEffect(() => {
+    // Fetch library stats
+    const fetchLibraryStats = async () => {
+      const stats = await libraryRepository.getStats();
+      setLibraryStats({
+        visible: true,
+        ...stats
+      });
+    };
+
+    fetchLibraryStats();
+  }
+  , []);
+
+  const Row = memo(({ index, style }) => {
+    const song = searchResults[index];
+    if (!song) return null;
+
+    useEffect(() => {
+      const fn = async () => {
+        if (song.artist && song.album) {
+          const artwork = await lastFMRepository.fetchAlbumArt(song.artist, song.album);
+          if (artwork) {
+            song.image_url = artwork.image_url;
+          }
+        }
+      }
+      
+      fn();
+    }, [song.artist, song.album]);
+
+    const isSelected = selectedSearchResults.some(s => s.id === song.id);
+
+    const image = song.image_url;
+
+    const artwork = (isSelected || !image) ? (
+      <input 
+        type="checkbox"
+        checked={isSelected}
+        readOnly
+      />
+    ) : (
+      <img style={{height: 40}} src={image} alt=""/>
+    );
+
+    return (
+      <div style={style}>
+        <div 
+          className="search-grid-row"
+          onClick={() => toggleSongSelection(song)}
+        >
+          <div className="grid-cell">
+            {artwork}
+          </div>
+          <div className="grid-cell">
+            <div>{song.artist || song.album_artist}</div>
+            <div><i>{song.album}</i></div>
+          </div>
+          <div 
+            className="grid-cell clickable" 
+            onContextMenu={(e) => handleContextMenu(e, song)}
+          >
+            {song.missing ? <s>{song.title}</s> : song.title}
+          </div>
+        </div>
+      </div>
+    );
+  });
+
+  const renderSearchResults = () => (
+    <div style={{ height: '600px' }}> {/* Adjust height as needed */}
+      <AutoSizer>
+        {({ height, width }) => (
+          <InfiniteLoader
+            isItemLoaded={index => index < searchResults.length}
+            itemCount={hasMore ? searchResults.length + 1 : searchResults.length}
+            loadMoreItems={() => {
+              if (!isLoading && hasMore) {
+                return fetchSongs(filterQuery, page + 1);
+              }
+              return Promise.resolve();
+            }}
+          >
+            {({ onItemsRendered, ref }) => (
+              <List
+                ref={ref}
+                height={height}
+                itemCount={searchResults.length}
+                itemSize={80} // Adjust based on your row height
+                width={width}
+                onItemsRendered={onItemsRendered}
+              >
+                {Row}
+              </List>
+            )}
+          </InfiniteLoader>
+        )}
+      </AutoSizer>
+    </div>
+  );
+
+  const clearSearchResults = () => {
+    setFilterQuery('');
+    setSearchResults([]);
+  };
 
   return (
     <>
@@ -196,7 +471,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
             value={filterQuery}
             onChange={handleFilterChange}
           />
-          <button onClick={() => setFilterQuery('')}>Clear</button>
+          <button onClick={() => clearSearchResults()}>Clear</button>
         </div>
 
         <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedSearchResults.length > 0 ? 'visible' : 'hidden' }}>
@@ -220,33 +495,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
           <div className="grid-cell">Title</div>
         </div>
 
-        <div className="search-grid-content">
-          {searchResults.map((song) => (
-            <div key={song.id}>
-                <div className="search-grid-row"
-                  onClick={() => toggleSongSelection(song)}
-                >
-                  <div className="grid-cell">
-                    <input 
-                      type="checkbox"
-                      checked={selectedSearchResults.some(s => s.id === song.id)}
-                      readOnly
-                    />
-                  </div>
-                  <div className="grid-cell">
-                    {song.image_url && <div><img style={{height: 40}} src={song.image_url}/></div>}
-                    <div>{song.artist || song.album_artist}</div>
-                    <div><i>{song.album}</i></div>
-                  </div>
-                  <div className="grid-cell clickable" 
-                    onContextMenu={(e) => openContextMenu(e, song)}
-                  >
-                    {song.missing ? <s>{song.title}</s> : song.title}
-                  </div>
-                </div>
-              </div>
-          ))} 
-        </div>
+        {renderSearchResults()}
 
         {showLastFMSearch && (
           <LastFMSearch
@@ -260,18 +509,55 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID }) => {
         )}
 
         {contextMenu.visible && (
-          <SearchResultContextMenu
+          <ContextMenu
+            options={contextMenu.options}
             x={contextMenu.x}
             y={contextMenu.y}
             track={contextMenu.track}
             onClose={() => setContextMenu({ visible: false })}
-            onFilterByAlbum={handleFilterByAlbum}
-            onFilterByArtist={handleFilterByArtist}
+          />
+        )}
+
+        {similarTracks && (
+          <SimilarTracksPopup
+            x={position.x}
+            y={position.y}
+            tracks={similarTracks}
+            onClose={() => setSimilarTracks(null)}
             onAddTracks={(tracks) => onAddSongs(tracks)}
           />
         )}
 
-        <button onClick={() => playlistRepository.dumpLibrary(playlistID)}>TEST ONLY: Dump full library into this playlist</button>
+        {showTrackDetails && (
+          <TrackDetailsModal
+            track={selectedTrack}
+            onClose={() => setShowTrackDetails(false)}
+          />
+        )}
+
+        {isScanning && (
+          <div className="scan-overlay">
+            <div className="scan-spinner"></div>
+            <h2>Scanning...</h2>
+          </div>
+        )}
+
+        {libraryStats.visible && (
+          <div>
+            <h2>Library Stats</h2>
+            <p>{libraryStats.trackCount} tracks</p>
+            <p>{libraryStats.albumCount} albums</p>
+            <p>{libraryStats.artistCount} artists</p>
+            <p>{secondsToDaysHoursMins(libraryStats.totalLength)} total length</p>
+            <p>{libraryStats.missingTracks} missing tracks</p>
+          </div>
+        )}
+
+        <button onClick={() => scanMusic(false)}>Scan Music</button>
+        <button onClick={() => scanMusic(true)}>Full Scan Music</button>
+        <button onClick={purgeData}>Purge Data</button>
+
+        <button onClick={() => window.confirm("Really?") && playlistRepository.dumpLibrary(playlistID)}>TEST ONLY: Dump full library into this playlist</button>
       </div>
     </>
   );

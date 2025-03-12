@@ -2,10 +2,12 @@ import os
 import pathlib
 import logging
 import urllib.parse
-from fastapi import FastAPI, Query, APIRouter, Request, Depends
+from fastapi import FastAPI, Query, APIRouter, Request, Depends, BackgroundTasks
 import uvicorn
 from mutagen.easyid3 import EasyID3
 from mutagen.flac import FLAC
+from mutagen.wave import WAVE
+from mutagen.mp4 import MP4
 import dotenv
 from typing import Optional, List, Callable
 import time
@@ -27,12 +29,13 @@ import requests_cache
 from response_models import *
 from dependencies import get_music_file_repository, get_playlist_repository
 from repositories.music_file import MusicFileRepository
-from repositories.playlist import PlaylistRepository
+from repositories.playlist import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
 from repositories.open_ai_repository import open_ai_repository
 from repositories.last_fm_repository import last_fm_repository
 from plexapi.server import PlexServer
 from plexapi.playlist import Playlist as PlexPlaylist
 from redis import Redis
+import re
 
 class TimingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable):
@@ -112,23 +115,36 @@ def extract_metadata(file_path, extractor):
             "publisher": audio.get("organization", [None])[0],
             "kind": audio.mime[0] if hasattr(audio, "mime") else None,
             "genres": audio.get("genre", list()),
+            "track_number": audio.get("tracknumber", [None])[0],
+            "disc_number": audio.get("discnumber", [None])[0],
+            "rating": audio.get("rating", [None])[0],
+            "comments": audio.get("comment", [None])[0]
         }
+        
         return result
     except Exception as e:
         logging.error(f"Failed to read metadata for {file_path}: {e}")
 
     return {}
 
+# singleton
+scan_results = ScanResults()
 
 def scan_directory(directory: str, full=False):
     directory = pathlib.Path(directory)
     if not directory.exists():
         logging.error(f"Directory {directory} does not exist")
-        return []
+        return
+    
+    if scan_results.in_progress:
+        return
+    
+    scan_results.in_progress = True
+    scan_results.files_missing = 0
+    scan_results.files_updated = 0
 
     logging.info(f"Scanning directory {directory}")
     start_time = time.time()
-    new_adds = 0
 
     # Get a list of all files in the directory
     all_files = [
@@ -139,62 +155,113 @@ def scan_directory(directory: str, full=False):
 
     db = Database.get_session()
 
+    albums_and_artists_seen = {}
+
     files_seen = 0
-    files_skipped = 0
+    total_files = float(len(all_files))
+    ops = 0
     for full_path in tqdm(all_files, desc="Scanning files"):
-        if not full_path.lower().endswith(SUPPORTED_FILETYPES):
-            continue
+        try:
+            files_seen += 1
+            scan_results.progress = round(files_seen / total_files * 100, 1)
+            if not full_path.lower().endswith(SUPPORTED_FILETYPES):
+                continue
 
-        files_seen += 1
+            last_modified_time = datetime.fromtimestamp(os.path.getmtime(full_path))
+            existing_file = (
+                db.query(MusicFileDB).filter(MusicFileDB.path == full_path).first()
+            )
 
-        last_modified_time = datetime.fromtimestamp(os.path.getmtime(full_path))
-        existing_file = (
-            db.query(MusicFileDB).filter(MusicFileDB.path == full_path).first()
-        )
+            found_existing_file = False
+            if existing_file and existing_file.missing:
+                found_existing_file = True
+                existing_file.missing = False
 
-        found_existing_file = False
-        if existing_file and existing_file.missing:
-            found_existing_file = True
-            existing_file.missing = False
+            if (not full) and (not found_existing_file) and existing_file and existing_file.last_scanned >= last_modified_time:
+                continue  # Skip files that have not changed
 
-        if (not full) and (not found_existing_file) and existing_file and existing_file.last_scanned >= last_modified_time:
-            files_skipped += 1
-            continue  # Skip files that have not changed
+            metadata = {}
 
-        metadata = {}
+            if full_path.lower().endswith(".mp3"):
+                metadata = extract_metadata(full_path, EasyID3)
+            elif full_path.lower().endswith(".flac"):
+                metadata = extract_metadata(full_path, FLAC)
+            elif full_path.lower().endswith(".wav"):
+                metadata = extract_metadata(full_path, WAVE)
+            elif full_path.lower().endswith(".m4a"):
+                metadata = extract_metadata(full_path, MP4)
+            else:
+                logging.debug(f"Skipping file {full_path} with unsupported file type")
+                continue
 
-        if full_path.lower().endswith(".mp3"):
-            metadata = extract_metadata(full_path, EasyID3)
-        elif full_path.lower().endswith(".flac"):
-            metadata = extract_metadata(full_path, FLAC)
-        else:
-            logging.debug(f"Skipping file {full_path} with unsupported file type")
-            continue
+            if not metadata:
+                continue
 
-        if not metadata:
-            continue
+            file_size = os.path.getsize(full_path)
 
-        # Update or add the file in the database
-        if existing_file:
-            existing_file.last_modified = last_modified_time
-            existing_file.title = metadata.get("title")
-            existing_file.artist = metadata.get("artist")
-            existing_file.album = metadata.get("album")
-            existing_file.album_artist = metadata.get("album_artist")
-            existing_file.year = metadata.get("year")
-            existing_file.length = metadata.get("length")
-            existing_file.publisher = metadata.get("publisher")
-            existing_file.kind = metadata.get("kind")
-            existing_file.last_scanned = datetime.now()
-            existing_file.genres = [
-                TrackGenreDB(parent_type="music_file", genre=genre)
-                for genre in metadata.get("genres", [])
-            ]
-        else:
-            new_adds += 1
+            year = metadata.get("year")
+            release_year = None
+            exact_release_date = None
 
-            db.add(
-                MusicFileDB(
+            # try to infer the exact release date
+            if year:
+                if len(year) > 4:
+                    try:
+                        exact_release_date = datetime.strptime(year, "%Y-%m-%d")
+                        release_year = exact_release_date.year
+                        exact_release_date = exact_release_date
+                    except ValueError:
+                        pass
+                elif len(year) == 4:
+                    release_year = int(year)
+            
+            album = None
+
+            # create album entry if applicable
+            if metadata.get("album") and metadata.get("artist"):
+                album_and_artist = AlbumAndArtist(album=metadata.get("album"), artist=metadata.get("artist"))
+                album = albums_and_artists_seen.get(album_and_artist)
+                if not album:
+                    album = AlbumDB(
+                        artist=metadata.get("artist"),
+                        title=metadata.get("album"),
+                        year=exact_release_date if exact_release_date else release_year,
+                        tracks = []
+                    )
+                    db.add(album)
+                    db.flush()
+                    albums_and_artists_seen[album_and_artist] = album
+
+            # Update or add the file in the database
+            if existing_file:
+                scan_results.files_updated += 1
+
+                existing_file.last_modified = last_modified_time
+                existing_file.title = metadata.get("title")
+                existing_file.artist = metadata.get("artist")
+                existing_file.album = metadata.get("album")
+                existing_file.album_artist = metadata.get("album_artist")
+                existing_file.year = year
+                existing_file.length = metadata.get("length")
+                existing_file.publisher = metadata.get("publisher")
+                existing_file.kind = metadata.get("kind")
+                existing_file.last_scanned = datetime.now()
+                existing_file.exact_release_date = exact_release_date
+                existing_file.release_year = release_year
+                existing_file.size = file_size
+                existing_file.rating = metadata.get("rating")
+                existing_file.genres = [
+                    TrackGenreDB(parent_type="music_file", genre=genre)
+                    for genre in metadata.get("genres", [])
+                ]
+                existing_file.comments = metadata.get("comments")
+                existing_file.track_number = metadata.get("track_number")
+                existing_file.disc_number = metadata.get("disc_number")
+            else:
+                scan_results.files_indexed += 1
+                scan_results.files_added += 1
+
+                this_track = MusicFileDB(
                     path=full_path,
                     title=metadata.get("title"),
                     artist=metadata.get("artist"),
@@ -204,28 +271,39 @@ def scan_directory(directory: str, full=False):
                         for genre in metadata.get("genres", [])
                     ],
                     album_artist=metadata.get("album_artist"),
-                    year=metadata.get("year"),
+                    year=year,
                     length=metadata.get("length"),
                     publisher=metadata.get("publisher"),
                     kind=metadata.get("kind"),
+                    first_scanned=datetime.now(),
                     last_scanned=datetime.now(),
+                    exact_release_date=exact_release_date,
+                    release_year=release_year,
+                    size=file_size,
+                    rating=metadata.get("rating"),
+                    comments = metadata.get("comments"),
+                    track_number = metadata.get("track_number"),
+                    disc_number = metadata.get("disc_number")
                 )
-            )
 
-    logging.info(
-        f"Scanned {files_seen} music files ({files_seen - files_skipped} existing, {new_adds} new) in {time.time() - start_time:.2f} seconds"
-    )
+                db.add(this_track)
+
+                if album is not None:
+                    db.flush()
+                    album.tracks.append(AlbumTrackDB(linked_track_id=this_track.id, order=len(album.tracks)))
+            
+            ops += 1
+            if ops > 100:
+                db.commit()
+                ops = 0
+        
+        except Exception as e:
+            logging.error(f"Failed to scan file {full_path}: {e}", exc_info=True)
 
     db.commit()
     db.close()
 
-    return {
-        "files_scanned": files_seen,
-        "files_indexed": files_seen - files_skipped,
-        "new_files_added": new_adds,
-        "files_updated": files_seen - files_skipped - new_adds,
-    }
-
+    scan_results.in_progress = False
 
 router = APIRouter()
 
@@ -237,20 +315,23 @@ def purge_data():
     Base.metadata.create_all(bind=engine)
 
 
-@router.get("/scan", response_model=ScanResults)
-def scan(repo: PlaylistRepository = Depends(get_playlist_repository), music_files: MusicFileRepository = Depends(get_music_file_repository)):
-    scan_results = scan_directory(os.getenv("MUSIC_PATH", "/music"), full=False)
-    prune_results = prune_music_files()
+@router.get("/scan")
+def scan(background_tasks: BackgroundTasks):
+    background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), full=False)
+    background_tasks.add_task(prune_music_files)
 
-    return ScanResults(**scan_results, **prune_results)
+    return HTTPException(status_code=202, detail="Scan started")
 
+@router.get("/fullscan")
+def full_scan(background_tasks: BackgroundTasks):
+    background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), full=False)
+    background_tasks.add_task(prune_music_files)
 
-@router.get("/fullscan", response_model=ScanResults)
-def full_scan(repo: PlaylistRepository = Depends(get_playlist_repository), music_files: MusicFileRepository = Depends(get_music_file_repository)):
-    scan_results = scan_directory(os.getenv("MUSIC_PATH", "/music"), full=True)
-    prune_results = prune_music_files()
+    return HTTPException(status_code=202, detail="Scan started")
 
-    return ScanResults(**scan_results, **prune_results)
+@router.get("/scan/progress", response_model=ScanResults)
+def scan_progress():
+    return scan_results
 
 def drop_music_files():
     db = Database.get_session()
@@ -306,9 +387,10 @@ def filter_music_files(
 def search_music_files(
     query: str = Query(..., min_length=1),
     limit: int = 50,
+    offset: int = 0,
     repo: MusicFileRepository = Depends(get_music_file_repository),
 ):
-    return repo.search(query=query, limit=limit)
+    return repo.search(query=query, limit=limit, offset=offset)
 
 
 @router.post("/playlists", response_model=Playlist)
@@ -347,11 +429,37 @@ async def get_playlist(
     finally:
         db.close()
 
+@router.get("/playlists/{playlist_id}/entries", response_model=PlaylistEntriesResponse)
+async def get_playlist_entries(
+    playlist_id: int,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
+    filter: Optional[str] = None,
+    sortCriteria: Optional[str] = None,
+    sortDirection: Optional[str] = None,
+    includeCount: Optional[bool] = False,
+    repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    f = PlaylistFilter(
+        filter=filter,
+        sortCriteria=PlaylistSortCriteria.from_str(sortCriteria),
+        sortDirection=PlaylistSortDirection.from_str(sortDirection),
+        limit=limit,
+        offset=offset,
+    )
+    return repo.filter_playlist(playlist_id, f, include_count=includeCount)
+
 @router.get("/playlists/{playlist_id}/count")
 async def get_playlist_count(
     playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)
 ):
     return repo.get_count(playlist_id)
+
+@router.get("/playlists/{playlist_id}/details")
+async def get_playlist_count(
+    playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    return repo.get_details(playlist_id)
 
 @router.get("/stats", response_model=LibraryStats)
 async def get_stats():
@@ -366,7 +474,7 @@ async def get_stats():
         trackCount=track_count,
         albumCount=album_count,
         artistCount=artist_count,
-        totalLength=total_length,
+        totalLength=total_length if total_length else 0,
         missingTracks=missing_tracks
     )
 
@@ -462,20 +570,24 @@ def delete_playlist(playlist_id: int):
 
 
 @router.get("/playlists/{playlist_id}/export", response_class=StreamingResponse)
-def export_playlist(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
+def export_playlist(playlist_id: int, type: str = Query("m3u"), repo: PlaylistRepository = Depends(get_playlist_repository)):
     try:
-        m3u_content = repo.export_to_m3u(
-            playlist_id, mapping_source=os.getenv("PLEX_MAP_SOURCE"), mapping_target=os.getenv("PLEX_MAP_TARGET")
-        )
+        export_content = None
+        if type == "m3u":
+            export_content = repo.export_to_m3u(playlist_id, mapping_source=os.getenv("PLEX_MAP_SOURCE"), mapping_target=os.getenv("PLEX_MAP_TARGET"))
+        elif type == "json":
+            export_content = repo.export_to_json(playlist_id)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid export type")
 
         playlist = repo.get_by_id(playlist_id)
 
         # Create a StreamingResponse to return the .m3u file
         response = StreamingResponse(
-            io.StringIO(m3u_content), media_type="audio/x-mpegurl"
+            io.StringIO(export_content), media_type="audio/x-mpegurl"
         )
         response.headers["Content-Disposition"] = (
-            f"attachment; filename={playlist.name}.m3u"
+            f"attachment; filename={playlist.name}.{type}"
         )
         return response
     except Exception as e:
@@ -523,7 +635,7 @@ def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(g
 def find_local_files(tracks: List[TrackDetails], repo: MusicFileRepository = Depends(get_music_file_repository)):
     return repo.find_local_files(tracks)
 
-@router.get("/lastfm", response_model=LastFMTrack | None)
+@router.get("/lastfm", response_model=List[LastFMTrack])
 def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
@@ -551,6 +663,15 @@ def get_album_art(artist: str = Query(...), album: str = Query(...)):
     repo = last_fm_repository(api_key, requests_cache_session)
     return repo.get_album_art(artist, album, redis_session=redis_session)
 
+@router.get("/lastfm/album/info", response_model=Optional[Album])
+def get_album_info(artist: str = Query(...), album: str = Query(...)):
+    api_key = os.getenv("LASTFM_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Last.FM API key not configured")
+
+    repo = last_fm_repository(api_key, requests_cache_session)
+    return repo.get_album_info(artist, album, redis_session=redis_session)
+
 # get similar tracks
 @router.get("/openai/similar")
 def get_similar_tracks_with_openai(title: str = Query(...), artist: str = Query(...)):
@@ -562,16 +683,30 @@ def get_similar_tracks_with_openai(title: str = Query(...), artist: str = Query(
 
     return repo.get_similar_tracks(artist, title)
 
-@router.get("/testing/dumpLibrary/{playlistID}")
-def dump_library(playlistID: int, repo: PlaylistRepository = Depends(get_playlist_repository), music_files: MusicFileRepository = Depends(get_music_file_repository)):
-    playlist = repo.get_by_id(playlistID)
+def dump_library_to_playlist(playlist: Playlist, repo: PlaylistRepository, music_files: MusicFileRepository):
     music_files.dump_library_to_playlist(playlist, repo)
+    logging.info("Finished playlist dump")
+
+@router.get("/testing/dumpLibrary/{playlistID}")
+def dump_library(
+    playlistID: int,
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+    music_files: MusicFileRepository = Depends(get_music_file_repository),
+    background_tasks: BackgroundTasks = None
+):
+    playlist = repo.get_by_id(playlistID)
+
+    background_tasks.add_task(dump_library_to_playlist, playlist, repo, music_files)
 
 @app.get("/api/music-files")
 async def get_music_files(
     repo: MusicFileRepository = Depends(get_music_file_repository),
 ):
     return repo.get_all()
+
+@router.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

@@ -1,28 +1,31 @@
 import urllib
 from http.client import HTTPException
 import logging
-from response_models import LastFMTrack
+from response_models import LastFMTrack, Album, AlbumTrack, AlbumAndArtist
 import os
+import warnings
+import json
+from typing import Optional
 
 import dotenv
 dotenv.load_dotenv(override=True)
 
-class AlbumAndArtist:
-    def __init__(self, album, artist):
-        self.album = album
-        self.artist = artist
+def from_json(payload) -> Optional[Album]:
+    if "album" not in payload:
+        return None
 
-    def __str__(self):
-        return f"{self.artist} - {self.album}"
+    tracks = []
+    if "track" in payload.get("album", {}).get("tracks", {}):
+        for i, track in enumerate(payload.get("album").get("tracks").get("track")):
+            linked_track = LastFMTrack(title=track.get("name"), artist=track.get("artist").get("name"), url=track.get("url"))
+            tracks.append(AlbumTrack(order=i, linked_track=linked_track))
 
-    def __repr__(self):
-        return f"{self.artist} - {self.album}"
-
-    def __eq__(self, other):
-        return self.album == other.album and self.artist == other.artist
-
-    def __hash__(self):
-        return hash((self.album, self.artist))
+    return Album(
+        title=payload.get("album").get("name"),
+        artist=payload.get("album").get("artist"),
+        art_url=payload.get("album").get("image")[-1].get("#text"),
+        tracks=tracks
+    )
 
 class last_fm_repository:
     def __init__(self, api_key, requests_cache_session):
@@ -43,7 +46,7 @@ class last_fm_repository:
             )
 
         similar_data = similar_response.json()
-        logging.debug(similar_data)
+        logging.info(similar_data)
         similar_tracks = similar_data.get("similartracks", {}).get("track", [])
 
         return [LastFMTrack(title=track.get("name", ""), artist=track.get("artist", {}).get("name", ""), url=track.get("url")) for track in similar_tracks]
@@ -54,7 +57,7 @@ class last_fm_repository:
         encoded_artist = urllib.parse.quote(artist)
 
         # Make request to Last.FM API
-        url = f"http://ws.audioscrobbler.com/2.0/?method=track.search&track={encoded_title}&artist={encoded_artist}&api_key={self.api_key}&format=json&limit=1"
+        url = f"http://ws.audioscrobbler.com/2.0/?method=track.search&track={encoded_title}&artist={encoded_artist}&api_key={self.api_key}&format=json&limit=10"
         response = self.requests_cache_session.get(url)
 
         if response.status_code != 200:
@@ -63,24 +66,19 @@ class last_fm_repository:
         data = response.json()
         tracks = data.get("results", {}).get("trackmatches", {}).get("track", [])
 
-        logging.debug(data)
+        logging.info(data)
 
-        # Return first matching track
         if tracks:
-            track = tracks[0]
-            return LastFMTrack(
-                title=track.get("name", ""),
-                artist=track.get("artist", ""),
-                url=track.get("url"),
-            )
+            return [LastFMTrack(title=track.get("name", ""), artist=track.get("artist", ""), url=track.get("url")) for track in tracks]
 
         return None
 
     def get_album_art(self, artist, album, redis_session=None):
+        warnings.warn("This method is deprecated. Use get_album_info instead.", DeprecationWarning)
         if os.getenv("LASTFM_API_KEY") is None:
             raise ValueError("LASTFM_API_KEY environment variable is not set")
         
-        pair = AlbumAndArtist(album, artist)
+        pair = AlbumAndArtist(album=album, artist=artist)
 
         if redis_session:
             cached_url = redis_session.get(str(pair))
@@ -88,8 +86,11 @@ class last_fm_repository:
                 image_url = cached_url if cached_url != "" else None
                 return {"image_url": image_url}
         
+        encoded_title = urllib.parse.quote(pair.album)
+        encoded_artist = urllib.parse.quote(pair.artist)
+        
         logging.info(f"Fetching album info from Last.FM for {pair}")
-        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={pair.artist}&album={pair.album}&format=json"
+        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={encoded_artist}&album={encoded_title}&format=json&autocorrect=1"
         response = self.requests_cache_session.get(url)
         image_url = None
         if response.status_code == 200:
@@ -104,3 +105,29 @@ class last_fm_repository:
             return {"image_url": image_url}
         else:
             return {"image_url": None}
+
+    def get_album_info(self, artist, album, redis_session=None) -> Optional[Album]:
+        if os.getenv("LASTFM_API_KEY") is None:
+            raise ValueError("LASTFM_API_KEY environment variable is not set")
+        
+        pair = AlbumAndArtist(album=album, artist=artist)
+
+        if redis_session:
+            cached_info = redis_session.get(str(pair))
+            if cached_info is not None:
+                return from_json(json.loads(cached_info))
+        
+        encoded_title = urllib.parse.quote(pair.album)
+        encoded_artist = urllib.parse.quote(pair.artist)
+        
+        logging.info(f"Fetching album info from Last.FM for {pair}")
+        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={encoded_artist}&album={encoded_title}&format=json&autocorrect=1"
+        response = self.requests_cache_session.get(url)
+        logging.info(response)
+        album_info = None
+        if response.status_code == 200:
+            album_info = response.json()
+            if redis_session:
+                redis_session.set(str(pair), json.dumps(album_info))
+        
+        return from_json(album_info) if album_info else None
