@@ -13,7 +13,8 @@ export default defineConfig({
     port: process.env.VITE_PORT || 8080,
     strictPort: true,
     hmr: {
-      port: process.env.VITE_PORT || 8080,
+      clientPort: process.env.VITE_PORT || 8080,
+      port: parseInt(process.env.VITE_PORT || 8080) + 10,
       protocol: 'ws',
     },
     proxy: {
@@ -23,5 +24,6 @@ export default defineConfig({
         secure: false,
       },
     },
+    allowedHosts: process.env.VITE_ALLOWED_HOSTNAME ? [process.env.VITE_ALLOWED_HOSTNAME] : []
   }
 });

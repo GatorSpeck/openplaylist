@@ -1,18 +1,25 @@
-import React, { useState, useMemo, useEffect, useRef, memo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, memo, useCallback } from 'react';
 import { Droppable, Draggable, DragDropContext } from 'react-beautiful-dnd';
 import Snackbar from '../Snackbar';
 import mapToTrackModel from '../../lib/mapToTrackModel';
 import '../../styles/PlaylistGrid.css';
 import SearchResultsGrid from '../search/SearchResultsGrid';
-import PlaylistItemContextMenu from './PlaylistItemContextMenu';
+import ContextMenu from '../common/ContextMenu';
 import { FaUndo, FaRedo } from 'react-icons/fa';
 import { useParams, useNavigate } from 'react-router-dom';
-import PlaylistModal from './PlaylistModal';
+import BaseModal from '../common/BaseModal';
 import playlistRepository from '../../repositories/PlaylistRepository';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import PlaylistEntryRow from './PlaylistEntryRow';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList as List } from 'react-window';
+import TrackDetailsModal from '../common/TrackDetailsModal';
+import openAIRepository from '../../repositories/OpenAIRepository';
+import lastFMRepository from '../../repositories/LastFMRepository';
+import libraryRepository from '../../repositories/LibraryRepository';
+import SimilarTracksPopup from '../common/SimilarTracksPopup';
+import AlbumArtGrid from './AlbumArtGrid';
+import { BiLoaderAlt } from 'react-icons/bi';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -34,8 +41,24 @@ const Row = memo(({ data, index, style }) => {
     sortColumn,
     provided 
   } = data;
+  
+  // Check if we have real data for this index
+  if (index >= entries.length || !entries[index] || !entries[index].details.title) {
+    // Return a placeholder/loading row
+    return (
+      <div 
+        style={style}
+        className="playlist-grid-row loading-row"
+      >
+        <div className="grid-cell">{index + 1}</div>
+        <div className="grid-cell">Loading...</div>
+        <div className="grid-cell"></div>
+      </div>
+    );
+  }
+  
   const track = entries[index];
-
+  
   return (
     <Draggable 
       key={track.order}
@@ -68,6 +91,7 @@ const PlaylistGrid = ({ playlistID }) => {
   const [sortColumn, setSortColumn] = useState('order');
   const [sortDirection, setSortDirection] = useState('asc');
   const [filter, setFilter] = useState('');
+  const [debouncedFilter, setDebouncedFilter] = useState('');
   const [entries, setEntries] = useState([]);
   const [name, setName] = useState('');
   const [snackbar, setSnackbar] = useState({
@@ -88,29 +112,149 @@ const PlaylistGrid = ({ playlistID }) => {
   const gridContentRef = useRef(null);
   const [displayedItems, setDisplayedItems] = useState(50);
   const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [openAILoading, setOpenAILoading] = useState(false);
+  const [similarTracks, setSimilarTracks] = useState(null);
+  const [showTrackDetails, setShowTrackDetails] = useState(false);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [selectedTrack, setSelectedTrack] = useState(null);
+  const [albumArtList, setAlbumArtList] = useState([]);
+  const [playlistLoading, setPlaylistLoading] = useState(false);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(100);
+  const [totalCount, setTotalCount] = useState(0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // Add these state variables to track visible ranges
+  const [visibleStartIndex, setVisibleStartIndex] = useState(0);
+  const [visibleStopIndex, setVisibleStopIndex] = useState(0);
+  const [pendingFetchPromise, setPendingFetchPromise] = useState(null);
+
+  // Apply debouncing to the filter
+  useEffect(() => {
+    // Set a timer to update the debounced filter after typing stops
+    const timer = setTimeout(() => {
+      setDebouncedFilter(filter);
+    }, 500); // 500ms debounce delay
+
+    // Clean up the timer if filter changes before timeout completes
+    return () => clearTimeout(timer);
+  }, [filter]);
 
   useEffect(() => {
-    fetchPlaylistDetails(playlistID);
-  }, [playlistID]); // Only re-fetch when playlistID changes
+    setPage(0); // Reset page on filter/sort changes
+    console.log("loading for new filter");
+    fetchPlaylistDetails(true);
+  }, [playlistID, debouncedFilter, sortColumn, sortDirection]);
 
-  const fetchPlaylistDetails = async (playlistId) => {
+  const fetchPlaylistDetails = useCallback(async (isInitialLoad = false, targetPosition = null) => {
     try {
-      const playlist = await playlistRepository.getPlaylistDetails(playlistId);
-      setName(playlist.name);
-      setIsInitialLoad(true);  // Set flag before updating entries
-      setEntries(playlist.entries.map(entry => mapToTrackModel(entry)))
+      if (isInitialLoad) {
+        setPlaylistLoading(true);
+        // Get basic playlist info for the name on initial load
+        const playlistInfo = await playlistRepository.getPlaylistDetails(playlistID);
+        setName(playlistInfo.name);
+        
+        // Initialize total count to set up the virtual list
+        setIsLoadingMore(true);
+        const countResponse = await playlistRepository.getPlaylistEntries(playlistID, {
+          filter: debouncedFilter,
+          limit: 100,
+          includeCount: true
+        });
+
+        setTotalCount(countResponse.total || 0);
+
+        // create placeholder entries
+        const placeholders = new Array(countResponse.total).fill(null).map((_, index) => ({
+          order: index,  // This is critical for sorting
+          details: {}
+        }));
+        setEntries(placeholders);
+      }
+      
+      // Determine which range to fetch
+      let offset = 0;
+      
+      if (targetPosition !== null) {
+        // For targeted scrolling, fetch data centered around the target position
+        offset = Math.max(0, Math.floor(targetPosition - pageSize/2));
+        if (offset + pageSize > totalCount) {
+          // Adjust offset to prevent fetching beyond the end
+          offset = Math.max(0, totalCount - pageSize);
+        }
+        setIsLoadingMore(true);
+      } else if (!isInitialLoad) {
+        // For normal pagination, fetch next batch
+        offset = entries.length;
+        setIsLoadingMore(true);
+      }
+      
+      console.log(`Fetching with offset: ${offset}, limit: ${pageSize}, targetPosition: ${targetPosition}`);
+      
+      const filterParams = {
+        filter: debouncedFilter,
+        sortCriteria: sortColumn,
+        sortDirection: sortDirection,
+        limit: pageSize,
+        offset: offset
+      };
+      
+      const response = await playlistRepository.getPlaylistEntries(playlistID, filterParams);
+      const filteredEntries = response.entries;
+      const mappedEntries = filteredEntries.map(entry => mapToTrackModel(entry));
+      
+      // Create a sparse array that handles the jumped position properly
+      if (targetPosition !== null) {
+        setEntries(prevEntries => {
+          // Create a new array with the correct total size
+          const newEntries = new Array(totalCount).fill(null).map((_, index) => {
+            // Start with minimal placeholder objects
+            return {
+              order: index,
+              details: {}
+            };
+          });
+          
+          // Copy existing entries (non-placeholder) to the new array
+          prevEntries.forEach((entry, i) => {
+            if (entry && entry.details.title && i < newEntries.length) {
+              newEntries[i] = entry;
+            }
+          });
+          
+          // Place the fetched entries at their correct positions
+          mappedEntries.forEach((entry, index) => {
+            if (offset + index < newEntries.length) {
+              newEntries[offset + index] = entry;
+            }
+          });
+          
+          return newEntries;
+        });
+      } else if (isInitialLoad) {
+        // On initial load, just set the entries directly
+        setEntries(mappedEntries);
+      } else {
+        // For normal pagination, append to existing entries
+        setEntries(prevEntries => [...prevEntries, ...mappedEntries]);
+      }
+      
+      // Update page based on the offset we fetched
+      const newPage = Math.floor(offset / pageSize);
+      setPage(newPage);
+      
+      return { 
+        fetchedRange: { start: offset, end: offset + mappedEntries.length - 1 }
+      };
     } catch (error) {
       console.error('Error fetching playlist details:', error);
+      return null;
+    } finally {
+      setPlaylistLoading(false);
+      setIsLoadingMore(false);
     }
-  };
-
-  const writeToDB = async () => {
-    try {
-      await playlistRepository.updateEntries(playlistID, entries);
-    } catch (error) {
-      console.error('Error writing playlist to DB:', error);
-    }
-  };
+  }, [playlistID, debouncedFilter, sortColumn, sortDirection, pageSize, totalCount, entries.length]);
 
   const pushToHistory = (entries) => {
     const newHistory = history.slice(0, historyIndex + 1);
@@ -133,17 +277,19 @@ const PlaylistGrid = ({ playlistID }) => {
   };
 
   const addTracksToPlaylist = async (tracks) => {
-    const tracksToAdd = Array.isArray(tracks) ? tracks : [tracks];
+    const newOrder = entries.length ? entries[entries.length - 1].order + 1 : 0;
+
+    const tracksToAdd = (Array.isArray(tracks) ? tracks : [tracks]).map((track, idx) => ({
+      ...mapToTrackModel(track),
+      order: idx + newOrder, music_file_id: track.id, 
+      entry_type: track.entry_type, url: track.url, details: track
+    }));
 
     pushToHistory(entries);
 
     const newEntries = [
       ...entries,
-      ...tracksToAdd.map((s, idx) => ({
-        ...mapToTrackModel(s),
-        order: idx + entries.length, music_file_id: s.id, 
-        entry_type: s.entry_type, url: s.url, details: s
-      }))
+      ...tracksToAdd
     ];
     
     setEntries(newEntries);
@@ -164,23 +310,29 @@ const PlaylistGrid = ({ playlistID }) => {
   };
 
   const onRemoveByAlbum = async (album) => {
-    setEntries(entries.filter(entry => entry.album === album).map(entry => entry.order));
+    // identify indexes of tracks to remove
+    const indexes = entries.map((entry, idx) => entry.album === album ? idx : null).filter(idx => idx !== null);
+    
+    playlistRepository.removeTracks(playlistID, indexes.map(i => entries[i]));
+    setEntries(entries.filter((entry, idx) => !indexes.includes(idx)));
   }
 
   const onRemoveByArtist = async (artist) => {
-    setEntries(entries.filter(entry => entry.artist === artist).map(entry => entry.order));
+    const indexes = entries.map((entry, idx) => entry.artist === artist ? idx : null).filter(idx => idx !== null);
+
+    playlistRepository.removeTracks(playlistID, indexes.map(i => entries[i]));
+    setEntries(entries.filter((entry, idx) => !indexes.includes(idx)));
   }
 
   const addSongsToPlaylist = async (songs) => {
     const songsArray = Array.isArray(songs) ? songs : [songs];
     await addTracksToPlaylist(songsArray);
     
-    // Scroll to bottom after state update
+    // Scroll to bottom using the List ref instead
     setTimeout(() => {
-      gridContentRef.current?.scrollTo({
-        top: gridContentRef.current.scrollHeight,
-        behavior: 'smooth'
-      });
+      if (listRef.current) {
+        listRef.current.scrollToItem(entries.length - 1);
+      }
     }, 100);
   };
 
@@ -201,8 +353,12 @@ const PlaylistGrid = ({ playlistID }) => {
   }
 
   const exportPlaylist = async (id) => {
-    playlistRepository.export(id);
+    playlistRepository.export(id, "m3u");
   };
+
+  const exportPlaylistToJson = async (id) => {
+    playlistRepository.export(id, "json");
+  }
 
   const onSyncToPlex = async () => {
     try {
@@ -273,21 +429,6 @@ const PlaylistGrid = ({ playlistID }) => {
     setAllTracksSelected(!allPlaylistEntriesSelected);
   };
 
-  const handleShowTrackDetails = (track) => {
-    setSelectedTrack(track);
-    setShowTrackDetails(true);
-  };
-
-  const handleContextMenu = (e, track) => {
-    e.preventDefault();
-    setContextMenu({
-      visible: true,
-      x: e.clientX,
-      y: e.clientY,
-      track: track
-    });
-  };
-
   const handleSnackbarClose = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
@@ -299,41 +440,8 @@ const PlaylistGrid = ({ playlistID }) => {
       setSortColumn(column);
       setSortDirection('asc');
     }
+    // The effect will trigger a re-fetch with the new sort parameters
   };
-
-  const sortedEntries = [...entries].sort((a, b) => {
-    const multiplier = sortDirection === 'asc' ? 1 : -1;
-    
-    switch (sortColumn) {
-      case 'order':
-        return (a.order - b.order) * multiplier;
-      case 'type':
-        return a.entry_type.localeCompare(b.entry_type) * multiplier;
-      case 'artist':
-        return (a.artist || a.album_artist || '').localeCompare(b.artist || b.album_artist || '') * multiplier;
-      case 'title':
-        return a.title.localeCompare(b.title) * multiplier;
-      default:
-        return 0;
-    }
-  });
-
-  const filteredEntries = useMemo(() => {
-    if (!filter) return sortedEntries;
-    
-    const searchTerm = filter.toLowerCase();
-    return sortedEntries.filter(entry => {
-      const title = entry.details?.title?.toLowerCase() || '';
-      const artist = entry.details?.artist?.toLowerCase() || '';
-      const album = entry.details?.album?.toLowerCase() || '';
-      const source = entry.entry_type?.toLowerCase() || '';
-      
-      return title.includes(searchTerm) ||
-             artist.includes(searchTerm) ||
-             album.includes(searchTerm) ||
-             source.includes(searchTerm);
-    });
-  }, [sortedEntries, filter]);
 
   const searchFor = (query) => {
     setSearchFilter(query);
@@ -361,22 +469,122 @@ const PlaylistGrid = ({ playlistID }) => {
     }
   }
 
-  const fetchMoreData = () => {
-    if (displayedItems >= filteredEntries.length) {
-      setHasMore(false);
-      return;
-    }
-    
-    setTimeout(() => {
-      setDisplayedItems(displayedItems + 50);
-    }, 500);
+  const findSimilarTracksWithOpenAI = async (e, track) => {
+    setOpenAILoading(true);
+
+    const similars = await openAIRepository.findSimilarTracks(track);
+    const localFiles = await libraryRepository.findLocalFiles(similars);
+
+    // prefer local files
+    setSimilarTracks(localFiles);
+
+    setPosition({ x: e.clientX, y: e.clientY });
+    setOpenAILoading(false);
   };
+
+  const findSimilarTracks = async (e, track) => {
+    setLoading(true);
+
+    const similars = await lastFMRepository.findSimilarTracks(track);
+    const localFiles = await libraryRepository.findLocalFiles(similars);
+
+    // prefer local files
+    setSimilarTracks(localFiles);
+
+    setPosition({ x: e.clientX, y: e.clientY });
+    setLoading(false);
+  };
+
+  const addSimilarTracks = (tracks) => {
+    addSongsToPlaylist(tracks);
+    setSimilarTracks(null);
+  }
+
+  const handleShowDetails = (track) => {
+    setSelectedTrack(track);
+    setShowTrackDetails(true);
+  }
+
+  const handleContextMenu = (e, track) => {
+    e.preventDefault();
+
+    const isAlbum = track.entry_type === 'requested_album' || track.entry_type === 'album';
+
+    const options = [
+      { label: 'Details', onClick: () => handleShowDetails(track) },
+      { label: 'Send to Search', onClick: () => searchFor(track.title) },
+      !isAlbum ? { label: 'Find Similar Tracks (Last.fm)', onClick: (e) => findSimilarTracks(e, track) } : null,
+      !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: (e) => findSimilarTracksWithOpenAI(e, track) } : null,
+      { label: 'Search for Album', onClick: () => searchFor(track.album) },
+      { label: 'Search for Artist', onClick: () => searchFor(track.artist) },
+      { label: 'Remove', onClick: () => removeSongsFromPlaylist([track.order]) },
+      { label: 'Remove by Artist', onClick: () => onRemoveByArtist(track.artist) },
+      { label: 'Remove by Album', onClick: () => onRemoveByAlbum(track.album) }
+    ];
+
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      options
+    });
+  }
 
   const listRef = useRef(null);
 
+  // Replace loadMoreItems function with this smart pagination function
+  const loadItemsForVisibleRange = useCallback(async (startIndex, stopIndex) => {
+    // If we're already loading data, skip this request
+    if (isLoadingMore) return;
+    
+    // Calculate if there are any missing entries in the visible range
+    const hasMissingEntriesInView = () => {
+      for (let i = startIndex; i <= stopIndex; i++) {
+        if (i < entries.length && (!entries[i] || !entries[i].details || !entries[i].details.title)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    
+    // Case 1: We have missing entries in the visible range
+    if (hasMissingEntriesInView()) {
+      const midpoint = Math.floor((startIndex + stopIndex) / 2);
+      console.log(`Missing entries in visible range, fetching at position ${midpoint}`);
+      await fetchPlaylistDetails(false, midpoint);
+      return;
+    }
+    
+    // Case 2: User has jumped far beyond loaded data
+    if (startIndex >= entries.length) {
+      console.log(`Jumped to position beyond loaded data: ${startIndex}`);
+      fetchPlaylistDetails(false, startIndex);
+      return;
+    }
+    
+    // Case 3: User is scrolling backwards to unloaded entries
+    if (startIndex < 20 && entries[0] === null) {
+      console.log(`Scrolling backwards to unloaded entries, fetching at position ${startIndex}`);
+      fetchPlaylistDetails(false, startIndex);
+      return;
+    }
+    
+    // Case 4: We're approaching the end of loaded data - fetch the next batch
+    if (stopIndex >= entries.length - 20 && entries.length < totalCount) {
+      console.log(`Approaching end of loaded data, fetching next batch`);
+      fetchPlaylistDetails(false);
+      return;
+    }
+  }, [entries, isLoadingMore, totalCount, fetchPlaylistDetails]);
+
   return (
-    <div>
-      <h2>{name}</h2>
+    <div className="main-playlist-view">
+      <div className="playlist-header">
+        <AlbumArtGrid
+          artList={albumArtList ? albumArtList.map(album => album.image_url) : []}
+        />
+        <h2 className="playlist-name">{name}</h2>
+      </div>
       <div className="playlist-controls">
         <div className="history-controls">
           <button 
@@ -415,7 +623,9 @@ const PlaylistGrid = ({ playlistID }) => {
             </button>
           )}
           <span className="filter-count">
-            {filteredEntries.length} of {entries.length} tracks
+            {totalCount} tracks {filter ? 
+              (filter !== debouncedFilter ? '(filtering...)' : '(filtered)') 
+              : ''}
           </span>
         </div>
 
@@ -453,8 +663,9 @@ const PlaylistGrid = ({ playlistID }) => {
                 {...provided.draggableProps}
                 {...provided.dragHandleProps}
                 isDragging={snapshot.isDragging}
-                track={filteredEntries[rubric.source.index]}
+                track={entries[rubric.source.index]}
                 isChecked={selectedEntries.includes(rubric.source.index)}
+                handleContextMenu={handleContextMenu}
                 className="playlist-grid-row"
               />
             )}
@@ -469,18 +680,27 @@ const PlaylistGrid = ({ playlistID }) => {
                     <List
                       ref={listRef}
                       height={height}
-                      itemCount={filteredEntries.length}
+                      itemCount={totalCount}
                       itemSize={50}
                       width={width}
                       itemData={{
-                        entries: filteredEntries,
+                        entries: entries,
                         toggleTrackSelection,
-                        handleContextMenu,
                         selectedEntries,
                         sortColumn,
+                        handleContextMenu: handleContextMenu,
                         isDraggingOver: snapshot.isDraggingOver
                       }}
-                      overscanCount={5}
+                      overscanCount={20} // Increased overscan for jumping around
+                      onItemsRendered={({ visibleStartIndex, visibleStopIndex }) => {
+                        // Store the visible range
+                        setVisibleStartIndex(visibleStartIndex);
+                        setVisibleStopIndex(visibleStopIndex);
+                        
+                        // ALWAYS check if we need to load data for the current visible range
+                        // Don't just check for the end of the list
+                        loadItemsForVisibleRange(visibleStartIndex, visibleStopIndex);
+                      }}
                     >
                       {Row}
                     </List>
@@ -492,31 +712,57 @@ const PlaylistGrid = ({ playlistID }) => {
         </DragDropContext>
       </div>
 
+      <BatchActions 
+        selectedCount={selectedEntries.length}
+        onRemove={removeSelectedTracks}
+        onClear={clearTrackSelection}
+      />
+
       <SearchResultsGrid
         filter={searchFilter}
         onAddSongs={addSongsToPlaylist}
         visible={searchPanelOpen}
         playlistID={playlistID}
+        setSnackbar={setSnackbar}
       />
 
       {contextMenu.visible && (
-        <PlaylistItemContextMenu
+        <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
           track={contextMenu.track}
           onClose={() => setContextMenu({ visible: false })}
-          onFilterByAlbum={() => searchFor(contextMenu.track.album)}
-          onFilterByArtist={() => searchFor(contextMenu.track.artist)}
-          onAddTracks={(tracks) => addSongsToPlaylist(tracks)}
+          options={contextMenu.options}
+        />
+      )}
+
+      {similarTracks && (
+        <SimilarTracksPopup
+          x={position.x}
+          y={position.y}
+          tracks={similarTracks}
+          onClose={() => setSimilarTracks(null)}
+          onAddTracks={(tracks) => addSimilarTracks(tracks)}
+        />
+      )}
+
+      {showTrackDetails && (
+        <TrackDetailsModal
+          track={selectedTrack}
+          onClose={() => setShowTrackDetails(false)}
         />
       )}
 
       {playlistModalVisible && (
-        <PlaylistModal
-          open={playlistModalVisible}
+        <BaseModal
+          title="Playlist Options"
+          options={[
+            { label: 'Export to m3u', action: () => exportPlaylist(playlistID) },
+            { label: 'Export to JSON', action: () => exportPlaylistToJson(playlistID) },
+            { label: 'Sync to Plex', action: onSyncToPlex },
+            { label: 'Delete Playlist', action: onDeletePlaylist }
+          ]}
           onClose={() => setPlaylistModalVisible(false)}
-          onSyncToPlex={onSyncToPlex}
-          onDelete={onDeletePlaylist}
         />
       )}
 
@@ -526,6 +772,14 @@ const PlaylistGrid = ({ playlistID }) => {
         severity={snackbar.severity}
         onClose={handleSnackbarClose}
       />
+
+      {playlistLoading && (
+        <div className="loading-overlay">
+          <div className="spinner-container">
+            <BiLoaderAlt className="spinner-icon" />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

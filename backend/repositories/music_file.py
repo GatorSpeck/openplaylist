@@ -1,13 +1,12 @@
 from .base import BaseRepository
 from models import MusicFileDB, TrackGenreDB
 from typing import Optional
-from response_models import MusicFile, SearchQuery, RequestedTrack, TrackDetails, Playlist, MusicFileEntry
+from response_models import MusicFile, SearchQuery, RequestedTrack, TrackDetails, Playlist, MusicFileEntry, try_parse_int
 from sqlalchemy import text, or_
 import time
 import urllib
 import logging
 from repositories.playlist import PlaylistRepository
-
 
 def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
     return MusicFile(
@@ -24,6 +23,8 @@ def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
         genres=[g.genre for g in music_file_db.genres] or [],
         last_scanned=music_file_db.last_scanned,
         missing=music_file_db.missing,
+        track_number=try_parse_int(music_file_db.track_number),
+        disc_number=try_parse_int(music_file_db.disc_number),
     )
 
 
@@ -31,8 +32,8 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
     def __init__(self, session):
         super().__init__(session, MusicFileDB)
 
-    def search(self, query: str, limit: int = 50) -> list[MusicFile]:
-        query_package = SearchQuery(full_search=query, limit=limit)
+    def search(self, query: str, limit: int = 50, offset: int = 0) -> list[MusicFile]:
+        query_package = SearchQuery(full_search=query, limit=limit, offset=offset)
         start_time = time.time()
 
         search_query = urllib.parse.unquote(query_package.full_search or "")
@@ -82,7 +83,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
 
         # Order by relevance score
         results = (
-            query.order_by(text("relevance DESC")).limit(query_package.limit).all()
+            query.order_by(text("relevance DESC")).limit(query_package.limit).offset(query_package.offset).all()
         )
 
         logging.info(
@@ -137,6 +138,8 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             publisher=music_file.publisher,
             kind=music_file.kind,
             last_scanned=music_file.last_scanned,
+            track_number=music_file.track_number,
+            disc_number=music_file.disc_number,
         )
 
         self.session.add(music_file_db)
@@ -209,15 +212,48 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         return results
 
     def dump_library_to_playlist(self, playlist: Playlist, repo: PlaylistRepository) -> Playlist:
-        # get all music files
-        music_files = self.session.query(MusicFileDB).all()
+        try:
+            logging.info("Dumping library to playlist")
+            
+            # Get total count for progress reporting
+            total_count = self.session.query(MusicFileDB).count()
+            logging.info(f"Total music files to add: {total_count}")
+            
+            # Use pagination to avoid loading everything into memory at once
+            chunk_size = 1000
+            offset = 0
+            
+            while True:
+                # Fetch only the chunk we need using pagination
+                music_files_chunk = self.session.query(MusicFileDB).limit(chunk_size).offset(offset).all()
+                
+                if not music_files_chunk:
+                    break  # No more files to process
+                    
+                # Create entries without unnecessary details objects
+                entries = [
+                    MusicFileEntry(
+                        entry_type="music_file", 
+                        order=offset + i, 
+                        music_file_id=music_file.id
+                    ) 
+                    for i, music_file in enumerate(music_files_chunk)
+                ]
+                
+                # Add the chunk to the playlist
+                repo.add_entries(playlist.id, entries)
+                
+                logging.info(f"Added chunk {offset//chunk_size + 1}, progress: {min(offset + len(music_files_chunk), total_count)}/{total_count}")
+                
+                offset += len(music_files_chunk)
+                
+                # Break if we've processed all files or received fewer than requested
+                if len(music_files_chunk) < chunk_size:
+                    break
+                    
+            logging.info(f"Successfully added {offset} tracks to playlist {playlist.id}")
+            return playlist
 
-        i = len(playlist.entries)
-        for music_file in music_files:
-            repo.add_entry(playlist.id, MusicFileEntry(entry_type="music_file", order=i, music_file_id=music_file.id, details=MusicFile.from_orm(music_file)), commit=False)
-            i+= 1
-
-            if i % 100 == 0:
-                self.session.commit()
-
-        self.session.commit()
+        except Exception as e:
+            logging.error(f"Failed to dump library to playlist: {e}")
+            raise e

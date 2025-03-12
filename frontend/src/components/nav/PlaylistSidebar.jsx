@@ -21,9 +21,6 @@ const PlaylistSidebar = ({
   onNewPlaylist,
   onClonePlaylist,
   onDeletePlaylist,
-  onScan,
-  onFullScan,
-  onPurge,
   onExport,
   onSyncToPlex,
   onRenamePlaylist
@@ -102,13 +99,6 @@ const PlaylistSidebar = ({
                 {playlist.name}
               </div>
             ))}
-          </div>
-          
-          <div className="admin-actions">
-            <hr />
-            <button onClick={onScan}>Quick Scan</button>
-            <button onClick={onFullScan}>Full Scan</button>
-            <button onClick={onPurge}>Purge Data</button>
           </div>
         </div>
       </div>

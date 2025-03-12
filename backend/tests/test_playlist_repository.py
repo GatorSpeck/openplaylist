@@ -1,10 +1,11 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from repositories.playlist import PlaylistRepository
+from repositories.playlist import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
 from models import *
 from response_models import *
 import datetime
+from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 
 @pytest.fixture
 def playlist_repo(test_db):
@@ -46,7 +47,7 @@ def test_add_music_file_entry(playlist_repo, sample_playlist, sample_music_file)
         details=MusicFile.from_orm(sample_music_file)
     )
     
-    playlist_repo.add_entry(sample_playlist.id, entry)
+    playlist_repo.add_entries(sample_playlist.id, [entry])
     result = playlist_repo.get_with_entries(sample_playlist.id)
     
     assert len(result.entries) == 1
@@ -55,6 +56,13 @@ def test_add_music_file_entry(playlist_repo, sample_playlist, sample_music_file)
 
     first_entry = playlist_repo.get_playlist_entry_details(sample_playlist.id, [0])[0]
     assert first_entry.details.title == "Test Song"
+
+    result = playlist_repo.get_without_details(sample_playlist.id)
+
+    assert len(result.entries) == 1
+    assert result.entries[0].entry_type == "music_file"
+    assert result.entries[0].music_file_id == sample_music_file.id
+    assert result.entries[0].details is None
 
 def test_add_multiple_entries(playlist_repo, sample_playlist, sample_music_file):
     entries = [
@@ -72,7 +80,7 @@ def test_add_multiple_entries(playlist_repo, sample_playlist, sample_music_file)
     
     assert len(result.entries) == 3
     assert all(e.entry_type == "music_file" for e in result.entries)
-    assert [e.order for e in result.entries] == [0, 1, 2]
+    assert [e.details.title for e in result.entries] == ["Test Song"] * 3
 
     playlist_repo.undo_add_entries(sample_playlist.id, entries)
 
@@ -105,10 +113,16 @@ def test_replace_entries(playlist_repo, sample_playlist, sample_music_file, samp
     result = playlist_repo.get_with_entries(sample_playlist.id)
     
     assert len(result.entries) == 1
-    assert result.entries[0].order == 0
+    assert result.entries[0].details.title == "Test Song2"
 
 def test_empty_entries_list(playlist_repo, sample_playlist):
     result = playlist_repo.add_entries(sample_playlist.id, [])
+    assert len(result.entries) == 0
+
+    result = playlist_repo.get_with_entries(sample_playlist.id)
+    assert len(result.entries) == 0
+
+    result = playlist_repo.get_with_entries(sample_playlist.id, limit=1, offset=0)
     assert len(result.entries) == 0
 
 def test_replace_with_empty_list(playlist_repo, sample_playlist, sample_music_file):
@@ -119,7 +133,7 @@ def test_replace_with_empty_list(playlist_repo, sample_playlist, sample_music_fi
         music_file_id=sample_music_file.id,
         details=MusicFile.from_orm(sample_music_file)
     )
-    playlist_repo.add_entry(sample_playlist.id, initial_entry)
+    playlist_repo.add_entries(sample_playlist.id, [initial_entry])
     
     # Replace with empty list
     result = playlist_repo.replace_entries(sample_playlist.id, [])
@@ -153,7 +167,6 @@ def test_reorder(test_db, playlist_repo, sample_playlist, sample_music_file):
     result = playlist_repo.get_with_entries(sample_playlist.id)
     assert [e.details.title for e in result.entries] == [e.details.title for e in initial_entries]
 
-@pytest.mark.skip
 def test_playlist_pagination(playlist_repo, test_db):
     # Create a playlist with multiple entries
     playlist = PlaylistDB(name="Test Playlist")
@@ -184,3 +197,82 @@ def test_playlist_pagination(playlist_repo, test_db):
     result = playlist_repo.get_with_entries(playlist.id, limit=2, offset=2)
     assert len(result.entries) == 2
 
+def test_add_album_entry(test_db, playlist_repo, sample_playlist):
+    tracks = [{"title": f"Test Song {i}", "artist": "Artist"} for i in range(5)]
+
+    album = Album(
+        title="Test Album",
+        artist="Test Artist",
+        art_url="/test/album_art.jpg",
+        tracks = [{"order": i, "linked_track": track} for i, track in enumerate(tracks)]
+    )
+
+    entry = RequestedAlbumEntry(
+        order=0,
+        entry_type="requested_album",
+        details=album
+    )
+    
+    playlist_repo.add_entries(sample_playlist.id, [entry])
+    result = playlist_repo.get_with_entries(sample_playlist.id)
+    
+    assert len(result.entries) == 1
+    assert result.entries[0].entry_type == "requested_album"
+    assert result.entries[0].details is not None
+    assert result.entries[0].details.title == "Test Album"
+    assert result.entries[0].details.tracks[0].linked_track.title == "Test Song 0"
+
+    first_entry = playlist_repo.get_playlist_entry_details(sample_playlist.id, [0])[0]
+    assert first_entry.details.title == "Test Album"
+    assert len(first_entry.details.tracks) == 5
+    print(first_entry.details.tracks[0].__dict__)
+
+    assert first_entry.details.tracks[0].linked_track.title == "Test Song 0"
+
+def test_filter_playlist(test_db, playlist_repo, sample_playlist):
+    initial_entries = []
+    for i in range(10):
+        f = add_music_file(test_db, f"Test Song {i}")
+        entry = MusicFileEntry(
+            entry_type="music_file",
+            music_file_id=f.id,
+            details=MusicFile.from_orm(f)
+        )
+        initial_entries.append(entry)
+
+    playlist_repo.add_entries(sample_playlist.id, initial_entries)
+
+    filter = PlaylistFilter(
+        filter="Song 5"
+    )
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+
+    assert len(results) == 1
+    assert results[0].details.title == "Test Song 5"
+
+    filter = PlaylistFilter(
+        filter="Song",
+        offset=0,
+        limit=5
+    )
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+
+    assert len(results) == 5
+    assert results[0].details.title == "Test Song 0"
+    assert results[4].details.title == "Test Song 4"
+
+    filter.offset = 5
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+
+    assert len(results) == 5
+    assert results[0].details.title == "Test Song 5"
+    assert results[4].details.title == "Test Song 9"
+
+    # now reverse it, keeping the same pagination settings
+    filter.sortDirection = PlaylistSortDirection.DESC
+
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+    
+    assert len(results) == 5
+    assert results[0].details.title == "Test Song 4"
+    assert results[4].details.title == "Test Song 0"
