@@ -16,6 +16,7 @@ from models import (
 )
 from response_models import (
     Playlist,
+    PlaylistEntry,
     PlaylistEntryBase,
     MusicFileEntry,
     NestedPlaylistEntry,
@@ -582,3 +583,32 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             return None
         
         return Playlist(id=playlist.id, name=playlist.name, entries=[])
+
+    def replace_track(self, playlist_id, existing_entry_id, new_entry: PlaylistEntryBase):
+        # Get the existing entry
+        existing_entry = self.session.query(PlaylistEntryDB).get(existing_entry_id)
+        if existing_entry is None:
+            return None
+        
+        # register requested track if applicable
+        if new_entry.entry_type == "requested":
+            track = new_entry.to_db()
+            self.session.add(track)
+            self.session.flush()
+            new_entry.requested_track_id = track.id
+        
+        # Create the new entry
+        new_entry_db = new_entry.to_playlist(playlist_id)
+        
+        # Copy the order from the existing entry
+        new_entry_db.order = existing_entry.order
+        
+        # Replace the existing entry with the new one
+        self.session.delete(existing_entry)
+        self.session.add(new_entry_db)
+        
+        self.session.commit()
+
+        new_entry.order = new_entry_db.order
+        return new_entry
+        

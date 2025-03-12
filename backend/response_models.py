@@ -443,3 +443,7 @@ class AlbumAndArtist(BaseModel):
 class PlaylistEntriesResponse(BaseModel):
     entries: List[PlaylistEntry]
     total: Optional[int] = None
+
+class ReplaceTrackRequest(BaseModel):
+    existing_track_id: int
+    new_track: Optional[PlaylistEntry] = None

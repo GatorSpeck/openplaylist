@@ -20,6 +20,8 @@ import libraryRepository from '../../repositories/LibraryRepository';
 import SimilarTracksPopup from '../common/SimilarTracksPopup';
 import AlbumArtGrid from './AlbumArtGrid';
 import { BiLoaderAlt } from 'react-icons/bi';
+import { formatDuration } from '../../lib/misc';
+import Modal from '../common/Modal';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -43,7 +45,7 @@ const Row = memo(({ data, index, style }) => {
   } = data;
   
   // Check if we have real data for this index
-  if (index >= entries.length || !entries[index] || !entries[index].details.title) {
+  if (index >= entries.length || !entries[index] || !entries[index].details?.title) {
     // Return a placeholder/loading row
     return (
       <div 
@@ -129,6 +131,10 @@ const PlaylistGrid = ({ playlistID }) => {
   const [visibleStartIndex, setVisibleStartIndex] = useState(0);
   const [visibleStopIndex, setVisibleStopIndex] = useState(0);
   const [pendingFetchPromise, setPendingFetchPromise] = useState(null);
+
+  const [matchModalOpen, setMatchModalOpen] = useState(false);
+  const [matchingTracks, setMatchingTracks] = useState([]);
+  const [trackToMatch, setTrackToMatch] = useState(null);
 
   // Apply debouncing to the filter
   useEffect(() => {
@@ -218,7 +224,7 @@ const PlaylistGrid = ({ playlistID }) => {
           
           // Copy existing entries (non-placeholder) to the new array
           prevEntries.forEach((entry, i) => {
-            if (entry && entry.details.title && i < newEntries.length) {
+            if (entry && entry.details?.title && i < newEntries.length) {
               newEntries[i] = entry;
             }
           });
@@ -508,10 +514,113 @@ const PlaylistGrid = ({ playlistID }) => {
     setShowTrackDetails(true);
   }
 
+  const unMatchTrack = (track) => {
+    // convert this music track to a RequestedTrack
+    console.log(track);
+    const newTrack = {
+      order: track.order,
+      details: {
+        artist: track.artist,
+        title: track.title,
+      },
+      entry_type: 'requested'
+    };
+
+    console.log(newTrack);
+
+    // Update backend
+    playlistRepository.replaceTrack(playlistID, track.id, newTrack);
+
+    // Update local state
+    pushToHistory(entries);
+    const newEntries = [...entries];
+    const trackIndex = entries.findIndex(entry => entry.order === track.order);
+    newEntries[trackIndex] = mapToTrackModel(newTrack);
+    setEntries(newEntries);
+  }
+
+  const matchTrack = async (track) => {
+    try {
+      setPlaylistLoading(true);
+      
+      // Search for potential matches based on track info
+      const searchQuery = `${track.artist} ${track.title}`;
+      const potentialMatches = await libraryRepository.searchLibrary(searchQuery);
+      
+      if (!potentialMatches || potentialMatches.length === 0) {
+        setSnackbar({
+          open: true,
+          message: `No matching tracks found for "${track.title}"`,
+          severity: 'warning'
+        });
+        return;
+      }
+      
+      // Set up the modal state
+      setMatchingTracks(potentialMatches);
+      setTrackToMatch(track);
+      setMatchModalOpen(true);
+    } catch (error) {
+      console.error('Error matching track:', error);
+      setSnackbar({
+        open: true,
+        message: `Error matching track: ${error.message}`,
+        severity: 'error'
+      });
+    } finally {
+      setPlaylistLoading(false);
+    }
+  };
+
+  const replaceTrackWithMatch = async (selectedMatch) => {
+    try {
+      if (!trackToMatch) return;
+      
+      // Get the track index in the playlist
+      const trackIndex = entries.findIndex(entry => entry.order === trackToMatch.order);
+      if (trackIndex === -1) return;
+      
+      // Create the new track entry
+      const newTrack = {
+        ...mapToTrackModel(selectedMatch),
+        order: trackToMatch.order,
+        music_file_id: selectedMatch.id,
+        entry_type: 'music_file',
+        details: selectedMatch
+      };
+      
+      // Update backend
+      await playlistRepository.replaceTrack(playlistID, trackToMatch.id, newTrack);
+      
+      // Update local state
+      pushToHistory(entries);
+      const newEntries = [...entries];
+      newEntries[trackIndex] = newTrack;
+      setEntries(newEntries);
+      
+      setMatchModalOpen(false);
+      
+      setSnackbar({
+        open: true,
+        message: `Track "${trackToMatch.title}" matched to "${selectedMatch.title}"`,
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error replacing track:', error);
+      setSnackbar({
+        open: true,
+        message: `Error replacing track: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  };
+
   const handleContextMenu = (e, track) => {
     e.preventDefault();
 
     const isAlbum = track.entry_type === 'requested_album' || track.entry_type === 'album';
+    const isMusicFile = track.entry_type === 'music_file';
+    const isRequestedTrack = track.entry_type === 'requested' || track.entry_type === 'lastfm';
 
     const options = [
       { label: 'Details', onClick: () => handleShowDetails(track) },
@@ -522,7 +631,10 @@ const PlaylistGrid = ({ playlistID }) => {
       { label: 'Search for Artist', onClick: () => searchFor(track.artist) },
       { label: 'Remove', onClick: () => removeSongsFromPlaylist([track.order]) },
       { label: 'Remove by Artist', onClick: () => onRemoveByArtist(track.artist) },
-      { label: 'Remove by Album', onClick: () => onRemoveByAlbum(track.album) }
+      { label: 'Remove by Album', onClick: () => onRemoveByAlbum(track.album) },
+      isRequestedTrack ? { label: 'Match to Music File', onClick: () => matchTrack(track) } : null,
+      isMusicFile ? { label: 'Re-Match Track', onClick: () => matchTrack(track) } : null,
+      isMusicFile ? { label: 'Unmatch Track', onClick: () => unMatchTrack(track) } : null
     ];
 
     setContextMenu({
@@ -782,6 +894,33 @@ const PlaylistGrid = ({ playlistID }) => {
             <BiLoaderAlt className="spinner-icon" />
           </div>
         </div>
+      )}
+
+      {matchModalOpen && (
+        <Modal
+          title={`Select a match for "${trackToMatch?.title}"`}
+          onClose={() => setMatchModalOpen(false)}
+        >
+          <div className="match-selection-list">
+            {matchingTracks.map((match) => (
+              <div 
+                key={match.id}
+                className="match-item"
+                onClick={() => replaceTrackWithMatch(match)}
+              >
+                <div>{match.artist} - {match.title}</div>
+                <div className="match-details">
+                  Album: {match.album} | {match.duration ? formatDuration(match.duration) : 'Unknown duration'}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="modal-footer">
+            <button onClick={() => setMatchModalOpen(false)}>
+              Cancel
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

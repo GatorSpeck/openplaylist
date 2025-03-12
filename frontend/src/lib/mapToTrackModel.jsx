@@ -2,7 +2,7 @@ const mapToTrackModel = (item) => {
     const detailsToUse = item.details || item;
     return {
         ...item,
-        id: detailsToUse.id,
+        id: item.id,
         title: detailsToUse.title || null,
         artist: detailsToUse.artist || null,
         album: detailsToUse.album || null,

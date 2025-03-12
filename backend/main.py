@@ -2,7 +2,7 @@ import os
 import pathlib
 import logging
 import urllib.parse
-from fastapi import FastAPI, Query, APIRouter, Request, Depends, BackgroundTasks
+from fastapi import FastAPI, Query, APIRouter, Request, Depends, BackgroundTasks, Body
 import uvicorn
 from mutagen.easyid3 import EasyID3
 from mutagen.flac import FLAC
@@ -568,6 +568,13 @@ def delete_playlist(playlist_id: int):
         db.close()
     return {"detail": "Playlist deleted successfully"}
 
+@router.put("/playlists/{playlist_id}/replace")
+def replace_track(playlist_id: int, details: ReplaceTrackRequest = Body(...), repo: PlaylistRepository = Depends(get_playlist_repository)):
+    try:
+        repo.replace_track(playlist_id, details.existing_track_id, details.new_track)
+    except Exception as e:
+        logging.error(f"Failed to replace track: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to replace track")
 
 @router.get("/playlists/{playlist_id}/export", response_class=StreamingResponse)
 def export_playlist(playlist_id: int, type: str = Query("m3u"), repo: PlaylistRepository = Depends(get_playlist_repository)):

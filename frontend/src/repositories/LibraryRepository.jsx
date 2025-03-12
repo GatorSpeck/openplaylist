@@ -3,7 +3,7 @@ import axios from 'axios';
 export class LibraryRepository {
     async searchLibrary(query) {
         try {
-            const response = await axios.get(`/api/library/search`, {
+            const response = await axios.get(`/api/search`, {
                 params: {
                     query: query
                 }
