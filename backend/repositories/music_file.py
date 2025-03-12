@@ -2,7 +2,7 @@ from .base import BaseRepository
 from models import MusicFileDB, TrackGenreDB
 from typing import Optional
 from response_models import MusicFile, SearchQuery, RequestedTrack, TrackDetails, Playlist, MusicFileEntry, try_parse_int
-from sqlalchemy import text, or_
+from sqlalchemy import text, or_, func
 import time
 import urllib
 import logging
@@ -104,23 +104,27 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
     ) -> list[MusicFile]:
         query = self.session.query(MusicFileDB)
 
+        title = title.lower() if title else None
+        artist = artist.lower() if artist else None
+        album = album.lower() if album else None
+
         if title:
             if exact:
-                query = query.filter(MusicFileDB.title == title)
+                query = query.filter(func.lower(MusicFileDB.title) == title)
             else:
-                query = query.filter(MusicFileDB.title.ilike(f"%{title}%"))
+                query = query.filter(func.lower(MusicFileDB.title).ilike(f"%{title}%"))
         if artist:
             if exact:
-                query = query.filter(MusicFileDB.artist == artist)
+                query = query.filter(func.lower(MusicFileDB.artist) == artist)
             else:
-                query = query.filter(MusicFileDB.artist.ilike(f"%{artist}%"))
+                query = query.filter(func.lower(MusicFileDB.artist).ilike(f"%{artist}%"))
         if album:
             if exact:
-                query = query.filter(MusicFileDB.album == album)
+                query = query.filter(func.lower(MusicFileDB.album) == album)
             else:
-                query = query.filter(MusicFileDB.album.ilike(f"%{album}%"))
+                query = query.filter(func.lower(MusicFileDB.album).ilike(f"%{album}%"))
         if genre:
-            query = query.filter(MusicFileDB.genres.any(genre))
+            query = query.filter(func.lower(MusicFileDB.genres).any(genre))
 
         results = query.limit(limit).all()
 
