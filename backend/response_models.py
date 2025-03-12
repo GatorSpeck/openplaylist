@@ -54,6 +54,13 @@ class RequestedTrack(MusicEntity, TrackDetails):
             album=obj.album,
         )
 
+def try_parse_int(value):
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
 
 class MusicFile(MusicEntity, TrackDetails):
     path: str
@@ -88,8 +95,8 @@ class MusicFile(MusicEntity, TrackDetails):
             exact_release_date=obj.exact_release_date,
             release_year=obj.release_year,
             size=obj.size,
-            track_number=obj.track_number,
-            disc_number=obj.disc_number,
+            track_number=try_parse_int(obj.track_number),
+            disc_number=try_parse_int(obj.disc_number),
             comments=obj.comments,
             playlists=[]
         )
@@ -435,4 +442,4 @@ class AlbumAndArtist(BaseModel):
 
 class PlaylistEntriesResponse(BaseModel):
     entries: List[PlaylistEntry]
-    total: int
+    total: Optional[int] = None

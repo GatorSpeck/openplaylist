@@ -482,9 +482,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
     def undo_remove_entries(self, playlist_id: int, entries: List[PlaylistEntryBase]):
         self.add_entries(playlist_id, entries)
     
-    def filter_playlist(self, playlist_id, filter: PlaylistFilter):
-        results = []
-
+    def filter_playlist(self, playlist_id, filter: PlaylistFilter, include_count=False):
         # Define the polymorphic entity
         poly_entity = with_polymorphic(
             PlaylistEntryDB,
@@ -560,7 +558,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             elif filter.sortDirection == PlaylistSortDirection.DESC:
                 query = query.order_by(sort_column.desc())
         
-        count = query.count()
+        count = query.count() if include_count else None
         
         # Apply pagination
         if filter.offset:
@@ -576,3 +574,11 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         # convert to response models
         entries = [playlist_orm_to_response(e, order=(i + offset_to_use)) for i, e in enumerate(entries)]
         return PlaylistEntriesResponse(total=count, entries=entries)
+
+    def get_details(self, playlist_id):
+        query = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id)
+        playlist = query.first()
+        if playlist is None:
+            return None
+        
+        return Playlist(id=playlist.id, name=playlist.name, entries=[])

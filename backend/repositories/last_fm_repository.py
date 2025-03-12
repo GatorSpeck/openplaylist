@@ -86,8 +86,11 @@ class last_fm_repository:
                 image_url = cached_url if cached_url != "" else None
                 return {"image_url": image_url}
         
+        encoded_title = urllib.parse.quote(pair.album)
+        encoded_artist = urllib.parse.quote(pair.artist)
+        
         logging.info(f"Fetching album info from Last.FM for {pair}")
-        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={pair.artist}&album={pair.album}&format=json&autocorrect=1"
+        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={encoded_artist}&album={encoded_title}&format=json&autocorrect=1"
         response = self.requests_cache_session.get(url)
         image_url = None
         if response.status_code == 200:
@@ -114,8 +117,11 @@ class last_fm_repository:
             if cached_info is not None:
                 return from_json(json.loads(cached_info))
         
+        encoded_title = urllib.parse.quote(pair.album)
+        encoded_artist = urllib.parse.quote(pair.artist)
+        
         logging.info(f"Fetching album info from Last.FM for {pair}")
-        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={pair.artist}&album={pair.album}&format=json&autocorrect=1"
+        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={encoded_artist}&album={encoded_title}&format=json&autocorrect=1"
         response = self.requests_cache_session.get(url)
         logging.info(response)
         album_info = None

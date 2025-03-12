@@ -3,37 +3,9 @@ import axios from 'axios';
 export class PlaylistRepository {
     async getPlaylistDetails(playlistID) {
         try {
-            const count = (await axios.get(`/api/playlists/${playlistID}/count`)).data.count;
+            const data = (await axios.get(`/api/playlists/${playlistID}/details`)).data;
 
-            let response = null;
-            
-            let firstRun = true;
-
-            while (firstRun || (response.entries.length < count)) {
-                const offset = firstRun ? 0 : response.entries.length;
-                const chunk = (await axios.get(`/api/playlists/${playlistID}?limit=1000&offset=${offset}`)).data;
-
-                if (!response) {
-                    response = chunk;
-                }
-                else {
-                    response.entries = response.entries.concat(chunk.entries);
-                }
-
-                firstRun = false;
-            }
-
-            return response;
-        } catch (error) {
-            console.error('Error fetching playlist details:', error);
-        }
-    }
-
-    async getPlaylistDetailsUnpaginated(playlistID) {
-        try {
-            const response = await axios.get(`/api/playlists/${playlistID}`);
-
-            return response;
+            return data;
         } catch (error) {
             console.error('Error fetching playlist details:', error);
         }
