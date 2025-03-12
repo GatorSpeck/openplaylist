@@ -293,9 +293,10 @@ const PlaylistGrid = ({ playlistID }) => {
     ];
     
     setEntries(newEntries);
+    setTotalCount(prevCount => prevCount + tracksToAdd.length);
 
     playlistRepository.addTracks(playlistID, tracksToAdd);
-      
+        
     setSnackbar({
       open: true,
       message: `Added ${tracksToAdd.length} tracks to ${name}`,
