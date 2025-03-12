@@ -1,13 +1,12 @@
 from .base import BaseRepository
 from models import MusicFileDB, TrackGenreDB
 from typing import Optional
-from response_models import MusicFile, SearchQuery, RequestedTrack, TrackDetails, Playlist, MusicFileEntry
+from response_models import MusicFile, SearchQuery, RequestedTrack, TrackDetails, Playlist, MusicFileEntry, try_parse_int
 from sqlalchemy import text, or_
 import time
 import urllib
 import logging
 from repositories.playlist import PlaylistRepository
-
 
 def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
     return MusicFile(
@@ -24,8 +23,8 @@ def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
         genres=[g.genre for g in music_file_db.genres] or [],
         last_scanned=music_file_db.last_scanned,
         missing=music_file_db.missing,
-        track_number=music_file_db.track_number,
-        disc_number=music_file_db.disc_number,
+        track_number=try_parse_int(music_file_db.track_number),
+        disc_number=try_parse_int(music_file_db.disc_number),
     )
 
 
