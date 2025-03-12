@@ -213,8 +213,48 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         return results
 
     def dump_library_to_playlist(self, playlist: Playlist, repo: PlaylistRepository) -> Playlist:
-        # get all music files
-        music_files = self.session.query(MusicFileDB).all()
+        try:
+            logging.info("Dumping library to playlist")
+            
+            # Get total count for progress reporting
+            total_count = self.session.query(MusicFileDB).count()
+            logging.info(f"Total music files to add: {total_count}")
+            
+            # Use pagination to avoid loading everything into memory at once
+            chunk_size = 1000
+            offset = 0
+            
+            while True:
+                # Fetch only the chunk we need using pagination
+                music_files_chunk = self.session.query(MusicFileDB).limit(chunk_size).offset(offset).all()
+                
+                if not music_files_chunk:
+                    break  # No more files to process
+                    
+                # Create entries without unnecessary details objects
+                entries = [
+                    MusicFileEntry(
+                        entry_type="music_file", 
+                        order=offset + i, 
+                        music_file_id=music_file.id
+                    ) 
+                    for i, music_file in enumerate(music_files_chunk)
+                ]
+                
+                # Add the chunk to the playlist
+                repo.add_entries(playlist.id, entries)
+                
+                logging.info(f"Added chunk {offset//chunk_size + 1}, progress: {min(offset + len(music_files_chunk), total_count)}/{total_count}")
+                
+                offset += len(music_files_chunk)
+                
+                # Break if we've processed all files or received fewer than requested
+                if len(music_files_chunk) < chunk_size:
+                    break
+                    
+            logging.info(f"Successfully added {offset} tracks to playlist {playlist.id}")
+            return playlist
 
-        repo.add_entries(playlist.id, [MusicFileEntry(entry_type="music_file", order=i, music_file_id=music_file.id, details=MusicFile.from_orm(music_file)) for i, music_file in enumerate(music_files)])
-        
+        except Exception as e:
+            logging.error(f"Failed to dump library to playlist: {e}")
+            raise e

@@ -141,28 +141,29 @@ const PlaylistGrid = ({ playlistID }) => {
     return () => clearTimeout(timer);
   }, [filter]);
 
-  // Update useEffect to use debouncedFilter instead of filter
   useEffect(() => {
     setPage(0); // Reset page on filter/sort changes
+    console.log("loading for new filter");
     fetchPlaylistDetails(true);
-  }, [playlistID, debouncedFilter, sortColumn, sortDirection]); // Use debouncedFilter here
+  }, [playlistID, debouncedFilter, sortColumn, sortDirection]);
 
   const fetchPlaylistDetails = useCallback(async (isInitialLoad = false, targetPosition = null) => {
     try {
       if (isInitialLoad) {
         setPlaylistLoading(true);
         // Get basic playlist info for the name on initial load
-        const playlistInfo = await playlistRepository.getPlaylistDetailsUnpaginated(playlistID);
-        setName(playlistInfo.data.name);
+        const playlistInfo = await playlistRepository.getPlaylistDetails(playlistID);
+        setName(playlistInfo.name);
         
         // Initialize total count to set up the virtual list
+        setIsLoadingMore(true);
         const countResponse = await playlistRepository.getPlaylistEntries(playlistID, {
           filter: debouncedFilter,
-          limit: 100
+          limit: 100,
+          includeCount: true
         });
-        setTotalCount(countResponse.total || 0);
 
-         console.log(countResponse.total);
+        setTotalCount(countResponse.total || 0);
 
         // create placeholder entries
         const placeholders = new Array(countResponse.total).fill(null).map((_, index) => ({
@@ -202,10 +203,6 @@ const PlaylistGrid = ({ playlistID }) => {
       const response = await playlistRepository.getPlaylistEntries(playlistID, filterParams);
       const filteredEntries = response.entries;
       const mappedEntries = filteredEntries.map(entry => mapToTrackModel(entry));
-      
-      // Update total count from response
-      const newTotalCount = response.total || mappedEntries.length;
-      setTotalCount(newTotalCount);
       
       // Create a sparse array that handles the jumped position properly
       if (targetPosition !== null) {
@@ -248,8 +245,7 @@ const PlaylistGrid = ({ playlistID }) => {
       setPage(newPage);
       
       return { 
-        fetchedRange: { start: offset, end: offset + mappedEntries.length - 1 },
-        total: newTotalCount
+        fetchedRange: { start: offset, end: offset + mappedEntries.length - 1 }
       };
     } catch (error) {
       console.error('Error fetching playlist details:', error);

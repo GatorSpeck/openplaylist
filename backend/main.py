@@ -437,6 +437,7 @@ async def get_playlist_entries(
     filter: Optional[str] = None,
     sortCriteria: Optional[str] = None,
     sortDirection: Optional[str] = None,
+    includeCount: Optional[bool] = False,
     repo: PlaylistRepository = Depends(get_playlist_repository)
 ):
     f = PlaylistFilter(
@@ -446,13 +447,19 @@ async def get_playlist_entries(
         limit=limit,
         offset=offset,
     )
-    return repo.filter_playlist(playlist_id, f)
+    return repo.filter_playlist(playlist_id, f, include_count=includeCount)
 
 @router.get("/playlists/{playlist_id}/count")
 async def get_playlist_count(
     playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)
 ):
     return repo.get_count(playlist_id)
+
+@router.get("/playlists/{playlist_id}/details")
+async def get_playlist_count(
+    playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    return repo.get_details(playlist_id)
 
 @router.get("/stats", response_model=LibraryStats)
 async def get_stats():
@@ -689,7 +696,7 @@ def dump_library(
 ):
     playlist = repo.get_by_id(playlistID)
 
-    background_tasks.add_task(self.dump_library_to_playlist(playlist, repo, music_files))
+    background_tasks.add_task(dump_library_to_playlist, playlist, repo, music_files)
 
 @app.get("/api/music-files")
 async def get_music_files(
