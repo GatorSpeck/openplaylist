@@ -338,7 +338,8 @@ const PlaylistGrid = ({ playlistID }) => {
   };
 
   const removeSongsFromPlaylist = async (indexes) => {
-    if ((indexes.length > 1) && !window.confirm(`Are you sure you want to remove ${indexes.length} entries from the playlist?`)) {
+    const length = indexes.length;
+    if ((length > 1) && !window.confirm(`Are you sure you want to remove ${length} entries from the playlist?`)) {
       return;
     }
 
@@ -349,6 +350,7 @@ const PlaylistGrid = ({ playlistID }) => {
       .map((entry, index) => ({ ...entry, order: index }));
     
     setEntries(newEntries);
+    setTotalCount(prevCount => prevCount - length);
 
     playlistRepository.removeTracks(playlistID, indexes.map(i => entries[i]));
   }
