@@ -1,5 +1,3 @@
-version: '3.8'
-
 networks:
   playlist:
     driver: bridge
@@ -10,7 +8,7 @@ services:
     volumes:
       - ${MUSIC_PATH}:/music:ro
       - ./data:/data:rw
-      - /mnt/shared/Media/Music/Playlist:/playlist:rw
+      - ${PLEX_M3U_DROP_SOURCE}:/playlist:rw
     restart: unless-stopped
     networks:
       - playlist
@@ -30,6 +28,12 @@ services:
 
       - PLEX_M3U_DROP_SOURCE=${PLEX_M3U_DROP_SOURCE}
       - PLEX_M3U_DROP_TARGET=${PLEX_M3U_DROP_TARGET}
+    
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://0.0.0.0:3000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   frontend:
     build: ./frontend
@@ -41,6 +45,9 @@ services:
       - backend
     environment:
       - VITE_API_URL=http://backend:3000
+      - VITE_ALLOWED_HOSTNAME=${VITE_ALLOWED_HOSTNAME}
+      - VITE_HOST=0.0.0.0
+      - VITE_PORT=8080
     restart: unless-stopped
     networks:
       - playlist

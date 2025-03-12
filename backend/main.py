@@ -704,6 +704,10 @@ async def get_music_files(
 ):
     return repo.get_all()
 
+@router.get("/health")
+def health_check():
+    return {"status": "ok"}
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logging.error(f"Unhandled exception: {exc}", exc_info=True)
