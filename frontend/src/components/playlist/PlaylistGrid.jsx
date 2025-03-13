@@ -22,6 +22,7 @@ import AlbumArtGrid from './AlbumArtGrid';
 import { BiLoaderAlt } from 'react-icons/bi';
 import { formatDuration } from '../../lib/misc';
 import Modal from '../common/Modal';
+import MatchTrackModal from './MatchTrackModal';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -896,73 +897,14 @@ const PlaylistGrid = ({ playlistID }) => {
       )}
 
       {matchModalOpen && (
-        <Modal
-          title={`Select a match for "${trackToMatch?.title}"`}
+        <MatchTrackModal
+          isOpen={matchModalOpen}
           onClose={() => setMatchModalOpen(false)}
-        >
-          <div className="match-search-container">
-            <input
-              type="text"
-              placeholder="Search for more matches..."
-              defaultValue={`${trackToMatch?.artist || ''} ${trackToMatch?.title || ''}`}
-              className="match-search-input"
-              ref={(input) => input && setTimeout(() => input.select(), 100)}
-              onKeyDown={(e) => e.key === 'Enter' && document.getElementById('match-search-button').click()}
-            />
-            <button 
-              id="match-search-button"
-              className="match-search-button"
-              onClick={(e) => {
-                const searchQuery = e.target.previousSibling.value;
-                if (searchQuery.trim()) {
-                  setPlaylistLoading(true);
-                  libraryRepository.searchLibrary(searchQuery)
-                    .then(results => {
-                      if (results && results.length > 0) {
-                        setMatchingTracks(results);
-                      } else {
-                        setSnackbar({
-                          open: true,
-                          message: `No matches found for "${searchQuery}"`,
-                          severity: 'warning'
-                        });
-                      }
-                    })
-                    .catch(error => {
-                      console.error('Error searching for matches:', error);
-                      setSnackbar({
-                        open: true,
-                        message: `Error searching: ${error.message}`,
-                        severity: 'error'
-                      });
-                    })
-                    .finally(() => setPlaylistLoading(false));
-                }
-              }}
-            >
-              Search
-            </button>
-          </div>
-          <div className="match-selection-list">
-            {matchingTracks.map((match) => (
-              <div 
-                key={match.id}
-                className="match-item"
-                onClick={() => replaceTrackWithMatch(match)}
-              >
-                <div>{match.artist} - {match.title}</div>
-                <div className="match-details">
-                  Album: {match.album} | {match.duration ? formatDuration(match.duration) : 'Unknown duration'}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="modal-footer">
-            <button onClick={() => setMatchModalOpen(false)}>
-              Cancel
-            </button>
-          </div>
-        </Modal>
+          track={trackToMatch}
+          initialMatches={matchingTracks}
+          onMatchSelect={replaceTrackWithMatch}
+          setSnackbar={setSnackbar}
+        />
       )}
     </div>
   );
