@@ -52,8 +52,10 @@ const Row = memo(({ data, index, style }) => {
       <div 
         style={style}
         className="playlist-grid-row loading-row"
+        onClick={() => toggleTrackSelection(index)}
+        isChecked={selectedEntries.includes(index)}
       >
-        <div className="grid-cell">{index + 1}</div>
+        <div className="grid-cell">{selectedEntries.includes(index) ? "✔" : index + 1}</div>
         <div className="grid-cell">Loading...</div>
         <div className="grid-cell"></div>
       </div>
