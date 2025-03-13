@@ -152,8 +152,18 @@ const PlaylistGrid = ({ playlistID }) => {
   useEffect(() => {
     setPage(0); // Reset page on filter/sort changes
     console.log("loading for new filter");
+    fetchPlaylistArtGrid();
     fetchPlaylistDetails(true);
   }, [playlistID, debouncedFilter, sortColumn, sortDirection]);
+
+  const fetchPlaylistArtGrid = async () => {
+    try {
+      const artGrid = await playlistRepository.getArtGrid(playlistID);
+      setAlbumArtList(artGrid);
+    } catch (error) {
+      console.error('Error fetching album art grid:', error);
+    }
+  }
 
   const fetchPlaylistDetails = useCallback(async (isInitialLoad = false, targetPosition = null) => {
     try {
@@ -167,8 +177,7 @@ const PlaylistGrid = ({ playlistID }) => {
         setIsLoadingMore(true);
         const countResponse = await playlistRepository.getPlaylistEntries(playlistID, {
           filter: debouncedFilter,
-          limit: 100,
-          includeCount: true
+          countOnly: true
         });
 
         setTotalCount(countResponse.total || 0);
@@ -692,6 +701,8 @@ const PlaylistGrid = ({ playlistID }) => {
     }
   }, [entries, isLoadingMore, totalCount, fetchPlaylistDetails]);
 
+  const historyEnabled = false;
+
   const historyControls = (
     <div className="history-controls">
       <button 
@@ -708,9 +719,6 @@ const PlaylistGrid = ({ playlistID }) => {
       >
         <FaRedo />
       </button>
-      <button onClick={() => setPlaylistModalVisible(true)}>
-        ...
-      </button>
     </div>
   );
 
@@ -723,7 +731,10 @@ const PlaylistGrid = ({ playlistID }) => {
         <h2 className="playlist-name">{name}</h2>
       </div>
       <div className="playlist-controls">
-        {false && historyControls}
+        {historyEnabled && historyControls}
+        <button onClick={() => setPlaylistModalVisible(true)}>
+          ...
+        </button>
         <div className="filter-container">
           <input
             type="text"
