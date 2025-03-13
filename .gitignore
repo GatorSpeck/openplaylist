@@ -25,3 +25,5 @@ compose.yml
 **/*.http
 
 *.sh
+
+**/config.json

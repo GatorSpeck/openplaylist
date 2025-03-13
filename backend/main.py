@@ -35,7 +35,8 @@ from repositories.last_fm_repository import last_fm_repository
 from plexapi.server import PlexServer
 from plexapi.playlist import Playlist as PlexPlaylist
 from redis import Redis
-import re
+import json
+from pydantic import BaseModel
 
 class TimingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable):
@@ -146,12 +147,18 @@ def scan_directory(directory: str, full=False):
     logging.info(f"Scanning directory {directory}")
     start_time = time.time()
 
-    # Get a list of all files in the directory
-    all_files = [
-        os.path.join(root, file)
-        for root, _, files in os.walk(directory)
-        for file in files
-    ]
+    # read directory paths from config file
+    all_files = []
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as f:
+            config = json.load(f)
+            music_paths = config.get("music_paths", [])
+            if music_paths:
+                logging.info(f"Found {len(music_paths)} music paths in config file")
+                for path in music_paths:
+                    for root, _, files in os.walk(path):
+                        for file in files:
+                            all_files.append(os.path.join(root, file))
 
     db = Database.get_session()
 
@@ -710,6 +717,70 @@ async def get_music_files(
     repo: MusicFileRepository = Depends(get_music_file_repository),
 ):
     return repo.get_all()
+
+CONFIG_FILE = "config.json"
+
+@router.get("/settings/paths")
+def get_index_paths():
+    """Get configured music indexing paths"""
+    if not os.path.exists('config.json'):
+        return []
+    with open('config.json', 'r') as f:
+        config = json.load(f)
+    return config.get('music_paths', [])
+
+@router.post("/settings/paths")
+def save_index_paths(paths: List[str]):
+    """Save configured music indexing paths"""
+    with open('config.json', 'w') as f:
+        json.dump({'music_paths': paths}, f)
+    return {"success": True}
+
+class Directory(BaseModel):
+    name: str
+    path: str
+
+class DirectoryListResponse(BaseModel):
+    current_path: str
+    directories: List[Directory]
+
+@router.get("/browse/directories", response_model=DirectoryListResponse)
+def browse_directories(current_path: Optional[str] = Query(None)):
+    """Browse filesystem directories"""
+    # Default to root if no path provided
+    if not current_path:
+        if os.name == 'nt':  # Windows
+            current_path = 'C:\\'
+        else:  # Unix-like
+            current_path = '/'
+    
+    # Validate the path exists
+    if not os.path.exists(current_path):
+        current_path = '/'
+    
+    directories = []
+    
+    try:
+        # List all directories in the current path
+        for item in os.listdir(current_path):
+            full_path = os.path.join(current_path, item)
+            if os.path.isdir(full_path):
+                directories.append(Directory(
+                    name=item,
+                    path=full_path
+                ))
+                
+        # Sort directories alphabetically
+        directories.sort(key=lambda x: x.name.lower())
+                
+    except PermissionError:
+        # Handle permission errors gracefully
+        pass
+    
+    return DirectoryListResponse(
+        current_path=current_path,
+        directories=directories
+    )
 
 @router.get("/health")
 def health_check():

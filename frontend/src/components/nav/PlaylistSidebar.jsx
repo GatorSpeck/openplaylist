@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import '../../styles/PlaylistSidebar.css';
 import RenameDialog from './RenameDialog';
+import SettingsModal from './SettingsModal'; // We'll create this component next
 
 const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex }) => (
   <div className="playlist-context-menu" style={{ left: x, top: y }}>
@@ -33,6 +34,7 @@ const PlaylistSidebar = ({
   });
 
   const [renameDialog, setRenameDialog] = useState({ open: false, playlist: null });
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const sidebarRef = useRef(null);
   const hamburgerRef = useRef(null);
@@ -100,8 +102,16 @@ const PlaylistSidebar = ({
               </div>
             ))}
           </div>
+          
+          {/* Add settings section at bottom of sidebar */}
+          <div className="admin-actions">
+            <button onClick={() => setSettingsOpen(true)}>
+              Settings
+            </button>
+          </div>
         </div>
       </div>
+
       {contextMenu.visible && (
         <div className="context-menu" 
           style={{
@@ -136,11 +146,18 @@ const PlaylistSidebar = ({
           />
         </div>
       )}
+      
       <RenameDialog
         open={renameDialog.open}
         onClose={() => setRenameDialog({ open: false, playlist: null })}
         onConfirm={handleRename}
         initialName={renameDialog.playlist?.name || ''}
+      />
+      
+      {/* Add the settings modal */}
+      <SettingsModal 
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
       />
     </>
   );
