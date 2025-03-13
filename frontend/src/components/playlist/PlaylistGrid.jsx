@@ -53,7 +53,6 @@ const Row = memo(({ data, index, style }) => {
         style={style}
         className="playlist-grid-row loading-row"
         onClick={() => toggleTrackSelection(index)}
-        isChecked={selectedEntries.includes(index)}
       >
         <div className="grid-cell">{selectedEntries.includes(index) ? "✔" : index + 1}</div>
         <div className="grid-cell">Loading...</div>
@@ -529,6 +528,7 @@ const PlaylistGrid = ({ playlistID }) => {
     };
 
     // Update backend
+    console.log(track.id);
     playlistRepository.replaceTrack(playlistID, track.id, newTrack);
 
     // Update local state
@@ -589,6 +589,7 @@ const PlaylistGrid = ({ playlistID }) => {
       };
       
       // Update backend
+      console.log(trackToMatch.id);
       await playlistRepository.replaceTrack(playlistID, trackToMatch.id, newTrack);
       
       // Update local state
@@ -691,6 +692,28 @@ const PlaylistGrid = ({ playlistID }) => {
     }
   }, [entries, isLoadingMore, totalCount, fetchPlaylistDetails]);
 
+  const historyControls = (
+    <div className="history-controls">
+      <button 
+        onClick={undo} 
+        disabled={historyIndex <= 0}
+        title="Undo"
+      >
+        <FaUndo />
+      </button>
+      <button 
+        onClick={redo} 
+        disabled={historyIndex >= history.length - 1}
+        title="Redo"
+      >
+        <FaRedo />
+      </button>
+      <button onClick={() => setPlaylistModalVisible(true)}>
+        ...
+      </button>
+    </div>
+  );
+
   return (
     <div className="main-playlist-view">
       <div className="playlist-header">
@@ -700,26 +723,7 @@ const PlaylistGrid = ({ playlistID }) => {
         <h2 className="playlist-name">{name}</h2>
       </div>
       <div className="playlist-controls">
-        <div className="history-controls">
-          <button 
-            onClick={undo} 
-            disabled={historyIndex <= 0}
-            title="Undo"
-          >
-            <FaUndo />
-          </button>
-          <button 
-            onClick={redo} 
-            disabled={historyIndex >= history.length - 1}
-            title="Redo"
-          >
-            <FaRedo />
-          </button>
-          <button onClick={() => setPlaylistModalVisible(true)}>
-            ...
-          </button>
-        </div>
-
+        {false && historyControls}
         <div className="filter-container">
           <input
             type="text"
