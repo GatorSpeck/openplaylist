@@ -103,6 +103,8 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 if REDIS_HOST and REDIS_PORT:
     redis_session = Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
 
+CONFIG_DIR = pathlib.Path(os.getenv("CONFIG_DIR", "/config"))
+
 def extract_metadata(file_path, extractor):
     try:
         audio = extractor(file_path)
@@ -718,21 +720,21 @@ async def get_music_files(
 ):
     return repo.get_all()
 
-CONFIG_FILE = "config.json"
+CONFIG_FILE = CONFIG_DIR / "config.json"
 
 @router.get("/settings/paths")
 def get_index_paths():
     """Get configured music indexing paths"""
-    if not os.path.exists('config.json'):
+    if not os.path.exists(CONFIG_FILE):
         return []
-    with open('config.json', 'r') as f:
+    with open(CONFIG_FILE, 'r') as f:
         config = json.load(f)
     return config.get('music_paths', [])
 
 @router.post("/settings/paths")
 def save_index_paths(paths: List[str]):
     """Save configured music indexing paths"""
-    with open('config.json', 'w') as f:
+    with open(CONFIG_FILE, 'w') as f:
         json.dump({'music_paths': paths}, f)
     return {"success": True}
 
@@ -747,16 +749,13 @@ class DirectoryListResponse(BaseModel):
 @router.get("/browse/directories", response_model=DirectoryListResponse)
 def browse_directories(current_path: Optional[str] = Query(None)):
     """Browse filesystem directories"""
-    # Default to root if no path provided
+    # Default to cwd if no path is provided
     if not current_path:
-        if os.name == 'nt':  # Windows
-            current_path = 'C:\\'
-        else:  # Unix-like
-            current_path = '/'
+        current_path = str(pathlib.Path.cwd())
     
     # Validate the path exists
     if not os.path.exists(current_path):
-        current_path = '/'
+        current_path = str(pathlib.Path.cwd())
     
     directories = []
     
