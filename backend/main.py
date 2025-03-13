@@ -105,6 +105,13 @@ if REDIS_HOST and REDIS_PORT:
 
 CONFIG_DIR = pathlib.Path(os.getenv("CONFIG_DIR", "/config"))
 
+LASTFM_API_KEY = os.getenv("LASTFM_API_KEY", None)
+
+def get_last_fm_repo():
+    if not LASTFM_API_KEY:
+        return None
+    return last_fm_repository(LASTFM_API_KEY, requests_cache_session)
+
 def extract_metadata(file_path, extractor):
     try:
         audio = extractor(file_path)
@@ -351,7 +358,6 @@ def drop_music_files():
     db.commit()
     db.close()
 
-
 def prune_music_files():
     db = Database.get_session()
     existing_files = db.query(MusicFileDB).all()
@@ -446,7 +452,7 @@ async def get_playlist_entries(
     filter: Optional[str] = None,
     sortCriteria: Optional[str] = None,
     sortDirection: Optional[str] = None,
-    includeCount: Optional[bool] = False,
+    countOnly: Optional[bool] = False,
     repo: PlaylistRepository = Depends(get_playlist_repository)
 ):
     f = PlaylistFilter(
@@ -456,7 +462,7 @@ async def get_playlist_entries(
         limit=limit,
         offset=offset,
     )
-    return repo.filter_playlist(playlist_id, f, include_count=includeCount)
+    return repo.filter_playlist(playlist_id, f, count_only=countOnly)
 
 @router.get("/playlists/{playlist_id}/count")
 async def get_playlist_count(
@@ -610,6 +616,15 @@ def export_playlist(playlist_id: int, type: str = Query("m3u"), repo: PlaylistRe
         logging.error(f"Failed to export playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to export playlist")
 
+@router.get("/playlists/{playlist_id}/artgrid")
+def get_playlist_art_grid(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
+    try:
+        lastfm_repo = get_last_fm_repo()
+        return repo.get_art_grid(playlist_id, lastfm_repo)
+    except Exception as e:
+        logging.error(f"Failed to get playlist art grid: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get playlist art grid")
+
 @router.get("/playlists/{playlist_id}/synctoplex")
 def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
     try:
@@ -676,8 +691,8 @@ def get_album_art(artist: str = Query(...), album: str = Query(...)):
     if not api_key:
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
-    repo = last_fm_repository(api_key, requests_cache_session)
-    return repo.get_album_art(artist, album, redis_session=redis_session)
+    repo = last_fm_repository(api_key, requests_cache_session, redis_session=redis_session)
+    return repo.get_album_art(artist, album)
 
 @router.get("/lastfm/album/info", response_model=Optional[Album])
 def get_album_info(artist: str = Query(...), album: str = Query(...)):

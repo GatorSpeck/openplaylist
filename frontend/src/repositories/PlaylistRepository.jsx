@@ -147,6 +147,16 @@ export class PlaylistRepository {
             new_track: newTrack
         });
     }
+
+    async getArtGrid(id) {
+        try {
+            const results = (await axios.get(`/api/playlists/${id}/artgrid`)).data;
+            return results;
+        }
+        catch (error) {
+            console.error('Error fetching art grid:', error);
+        }
+    }
 };
 
 const playlistRepository = new PlaylistRepository();

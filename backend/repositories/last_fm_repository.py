@@ -28,9 +28,10 @@ def from_json(payload) -> Optional[Album]:
     )
 
 class last_fm_repository:
-    def __init__(self, api_key, requests_cache_session):
+    def __init__(self, api_key, requests_cache_session, redis_session = None):
         self.api_key = api_key
         self.requests_cache_session = requests_cache_session
+        self.redis_session = redis_session
 
     def get_similar_tracks(self, artist, title):
         # URL encode parameters
@@ -100,15 +101,15 @@ class last_fm_repository:
             tracks=[]
         ) for album in albums]
 
-    def get_album_art(self, artist, album, redis_session=None):
+    def get_album_art(self, artist, album):
         warnings.warn("This method is deprecated. Use get_album_info instead.", DeprecationWarning)
         if os.getenv("LASTFM_API_KEY") is None:
             raise ValueError("LASTFM_API_KEY environment variable is not set")
         
         pair = AlbumAndArtist(album=album, artist=artist)
 
-        if redis_session:
-            cached_url = redis_session.get(str(pair))
+        if self.redis_session:
+            cached_url = self.redis_session.get(str(pair))
             if cached_url is not None:
                 image_url = cached_url if cached_url != "" else None
                 return {"image_url": image_url}
@@ -133,21 +134,21 @@ class last_fm_repository:
                 urls = album_info["album"]["image"]
                 image_url = urls[-2]["#text"] if len(urls) > 1 else urls[-1]["#text"]
                 
-                if redis_session:
-                    redis_session.set(str(pair), image_url)
+                if self.redis_session:
+                    self.redis_session.set(str(pair), image_url)
         
             return {"image_url": image_url}
         else:
             return {"image_url": None}
 
-    def get_album_info(self, artist, album, redis_session=None) -> Optional[Album]:
+    def get_album_info(self, artist, album) -> Optional[Album]:
         if os.getenv("LASTFM_API_KEY") is None:
             raise ValueError("LASTFM_API_KEY environment variable is not set")
         
         pair = AlbumAndArtist(album=album, artist=artist)
 
-        if redis_session:
-            cached_info = redis_session.get(str(pair))
+        if self.redis_session:
+            cached_info = self.redis_session.get(str(pair))
             if cached_info is not None:
                 return from_json(json.loads(cached_info))
         
@@ -161,7 +162,7 @@ class last_fm_repository:
         album_info = None
         if response.status_code == 200:
             album_info = response.json()
-            if redis_session:
-                redis_session.set(str(pair), json.dumps(album_info))
+            if self.redis_session:
+                self.redis_session.set(str(pair), json.dumps(album_info))
         
         return from_json(album_info) if album_info else None

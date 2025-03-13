@@ -483,7 +483,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
     def undo_remove_entries(self, playlist_id: int, entries: List[PlaylistEntryBase]):
         self.add_entries(playlist_id, entries)
     
-    def filter_playlist(self, playlist_id, filter: PlaylistFilter, include_count=False):
+    def filter_playlist(self, playlist_id, filter: PlaylistFilter, count_only=False):
         # Define the polymorphic entity
         poly_entity = with_polymorphic(
             PlaylistEntryDB,
@@ -559,7 +559,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             elif filter.sortDirection == PlaylistSortDirection.DESC:
                 query = query.order_by(sort_column.desc())
         
-        count = query.count() if include_count else None
+        if count_only:
+            count = query.count()
+            return PlaylistEntriesResponse(total=count, entries=[])
         
         # Apply pagination
         if filter.offset:
@@ -574,7 +576,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
         # convert to response models
         entries = [playlist_orm_to_response(e, order=(i + offset_to_use)) for i, e in enumerate(entries)]
-        return PlaylistEntriesResponse(total=count, entries=entries)
+        return PlaylistEntriesResponse(entries=entries)
 
     def get_details(self, playlist_id):
         query = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id)
@@ -612,3 +614,47 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         new_entry.order = new_entry_db.order
         return new_entry
         
+    def get_art_grid(self, playlist_id, lastfm_repo):
+        poly_entity = with_polymorphic(
+            PlaylistEntryDB,
+            [MusicFileEntryDB]
+        )
+        
+        query = (
+            self.session.query(PlaylistEntryDB)
+            .filter(poly_entity.playlist_id == playlist_id)
+            .filter(poly_entity.entry_type == "music_file")
+            .join(MusicFileDB, poly_entity.MusicFileEntryDB.details)
+            .order_by(poly_entity.order)
+            .group_by(MusicFileDB.album, MusicFileDB.album_artist, MusicFileDB.artist)
+            .limit(10)
+        )
+        
+        entries = query.all()
+
+        results = []
+
+        for e in entries:
+            artist_to_use = e.details.album_artist or e.details.artist
+            logging.info(f"Getting album art for {artist_to_use} - {e.details.album}")
+            album_art = lastfm_repo.get_album_art(artist_to_use, e.details.album)
+            if album_art:
+                results.append(album_art)
+                if len(results) >= 4:
+                    # TODO: increase to 9
+                    break
+        
+        logging.info(results)
+        
+        if not results:
+            return None
+
+        num_results = 0
+        if len(results) >= 9:
+            num_results = 9
+        elif len(results) >= 4:
+            num_results = 4
+        elif len(results) >= 1:
+            num_results = 1
+
+        return results[:num_results]

@@ -2,6 +2,7 @@ from fastapi import Depends
 from database import Database
 from repositories.music_file import MusicFileRepository
 from repositories.playlist import PlaylistRepository
+from repositories.last_fm_repository import last_fm_repository
 
 
 def get_db():
