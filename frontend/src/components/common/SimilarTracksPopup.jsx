@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { FaExternalLinkAlt } from "react-icons/fa";
+import LibraryMusicIcon from '@mui/icons-material/LibraryMusic';
 
 export const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
     const [selectedTracks, setSelectedTracks] = useState(new Set());
@@ -92,7 +93,7 @@ export const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
                 style={{ marginRight: '0.5rem' }}
                 readOnly
                 />
-                <span>{track.artist} - {track.title}{track.entry_type === "music_file" ? (<span> (in library)</span>) : null}</span>
+                <span>{track.artist} - {track.title}{track.entry_type === "music_file" ? (<span>&nbsp;<LibraryMusicIcon /></span>) : null}</span>
                 {track.url && (
                     <span>
                         &nbsp;
