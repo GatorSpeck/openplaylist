@@ -45,14 +45,21 @@
   flex: 1;
   overflow: hidden;
   min-height: 0; /* Important for Firefox */
+  height: 100%;
 }
 
 .playlist-grid-row {
-  border-bottom: 1px solid black;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   background: white;
   color: black;
   min-height: 60px;
   align-items: left;
+  box-sizing: border-box;
+}
+
+/* Add this rule for zebra striping */
+.playlist-grid-row:nth-child(odd) {
+  background-color: #f9f9f9;
 }
 
 .playlist-grid-row.drag-disabled {
