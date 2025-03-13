@@ -185,3 +185,53 @@
     transform: rotate(360deg);
   }
 }
+
+.match-search-container {
+  display: flex;
+  margin-bottom: 15px;
+  gap: 10px;
+}
+
+.match-search-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.match-search-button {
+  padding: 8px 16px;
+  background-color: var(--primary-color, #4a90e2);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.match-search-button:hover {
+  background-color: var(--primary-color-dark, #3a7bc8);
+}
+
+.match-selection-list {
+  max-height: 400px;
+  overflow-y: auto;
+  margin-bottom: 15px;
+}
+
+.match-item {
+  padding: 10px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+}
+
+.match-item:hover {
+  background-color: rgba(74, 144, 226, 0.1);
+}
+
+.match-details {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+}
