@@ -6,29 +6,63 @@ const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
   const [searchType, setSearchType] = useState('track');
-  const [searchResult, setSearchResult] = useState(null);
+  const [searchResults, setSearchResults] = useState([]);
+  const [selectedResults, setSelectedResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const handleSearch = async () => {
     setIsLoading(true);
     setError(null);
+    setSelectedResults([]);
+    
     try {
-      const result = searchType === 'track' 
-        ? await LastFMRepository.searchTrack(title, artist)
-        : await LastFMRepository.searchAlbum(title, artist);
+      let results = [];
+      if (searchType === 'track') {
+        results = await LastFMRepository.searchTrack(title, artist);
+      } else {
+        results = await LastFMRepository.searchAlbum(title, artist);
+      }
         
-      if (!result) {
+      if (!results || results.length === 0) {
         setError('No results found');
+        setSearchResults([]);
         return;
       }
 
-      setSearchResult(result);
+      results = results.map((result, idx) => ({...result, id: idx}));
+
+      setSearchResults(results);
     } catch (error) {
       setError(error.message);
       console.error('Error fetching Last.FM data:', error);
+      setSearchResults([]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const toggleResultSelection = (result) => {
+    if (selectedResults.some(item => item.id === result.id)) {
+      setSelectedResults(selectedResults.filter(item => item.id !== result.id));
+    } else {
+      setSelectedResults([...selectedResults, result]);
+    }
+  };
+
+  const selectAll = () => {
+    setSelectedResults([...searchResults]);
+  };
+
+  const clearSelection = () => {
+    setSelectedResults([]);
+  };
+
+  const handleAddToPlaylist = () => {
+    if (selectedResults.length > 0) {
+      console.log('Adding to playlist:', selectedResults);
+      onAddToPlaylist(selectedResults);
+      onClose();
     }
   };
 
@@ -74,26 +108,69 @@ const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
           </button>
         </div>
 
-        {isLoading && <div>Searching...</div>}
+        {isLoading && <div className="loading">Searching...</div>}
         {error && <div className="error">{error}</div>}
         
-        {searchResult && (
-          <div className="search-result album-art">
-            {searchResult.art_url ? <img src={searchResult.art_url} alt={searchResult.title} /> : null}
-            <h3>{searchResult.title}</h3>
-            <p>Artist: {searchResult.artist}</p>
-            {searchResult.url && (
-              <a href={searchResult.url} target="_blank" rel="noopener noreferrer">
-                View on Last.FM
-              </a>
-            )}
-            <button onClick={() => onAddToPlaylist(searchResult) && onClose()}>
-              Add {searchType === 'track' ? 'Track' : 'Album'} to Playlist
-            </button>
+        {searchResults.length > 0 && (
+          <div className="search-results">
+            <div className="results-header">
+              <h3>Search Results</h3>
+              <div className="selection-actions">
+                <button onClick={selectAll}>Select All</button>
+                <button onClick={clearSelection}>Clear Selection</button>
+              </div>
+            </div>
+            
+            <div className="results-count">
+              Found {searchResults.length} {searchType === 'track' ? 'tracks' : 'albums'} • 
+              Selected: {selectedResults.length}
+            </div>
+            
+            <div className="results-list">
+              {searchResults.map((result) => {
+                const isSelected = selectedResults.some(item => item.id === result.id);
+                return (
+                  <div 
+                    key={result.id || `${result.artist}-${result.title}`}
+                    className={`result-item ${isSelected ? 'selected' : ''}`}
+                    onClick={() => toggleResultSelection(result)}
+                  >
+                    <div className="result-checkbox">
+                      <input 
+                        type="checkbox" 
+                        checked={isSelected}
+                        onChange={() => toggleResultSelection(result)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                    <div className="result-art">
+                      {result.art_url && <img src={result.art_url} alt={result.title} />}
+                    </div>
+                    <div className="result-info">
+                      <h4>{result.title}</h4>
+                      <p>Artist: {result.artist}</p>
+                      {result.album && <p>Album: {result.album}</p>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            
+            <div className="results-actions">
+              <button 
+                onClick={handleAddToPlaylist}
+                disabled={selectedResults.length === 0}
+              >
+                Add {selectedResults.length} {searchType === 'track' ? 'Track' : 'Album'}
+                {selectedResults.length !== 1 ? 's' : ''} to Playlist
+              </button>
+            </div>
           </div>
         )}
 
-        <button onClick={onClose}>Close</button>
+        <div className="modal-footer">
+          <button onClick={onClose}>Close</button>
+        </div>
       </div>
     </div>
   );

@@ -517,7 +517,6 @@ const PlaylistGrid = ({ playlistID }) => {
 
   const unMatchTrack = (track) => {
     // convert this music track to a RequestedTrack
-    console.log(track);
     const newTrack = {
       order: track.order,
       details: {
@@ -526,8 +525,6 @@ const PlaylistGrid = ({ playlistID }) => {
       },
       entry_type: 'requested'
     };
-
-    console.log(newTrack);
 
     // Update backend
     playlistRepository.replaceTrack(playlistID, track.id, newTrack);

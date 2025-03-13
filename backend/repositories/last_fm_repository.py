@@ -1,5 +1,5 @@
 import urllib
-from http.client import HTTPException
+from fastapi.exceptions import HTTPException
 import logging
 from response_models import LastFMTrack, Album, AlbumTrack, AlbumAndArtist
 import os
@@ -68,10 +68,37 @@ class last_fm_repository:
 
         logging.info(data)
 
-        if tracks:
-            return [LastFMTrack(title=track.get("name", ""), artist=track.get("artist", ""), url=track.get("url")) for track in tracks]
+        return [LastFMTrack(title=track.get("name", ""), artist=track.get("artist", ""), url=track.get("url")) for track in tracks]
+    
+    def search_album(self, artist, title):
+        # URL encode parameters
+        encoded_title = urllib.parse.quote(title) if title else None
+        encoded_artist = urllib.parse.quote(artist) if artist else None  # TODO: not used
 
-        return None
+        if not encoded_title:
+            return None
+
+        # Make request to Last.FM API
+        url = f"http://ws.audioscrobbler.com/2.0/?method=album.search&api_key={self.api_key}&format=json&limit=10"
+        if encoded_title:
+            url += f"&album={encoded_title}"
+
+        response = self.requests_cache_session.get(url)
+
+        if response.status_code != 200:
+            logging.warning(f"Failed to fetch data from Last.FM: {response.status_code} {response.text}")
+            raise HTTPException(status_code=500, detail="Failed to fetch data from Last.FM")
+
+        data = response.json()
+        # logging.info(json.dumps(data, indent=4))
+        albums = data.get("results", {}).get("albummatches", {}).get("album", [])
+
+        return [Album(
+            title=album.get("name"),
+            artist=album.get("artist"),
+            art_url=album.get("image")[-1].get("#text"),
+            tracks=[]
+        ) for album in albums]
 
     def get_album_art(self, artist, album, redis_session=None):
         warnings.warn("This method is deprecated. Use get_album_info instead.", DeprecationWarning)
