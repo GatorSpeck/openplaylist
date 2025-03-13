@@ -627,15 +627,23 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             .join(MusicFileDB, poly_entity.MusicFileEntryDB.details)
             .order_by(poly_entity.order)
             .group_by(MusicFileDB.album, MusicFileDB.album_artist, MusicFileDB.artist)
-            .limit(10)
+            .limit(50)
         )
         
         entries = query.all()
 
         results = []
 
+        album_artists = set()
+
         for e in entries:
             artist_to_use = e.details.album_artist or e.details.artist
+            album_artist = artist_to_use + " - " + e.details.album
+            if album_artist in album_artists:
+                # need to filter these out - can't rely on the group by clause unfortunately
+                continue
+            album_artists.add(album_artist)
+
             logging.info(f"Getting album art for {artist_to_use} - {e.details.album}")
             album_art = lastfm_repo.get_album_art(artist_to_use, e.details.album)
             if album_art:
