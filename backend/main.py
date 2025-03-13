@@ -688,6 +688,15 @@ def get_album_info(artist: str = Query(...), album: str = Query(...)):
     repo = last_fm_repository(api_key, requests_cache_session)
     return repo.get_album_info(artist, album, redis_session=redis_session)
 
+@router.get("/lastfm/album/search", response_model=List[Album])
+def search_album(artist: str = Query(...), album: str = Query(...)):
+    api_key = os.getenv("LASTFM_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Last.FM API key not configured")
+
+    repo = last_fm_repository(api_key, requests_cache_session)
+    return repo.search_album(artist, album)
+
 # get similar tracks
 @router.get("/openai/similar")
 def get_similar_tracks_with_openai(title: str = Query(...), artist: str = Query(...)):

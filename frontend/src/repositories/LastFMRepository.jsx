@@ -40,7 +40,7 @@ export class LastFMRepository {
         }
     }
 
-    async searchAlbum(title, artist) {
+    async getAlbumInfo(title, artist) {
         try {
             const response = await axios.get('/api/lastfm/album/info', {
                 params: { album: title, artist }
@@ -49,6 +49,17 @@ export class LastFMRepository {
                 ...response.data,
                 entry_type: 'requested_album'
             };
+        } catch (error) {
+            throw new Error('Failed to fetch album information');
+        }
+    }
+
+    async searchAlbum(title, artist) {
+        try {
+            const response = await axios.get('/api/lastfm/album/search', {
+                params: { album: title, artist }
+            });
+            return response.data.map((album) => ({...album, entry_type: 'requested_album'}));
         } catch (error) {
             throw new Error('Failed to fetch album information');
         }
@@ -65,10 +76,7 @@ export class LastFMRepository {
                 return null;
             }
 
-            return {
-                ...response.data[0],
-                entry_type: 'lastfm'
-            };
+            return response.data.map((track) => ({...track, entry_type: 'lastfm'}));
         } catch (error) {
             throw new Error('Failed to fetch track information');
         }

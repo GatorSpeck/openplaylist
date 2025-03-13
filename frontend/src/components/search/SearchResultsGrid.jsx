@@ -500,8 +500,8 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
         {showLastFMSearch && (
           <LastFMSearch
             onClose={() => setShowLastFMSearch(false)}
-            onAddToPlaylist={(track) => {
-              onAddSongs([track]);
+            onAddToPlaylist={(entries) => {
+              onAddSongs(entries);
               setShowLastFMSearch(false);
               closeContextMenu();
             }}

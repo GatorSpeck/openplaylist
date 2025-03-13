@@ -28,6 +28,10 @@ const EntryTypeBadge = ({ type }) => {
     }
   };
 
+  if (type === 'requested_album') {
+    type = "requested";
+  }
+
   const { icon, label, color } = config[type] || config.music_file;
 
   return (
