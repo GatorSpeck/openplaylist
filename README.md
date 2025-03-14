@@ -195,11 +195,6 @@ services:
     npm run dev
     ```
 
-## Usage
-
-- Open your browser and navigate to `http://localhost:3009` to access the frontend.
-- The backend API will be available at `http://localhost:3000`.
-
 ## License
 
 This project is licensed under the MIT License.
