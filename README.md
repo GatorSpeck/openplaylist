@@ -6,12 +6,12 @@ OpenPlaylist is a music playlist management portal, that indexes your local musi
 In addition to local music, your playlists can be augmented with search results from Last.FM, and suggestions from Last.FM and OpenAI.
 
 ## Additional Features
-- Allows "matching" external tracks with local files
+- "Matching" external tracks with local files
+  - External search results are auto-matched with local files
 - Album art fetching via Last.FM
 - Export to Plex, .m3u, and JSON formats
 - View track metadata
   - e.g. FLAC/MP3 tags, date added to playlist, other playlists this track is part of
-- Indicators for when external tracks are found in your library
 - Support for missing local files and un-matching/re-matching them later
 - Support for large playlists, with tens of thousands of entries
 
