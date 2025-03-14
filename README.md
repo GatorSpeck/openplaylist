@@ -1,6 +1,39 @@
-# Music Playlist Application
+# OpenPlaylist
 
-This project is a music playlist management application with a React frontend and a FastAPI backend.
+OpenPlaylist is a music playlist management portal, that indexes your local music files and allows you to organize them into playlists, which can be synced to Plex or exported in various formats.
+
+In addition to local music, your playlists can be augmented with search results from Last.FM, and suggestions from Last.FM and OpenAI.
+
+## Screenshots
+### Basic Interface
+![image](https://github.com/user-attachments/assets/261a57b1-773e-480a-8842-250b77c9d25b)
+
+### Add Songs
+![image](https://github.com/user-attachments/assets/361570f9-766b-4fdc-94cf-b1bdfd484723)
+
+### Find Similar Songs Using OpenAI
+![image](https://github.com/user-attachments/assets/3fc0cc80-1f2f-4b70-ac2b-500649dffcf9)
+
+## Additional Features
+- Allows "matching" external tracks with local files
+- Track suggestions using Last.FM and OpenAI integrations
+- Album art fetching via Last.FM
+- Export to Plex, .m3u, and JSON formats
+- View track metadata
+  - e.g. FLAC/MP3 tags, date added to playlist, other playlists this track is part of
+- Indicators for when external tracks are found in your library
+- Support for missing local files and un-matching/re-matching them later
+- Support for large playlists, with tens of thousands of entries
+
+## Future Features
+- Smart playlists
+- Support for more track file formats
+- More export options, including a "share page" for a playlist
+- Auth/Support for multiple users
+- Import options
+- More integrations
+  - Suggestions/metadata APIs
+  - Streaming services
 
 ## Running with docker-compose
 - Create .env file:
