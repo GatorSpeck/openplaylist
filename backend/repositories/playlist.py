@@ -666,3 +666,18 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             num_results = 1
 
         return results[:num_results]
+
+    def get_playlists_by_track(self, track_id):
+        poly_entity = with_polymorphic(
+            PlaylistEntryDB,
+            [MusicFileEntryDB]
+        )
+
+        query = (
+            self.session.query(PlaylistDB)
+            .join(poly_entity, PlaylistDB.entries)
+            .filter(poly_entity.entry_type == "music_file")
+            .filter(poly_entity.MusicFileEntryDB.music_file_id == track_id)
+        )
+
+        return [Playlist(id=p.id, name=p.name, entries=[]) for p in query.all()]
