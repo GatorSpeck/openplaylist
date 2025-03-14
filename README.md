@@ -15,16 +15,6 @@ In addition to local music, your playlists can be augmented with search results 
 - Support for missing local files and un-matching/re-matching them later
 - Support for large playlists, with tens of thousands of entries
 
-## Future Features
-- Smart playlists
-- Support for more track file formats
-- More export options, including a "share page" for a playlist
-- Auth/Support for multiple users
-- Import options
-- More integrations
-  - Suggestions/metadata APIs
-  - Streaming services
-
 ## Screenshots
 ### Basic Interface
 ![image](https://github.com/user-attachments/assets/261a57b1-773e-480a-8842-250b77c9d25b)
@@ -34,6 +24,16 @@ In addition to local music, your playlists can be augmented with search results 
 
 ### Find Similar Songs Using OpenAI
 ![image](https://github.com/user-attachments/assets/3fc0cc80-1f2f-4b70-ac2b-500649dffcf9)
+
+## Future Features
+- Smart playlists
+- Support for more track file formats
+- More export options, including a "share page" for a playlist
+- Auth/Support for multiple users
+- Import options
+- More integrations
+  - Suggestions/metadata APIs
+  - Streaming services
 
 ## Running with docker-compose
 - Create .env file:
