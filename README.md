@@ -4,19 +4,8 @@ OpenPlaylist is a music playlist management portal, that indexes your local musi
 
 In addition to local music, your playlists can be augmented with search results from Last.FM, and suggestions from Last.FM and OpenAI.
 
-## Screenshots
-### Basic Interface
-![image](https://github.com/user-attachments/assets/261a57b1-773e-480a-8842-250b77c9d25b)
-
-### Add Songs
-![image](https://github.com/user-attachments/assets/361570f9-766b-4fdc-94cf-b1bdfd484723)
-
-### Find Similar Songs Using OpenAI
-![image](https://github.com/user-attachments/assets/3fc0cc80-1f2f-4b70-ac2b-500649dffcf9)
-
 ## Additional Features
 - Allows "matching" external tracks with local files
-- Track suggestions using Last.FM and OpenAI integrations
 - Album art fetching via Last.FM
 - Export to Plex, .m3u, and JSON formats
 - View track metadata
@@ -34,6 +23,16 @@ In addition to local music, your playlists can be augmented with search results 
 - More integrations
   - Suggestions/metadata APIs
   - Streaming services
+
+## Screenshots
+### Basic Interface
+![image](https://github.com/user-attachments/assets/261a57b1-773e-480a-8842-250b77c9d25b)
+
+### Add Songs
+![image](https://github.com/user-attachments/assets/361570f9-766b-4fdc-94cf-b1bdfd484723)
+
+### Find Similar Songs Using OpenAI
+![image](https://github.com/user-attachments/assets/3fc0cc80-1f2f-4b70-ac2b-500649dffcf9)
 
 ## Running with docker-compose
 - Create .env file:
