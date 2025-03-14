@@ -3,9 +3,37 @@
 This project is a music playlist management application with a React frontend and a FastAPI backend.
 
 ## Running with docker-compose
-- Create .env file with `MUSIC_PATH` variable set
-- Run with `docker-compose up --build -d`
+- Create .env file:
+```
+CONFIG_PATH=./config  # Required, needs read/write access
+PORT=5173  # Required, the port to use to access the web app
 
+# Optional Plex configuration for playlist syncing
+PLEX_ENDPOINT=https://your.plex.server
+PLEX_TOKEN=foo
+PLEX_LIBRARY=Music  # change this if it doesn't match your library name
+
+# Library file mapping (needed if there is a discrepancy between where Plex/OpenPlaylist are mounting your library)
+PLEX_MAP_SOURCE=/open/playlist/path/to/my/music
+PLEX_MAP_TARGET=/plex/path/to/my/music
+
+# Playlist file mapping (source and target must be read/writable)
+PLEX_M3U_DROP_SOURCE=/path/to/playlists  # temporary location to playlist exports for import into Plex
+PLEX_M3U_DROP_TARGET=/playlist/  # this is where we will tell the Plex API to look for updated playlists
+
+# Optional Last.fm configuration (for album art, track/album search, and suggestions)
+LASTFM_API_KEY=foo
+LASTFM_SHARED_SECRET=foo
+
+# Optional OpenAI configuration (for suggestions)
+OPENAI_API_KEY=foo
+
+# Optional Redis configuration (for caching of OpenAI and Last.FM queries)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+```
+
+- Run with `docker-compose up --build -d`
 ```
 version: '3.8'
 
@@ -17,9 +45,9 @@ services:
   backend:
     build: ./backend
     volumes:
-      - /path/to/music:/music:ro
-      - ./data:/data:rw
-      # - /path/to/playlists:/playlists:rw
+      - /path/to/music:/music:ro  # only read-only access is needed
+      - ./data:/data:rw  # path to store SQLite database
+      # - ${PLEX_M3U_DROP_SOURCE}:/playlists:rw
     restart: unless-stopped
     networks:
       - playlist
@@ -27,39 +55,41 @@ services:
       - 3000
     environment:
       # Last.fm configuration
-      # - LASTFM_API_KEY=
-      # - LASTFM_SHARED_SECRET=
+      # - LASTFM_API_KEY=${LASTFM_API_KEY}
+      # - LASTFM_SHARED_SECRET=${LASTFM_SHARED_SECRET}
 
       # Plex configuration
-      # - PLEX_ENDPOINT=http://localhost:32400
-      # - PLEX_TOKEN=
-      # - PLEX_LIBRARY=Music
-      # - PLEX_MAP_SOURCE=/path/to/music
-      # - PLEX_MAP_TARGET=/music
+      # - PLEX_ENDPOINT=${PLEX_ENDPOINT}
+      # - PLEX_TOKEN=${PLEX_TOKEN}
+      # - PLEX_LIBRARY=${PLEX_LIBRARY}
+      # - PLEX_MAP_SOURCE=${PLEX_MAP_SOURCE}
+      # - PLEX_MAP_TARGET=${PLEX_MAP_TARGET}
 
       # Plex playlist sync configuration
-      # - PLEX_M3U_DROP_SOURCE=/path/to/playlists
-      # - PLEX_M3U_DROP_TARGET=/playlists
+      # - PLEX_M3U_DROP_SOURCE=${PLEX_M3U_DROP_SOURCE}
+      # - PLEX_M3U_DROP_TARGET=${PLEX_M3U_DROP_TARGET}
 
       # OpenAI configuration
-      # - OPENAI_API_KEY=
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+      # Redis configuration
+      # REDIS_HOST=${REDIS_HOST}
+      # REDIS_PORT=${REDIS_PORT}
 
   frontend:
     build: ./frontend
     ports:
-      - "5173:8080"
+      - "${PORT}:80"
     volumes:
       - /app/node_modules
     depends_on:
       - backend
-    environment:
-      - VITE_API_URL=http://backend:3000
     restart: unless-stopped
     networks:
       - playlist
 ```
 
-## Dev Setup
+## Local Dev Setup
 
 ### Backend
 
@@ -93,14 +123,14 @@ services:
 
     ```sh
     pip install -r requirements.txt
+    pip install -r requirements-dev.txt
     ```
 
 5. Create a `.env` file in the `backend/` directory and add the following environment variables:
 
     ```env
     HOST=127.0.0.1
-    PORT=8000
-    MUSIC_PATH=path/to/your/music/directory
+    PORT=3000
     ```
 
 6. Start the backend server:
@@ -126,7 +156,8 @@ services:
 3. Create a `.env` file in the `frontend/` directory and add the following environment variables:
 
     ```env
-    VITE_API_URL=http://127.0.0.1:8000
+    VITE_API_URL=http://127.0.0.1:3000
+    VITE_PORT=3009
     ```
 
 4. Start the frontend development server:
@@ -137,13 +168,8 @@ services:
 
 ## Usage
 
-- Open your browser and navigate to `http://localhost:5173` to access the frontend.
-- The backend API will be available at `http://localhost:3005`.
-
-## Project Structure
-
-- `backend/`: Contains the FastAPI backend code.
-- `frontend/`: Contains the React frontend code.
+- Open your browser and navigate to `http://localhost:3009` to access the frontend.
+- The backend API will be available at `http://localhost:3000`.
 
 ## License
 
