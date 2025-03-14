@@ -88,7 +88,7 @@ const PlaylistSidebar = ({
       </button>
       <div ref={sidebarRef} className={`playlist-sidebar ${isOpen ? 'open' : ''}`}>
         <div className="playlist-sidebar-content">
-          <h2>Playlists</h2>
+          <h2>OpenPlaylist</h2>
           <button onClick={onNewPlaylist}>New Playlist</button>
           <div className="playlist-list">
             {playlists.map((playlist, index) => (
