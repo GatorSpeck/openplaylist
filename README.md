@@ -14,6 +14,7 @@ In addition to local music, your playlists can be augmented with search results 
   - e.g. FLAC/MP3 tags, date added to playlist, other playlists this track is part of
 - Support for missing local files and un-matching/re-matching them later
 - Support for large playlists, with tens of thousands of entries
+  - Server-side sorting and filtering with lazy loading based on viewable playlist entries
 
 ## Screenshots
 ### Basic Interface
