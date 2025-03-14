@@ -1,25 +1,18 @@
-FROM node:20-slim
-
+# Build stage
+FROM node:20-slim AS build
 WORKDIR /app
-
-# Copy package files
 COPY package*.json ./
-
-# Install dependencies
 RUN npm ci
-
-# Copy the rest of the application
 COPY . .
-
-# Build the application
+# Pass environment variables to the build process
 RUN npm run build
 
-ENV NODE_ENV=production
-ENV VITE_HOST=0.0.0.0
-ENV VITE_PORT=8080
+# Production stage with Nginx
+FROM nginx:alpine AS production
+# Copy built files from build stage
+COPY --from=build /app/dist /usr/share/nginx/html
+# Copy custom Nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
 
-# Install serve to run the built application
-RUN npm install -g serve
-
-# Command to run the application
-CMD npm run dev -- --host ${VITE_HOST} --port ${VITE_PORT}
+CMD ["nginx", "-g", "daemon off;"]
