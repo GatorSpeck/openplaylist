@@ -68,10 +68,8 @@ REDIS_PORT=6379
 
 - Run with `docker-compose up --build -d`
 ```
-version: '3.8'
-
 networks:
-  playlist:
+  openplaylist:
     driver: bridge
 
 services:
@@ -83,7 +81,7 @@ services:
       # - ${PLEX_M3U_DROP_SOURCE}:/playlists:rw
     restart: unless-stopped
     networks:
-      - playlist
+      - openplaylist
     expose:
       - 3000
     environment:
@@ -113,13 +111,11 @@ services:
     build: ./frontend
     ports:
       - "${PORT}:80"
-    volumes:
-      - /app/node_modules
     depends_on:
       - backend
     restart: unless-stopped
     networks:
-      - playlist
+      - openplaylist
 ```
 
 ## Local Dev Setup
