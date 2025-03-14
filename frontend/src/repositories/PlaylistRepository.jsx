@@ -157,6 +157,15 @@ export class PlaylistRepository {
             console.error('Error fetching art grid:', error);
         }
     }
+
+    async getPlaylistsByTrack(trackID) {
+        try {
+            const response = await axios.get(`/api/playlists/listbytrack/${trackID}`);
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching playlists by track:', error);
+        }
+    }
 };
 
 const playlistRepository = new PlaylistRepository();

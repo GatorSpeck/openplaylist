@@ -624,6 +624,14 @@ def get_playlist_art_grid(playlist_id: int, repo: PlaylistRepository = Depends(g
     except Exception as e:
         logging.error(f"Failed to get playlist art grid: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get playlist art grid")
+    
+@router.get("/playlists/listbytrack/{track_id}")
+def get_playlists_by_track(track_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
+    try:
+        return repo.get_playlists_by_track(track_id)
+    except Exception as e:
+        logging.error(f"Failed to get playlists by track: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get playlists by track")
 
 @router.get("/playlists/{playlist_id}/synctoplex")
 def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
