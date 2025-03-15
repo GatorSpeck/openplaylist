@@ -211,7 +211,12 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
     def get_all(self):
         results = self.session.query(self.model).all()
 
-        return [Playlist(id=r.id, name=r.name, entries=[]) for r in results]
+        return [
+            Playlist(
+                id=r.id, name=r.name, entries=[],
+                updated_at=r.updated_at, pinned=r.pinned, pinned_order=r.pinned_order
+            ) for r in results
+        ]
 
     def create(self, playlist: Playlist):
         playlist_db = PlaylistDB(name=playlist.name, entries=[])
@@ -344,6 +349,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             ]
             
             this_playlist.entries.extend(playlist_entries)
+        
+        this_playlist.updated_at = func.now()
                 
         self.session.commit()
     
@@ -366,6 +373,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             if entry.order in entry_ids:
                 count += 1
                 self.session.delete(entry)
+        
+        playlist = self.session.query(PlaylistDB).get(playlist_id)
+        playlist.updated_at = func.now()
 
         self.session.commit()
         logger.info(f"Removed {count} entries from playlist {playlist_id}")
@@ -401,7 +411,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                     path = entry.details.path
                     if mapping_source and mapping_target:
                         path = path.replace(mapping_source, mapping_target)
-                        
+
                     # yield f"#EXTINF:{entry.details.length},{entry.details.artist} - {entry.details.title}\n"
                     yield f"{path}\n"
                 else:
@@ -490,6 +500,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         for entry in entries_to_move:
             playlist_entries.insert(new_index, entry)
         
+        playlist.updated_at = func.now()
+        
         self.session.commit()
 
     def undo_add_entries(self, playlist_id: int, entries: List[PlaylistEntryBase]):
@@ -502,6 +514,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
         for e in entries_to_remove:
             self.session.delete(e)
+        
+        playlist.updated_at = func.now()
 
         self.session.commit()
     
@@ -636,6 +650,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         # Replace the existing entry with the new one
         self.session.delete(existing_entry)
         self.session.add(new_entry_db)
+
+        this_playlist = self.session.query(PlaylistDB).get(playlist_id)
+        this_playlist.updated_at = func.now()
         
         self.session.commit()
 
@@ -709,3 +726,39 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         )
 
         return [Playlist(id=p.id, name=p.name, entries=[]) for p in query.all()]
+    
+    def update_pin(self, playlist_id, pinned):
+        logging.info(f"Updating pinned status for playlist {playlist_id} to {pinned}")
+        playlist = self.session.query(PlaylistDB).get(playlist_id)
+        if playlist is None:
+            return None
+        
+        playlist.pinned = pinned
+        self.session.commit()
+    
+    def update_pinned_order(self, playlist_id, pinned_order):
+        logging.info(f"Updating pinned order for playlist {playlist_id} to {pinned_order}")
+        # reorder pinned playlists to account for the new order
+        pinned_playlists = self.session.query(PlaylistDB).filter(PlaylistDB.pinned == True).order_by(PlaylistDB.pinned_order).all()
+        if not pinned_playlists:
+            return None
+        
+        # remove the playlist from the list
+        playlist = None
+        for i, p in enumerate(pinned_playlists):
+            if p.id == playlist_id:
+                playlist = pinned_playlists.pop(i)
+                break
+        
+        if playlist is None:
+            return None
+        
+        # insert the playlist at the new index
+        pinned_playlists.insert(pinned_order, playlist)
+
+        # update the pinned order for all playlists
+        for i, p in enumerate(pinned_playlists):
+            p.pinned_order = i
+        
+        self.session.commit()
+    

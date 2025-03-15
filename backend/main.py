@@ -829,6 +829,22 @@ def browse_directories(current_path: Optional[str] = Query(None)):
 def health_check():
     return {"status": "ok"}
 
+@router.put("/playlists/reorderpinned/{playlist_id}")
+def reorder_pinned_tracks(playlist_id: int, new_order: List[int], repo: PlaylistRepository = Depends(get_playlist_repository)):
+    try:
+        repo.reorder_pinned_tracks(playlist_id, new_order)
+    except Exception as e:
+        logging.error(f"Failed to reorder pinned tracks: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to reorder pinned tracks")
+
+@router.put("/playlists/{playlist_id}/updatepin")
+def update_playlist_pin(playlist_id: int, pin: str = Query(...), repo: PlaylistRepository = Depends(get_playlist_repository)):
+    try:
+        repo.update_pin(playlist_id, pin == "true")
+    except Exception as e:
+        logging.error(f"Failed to update playlist pin: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update playlist pin")
+
 @router.post("/playlists/import/m3u/{playlist_name}")
 async def import_m3u_playlist(
     playlist_name: str,

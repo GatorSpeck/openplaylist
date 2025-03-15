@@ -1,5 +1,5 @@
 from __future__ import annotations
-from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Enum, Text, Boolean, Index
+from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Enum, Text, Boolean, Index, func
 from sqlalchemy.orm import (
     relationship,
     declarative_base,
@@ -190,6 +190,9 @@ class PlaylistDB(Base):
     __tablename__ = "playlists"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
+    updated_at = Column(DateTime, index=True, onupdate=func.now())
+    pinned = Column(Boolean, default=False)
+    pinned_order = Column(Integer, index=True)
 
     entries: Mapped[List["PlaylistEntryDB"]] = relationship(
         order_by="PlaylistEntryDB.order",
