@@ -1,6 +1,40 @@
-# Music Playlist Application
+# OpenPlaylist
 
-This project is a music playlist management application with a React frontend and a FastAPI backend.
+## Overview
+OpenPlaylist is a music playlist management portal, that indexes your local music files and allows you to organize them into playlists, which can be synced to Plex or exported in various formats.
+
+In addition to local music, your playlists can be augmented with search results from Last.FM, and suggestions from Last.FM and OpenAI.
+
+## Additional Features
+- "Matching" external tracks with local files
+  - External search results are auto-matched with local files
+- Album art fetching via Last.FM
+- Export to Plex, .m3u, and JSON formats
+- View track metadata
+  - e.g. FLAC/MP3 tags, date added to playlist, other playlists this track is part of
+- Support for missing local files and un-matching/re-matching them later
+- Support for large playlists, with tens of thousands of entries
+  - Server-side sorting and filtering with lazy loading based on viewable playlist entries
+
+## Screenshots
+### Basic Interface
+![image](https://github.com/user-attachments/assets/261a57b1-773e-480a-8842-250b77c9d25b)
+
+### Add Songs
+![image](https://github.com/user-attachments/assets/361570f9-766b-4fdc-94cf-b1bdfd484723)
+
+### Find Similar Songs Using OpenAI
+![image](https://github.com/user-attachments/assets/3fc0cc80-1f2f-4b70-ac2b-500649dffcf9)
+
+## Future Features
+- Smart playlists
+- Support for more track file formats
+- More export options, including a "share page" for a playlist
+- Auth/Support for multiple users
+- Import options
+- More integrations
+  - Suggestions/metadata APIs
+  - Streaming services
 
 ## Running with docker-compose
 - Create .env file:
@@ -62,6 +96,8 @@ services:
       # - PLEX_M3U_DROP_SOURCE=${PLEX_M3U_DROP_SOURCE}
       # - PLEX_M3U_DROP_TARGET=${PLEX_M3U_DROP_TARGET}
       # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - REDIS_HOST=${REDIS_HOST}
+      # - REDIS_PORT=${REDIS_PORT}
     healthcheck:
       test: ["CMD", "/app/healthcheck.sh"]
       interval: 10s
@@ -145,11 +181,6 @@ services:
     ```sh
     npm run dev
     ```
-
-## Usage
-
-- Open your browser and navigate to `http://localhost:3009` to access the frontend.
-- The backend API will be available at `http://localhost:3000`.
 
 ## License
 
