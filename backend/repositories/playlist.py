@@ -387,32 +387,51 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         return self.add_entries(playlist_id, entries)
 
     def export_to_m3u(self, playlist_id: int, mapping_source = None, mapping_target = None):
-        playlist = self.get_with_entries(playlist_id)
-        if playlist is None:
-            return None
+        # yield "#EXTM3U\n"
+        CHUNK_SIZE = 10000
+        fetched = 0
+        while True:
+            logging.info(f"Fetching chunk starting at {fetched}")
+            chunk = self.filter_playlist(playlist_id, PlaylistFilter(offset=fetched, limit=CHUNK_SIZE), count_only=False)
+            if not chunk.entries:
+                break
 
-        #m3u = "#EXTM3U\n"
-        m3u = ""
-        for entry in playlist.entries:
-            if entry.entry_type == "music_file":
-                #m3u += f"#EXTINF:{entry.details.length},{entry.details.artist} - {entry.details.title}\n"
-                path = entry.details.path.replace(mapping_source, mapping_target)
-                m3u += path + "\n"
-            else:
-                continue
-
-        return m3u
+            for entry in chunk.entries:
+                if entry.entry_type == "music_file":
+                    path = entry.details.path.replace(mapping_source, mapping_target)
+                    # yield f"#EXTINF:{entry.details.length},{entry.details.artist} - {entry.details.title}\n"
+                    yield f"{path}\n"
+                else:
+                    continue
+            
+            fetched += CHUNK_SIZE
+        
+        logging.info("Finished exporting playlist to M3U")
 
     def export_to_json(self, playlist_id: int):
-        playlist = self.get_with_entries(playlist_id)
+        playlist = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
         if playlist is None:
-            return None
+            raise ValueError(f"Playlist with ID {playlist_id} not found")
 
-        return json.dumps({
-            "id": playlist.id,
-            "name": playlist.name,
-            "entries": [e.model_dump() for e in playlist.entries]
-        }, indent=4, default=str, sort_keys=True)
+        yield "{\n  \"playlist\": "
+        yield "{\n    \"id\": " + str(playlist.id) + ",\n"
+        yield "    \"name\": \"" + playlist.name + "\",\n"
+        yield "    \"entries\": [\n"
+        
+        CHUNK_SIZE = 10000
+        fetched = 0
+        while True:
+            logging.info(f"Fetching chunk starting at {fetched}")
+            chunk = self.filter_playlist(playlist_id, PlaylistFilter(offset=fetched, limit=CHUNK_SIZE), count_only=False)
+            if not chunk.entries:
+                break
+            for entry in chunk.entries:
+                if entry.details:
+                    yield "      " + json.dumps(entry.details.to_json()) + ",\n"
+            
+            fetched += CHUNK_SIZE
+
+        yield "    ]\n  }\n}\n"
     
     def get_playlist_entry_details(self, playlist_id: int, entry_ids: List[int]):
         playlist = (
@@ -502,6 +521,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             .filter(poly_entity.playlist_id == playlist_id)
             # Join to each type of details table
             .outerjoin(music_file_details, poly_entity.MusicFileEntryDB.details)
+            .options(
+                selectinload(poly_entity.MusicFileEntryDB.details).selectinload(MusicFileDB.genres)
+            )
             .outerjoin(requested_track_details, poly_entity.RequestedTrackEntryDB.details)
             .outerjoin(lastfm_details, poly_entity.LastFMEntryDB.details)
             .outerjoin(requested_album_details, poly_entity.RequestedAlbumEntryDB.details)

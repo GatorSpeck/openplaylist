@@ -217,6 +217,12 @@ class PlaylistEntryDB(Base):
 
 Index("playlist_entries_playlist_idx", PlaylistEntryDB.playlist_id)
 
+# Add a composite index on playlist entries table
+Index("playlist_entries_playlist_type_order_idx", 
+      PlaylistEntryDB.playlist_id, 
+      PlaylistEntryDB.entry_type, 
+      PlaylistEntryDB.order)
+
 class MusicFileEntryDB(PlaylistEntryDB):
     __tablename__ = "music_file_entries"
 
@@ -227,6 +233,7 @@ class MusicFileEntryDB(PlaylistEntryDB):
 
     __mapper_args__ = {"polymorphic_identity": "music_file"}
 
+Index("music_file_entry_details_idx", MusicFileEntryDB.details_id)
 
 class NestedPlaylistEntryDB(PlaylistEntryDB):
     __tablename__ = "nested_playlist_entries"

@@ -53,6 +53,13 @@ class RequestedTrack(MusicEntity, TrackDetails):
             artist=obj.artist,
             album=obj.album,
         )
+    
+    def to_json(self) -> dict:
+        return {
+            "title": self.title,
+            "artist": self.artist,
+            "album": self.album,
+        }
 
 def try_parse_int(value):
     if value is None:
@@ -73,6 +80,13 @@ class MusicFile(MusicEntity, TrackDetails):
     exact_release_date: Optional[datetime] = None
     release_year: Optional[int] = None
     playlists: List[int] = []
+
+    def to_json(self) -> dict:
+        return {
+            "title": self.title,
+            "artist": self.artist or self.album_artist,
+            "album": self.album,
+        }
 
     @classmethod
     def from_orm(cls, obj: MusicFileDB):
@@ -126,6 +140,11 @@ class AlbumTrack(MusicEntity):
             linked_track=this_track
         )
 
+    def to_json(self) -> Optional[dict]:
+        if self.linked_track is None:
+            return None
+        return self.linked_track.to_json()
+
 
 class Album(MusicEntity):
     title: str
@@ -146,6 +165,13 @@ class Album(MusicEntity):
             tracks=[AlbumTrack.from_orm(t) for t in obj.tracks],
         )
 
+    def to_json(self) -> dict:
+        return {
+            "title": self.title,
+            "artist": self.artist,
+            "year": self.year,
+            "tracks": [t.to_json() for t in self.tracks],
+        }
 
 class PlaylistBase(BaseModel):
     id: Optional[int] = None
