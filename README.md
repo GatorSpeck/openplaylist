@@ -46,28 +46,28 @@ DATA_DIR=./data  # needs read/write access, the dir to store the SQLite DB
 
 # Optional settings
 ## Plex configuration for playlist syncing
-PLEX_ENDPOINT=https://your.plex.server
-PLEX_TOKEN=foo
-PLEX_LIBRARY=Music  # change this if it doesn't match your library name
+# PLEX_ENDPOINT=https://your.plex.server
+# PLEX_TOKEN=foo
+# PLEX_LIBRARY=Music  # change this if it doesn't match your library name
 
 ## Library file mapping (needed if there is a discrepancy between where Plex/OpenPlaylist are mounting your library)
-PLEX_MAP_SOURCE=/open/playlist/path/to/my/music
-PLEX_MAP_TARGET=/plex/path/to/my/music
+# PLEX_MAP_SOURCE=/open/playlist/path/to/my/music
+# PLEX_MAP_TARGET=/plex/path/to/my/music
 
 ## Playlist file mapping (source and target must be read/writable)
-PLEX_M3U_DROP_SOURCE=/path/to/playlists  # temporary location to playlist exports for import into Plex
-PLEX_M3U_DROP_TARGET=/playlist/  # this is where we will tell the Plex API to look for updated playlists
+# PLEX_M3U_DROP_SOURCE=/path/to/playlists  # temporary location to playlist exports for import into Plex
+# PLEX_M3U_DROP_TARGET=/playlist/  # this is where we will tell the Plex API to look for updated playlists
 
 ## Last.fm configuration (for album art, track/album search, and suggestions)
-LASTFM_API_KEY=foo
-LASTFM_SHARED_SECRET=foo
+# LASTFM_API_KEY=foo
+# LASTFM_SHARED_SECRET=foo
 
 ## OpenAI configuration (for suggestions)
-OPENAI_API_KEY=foo
+# OPENAI_API_KEY=foo
 
 ## Redis configuration (for caching of OpenAI and Last.FM queries)
-REDIS_HOST=localhost
-REDIS_PORT=6379
+# REDIS_HOST=localhost
+# REDIS_PORT=6379
 ```
 
 - Run with `docker-compose up --build -d`
