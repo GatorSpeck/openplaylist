@@ -55,3 +55,6 @@ data/
 Dockerfile
 .dockerignore
 compose.yml
+
+*.sh
+!healthcheck.sh

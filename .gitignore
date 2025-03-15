@@ -27,3 +27,4 @@ compose.yml
 *.sh
 
 **/config.json
+!healthcheck.sh
