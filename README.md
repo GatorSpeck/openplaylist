@@ -5,88 +5,68 @@ This project is a music playlist management application with a React frontend an
 ## Running with docker-compose
 - Create .env file:
 ```
-CONFIG_PATH=./config  # Required, needs read/write access
-PORT=5173  # Required, the port to use to access the web app
+# Required settings
+CONFIG_PATH=./config  # needs read/write access, the dir to store the config
+PORT=5173  # the port to use to access the web app
+DATA_DIR=./data  # needs read/write access, the dir to store the SQLite DB
 
-# Optional Plex configuration for playlist syncing
+# Optional settings
+## Plex configuration for playlist syncing
 PLEX_ENDPOINT=https://your.plex.server
 PLEX_TOKEN=foo
 PLEX_LIBRARY=Music  # change this if it doesn't match your library name
 
-# Library file mapping (needed if there is a discrepancy between where Plex/OpenPlaylist are mounting your library)
+## Library file mapping (needed if there is a discrepancy between where Plex/OpenPlaylist are mounting your library)
 PLEX_MAP_SOURCE=/open/playlist/path/to/my/music
 PLEX_MAP_TARGET=/plex/path/to/my/music
 
-# Playlist file mapping (source and target must be read/writable)
+## Playlist file mapping (source and target must be read/writable)
 PLEX_M3U_DROP_SOURCE=/path/to/playlists  # temporary location to playlist exports for import into Plex
 PLEX_M3U_DROP_TARGET=/playlist/  # this is where we will tell the Plex API to look for updated playlists
 
-# Optional Last.fm configuration (for album art, track/album search, and suggestions)
+## Last.fm configuration (for album art, track/album search, and suggestions)
 LASTFM_API_KEY=foo
 LASTFM_SHARED_SECRET=foo
 
-# Optional OpenAI configuration (for suggestions)
+## OpenAI configuration (for suggestions)
 OPENAI_API_KEY=foo
 
-# Optional Redis configuration (for caching of OpenAI and Last.FM queries)
+## Redis configuration (for caching of OpenAI and Last.FM queries)
 REDIS_HOST=localhost
 REDIS_PORT=6379
 ```
 
 - Run with `docker-compose up --build -d`
 ```
-version: '3.8'
-
-networks:
-  playlist:
-    driver: bridge
-
 services:
-  backend:
-    build: ./backend
+  openplaylist:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT}:80"
     volumes:
-      - /path/to/music:/music:ro  # only read-only access is needed
-      - ./data:/data:rw  # path to store SQLite database
-      # - ${PLEX_M3U_DROP_SOURCE}:/playlists:rw
+      - ${MUSIC_PATH}:/music:ro
+      - ${DATA_DIR}:/data:rw
+      - ${CONFIG_PATH}:/config:rw
+      # - ${PLEX_M3U_DROP_SOURCE}:/playlist:rw
     restart: unless-stopped
-    networks:
-      - playlist
-    expose:
-      - 3000
     environment:
-      # Last.fm configuration
       # - LASTFM_API_KEY=${LASTFM_API_KEY}
       # - LASTFM_SHARED_SECRET=${LASTFM_SHARED_SECRET}
-
-      # Plex configuration
       # - PLEX_ENDPOINT=${PLEX_ENDPOINT}
       # - PLEX_TOKEN=${PLEX_TOKEN}
       # - PLEX_LIBRARY=${PLEX_LIBRARY}
       # - PLEX_MAP_SOURCE=${PLEX_MAP_SOURCE}
       # - PLEX_MAP_TARGET=${PLEX_MAP_TARGET}
-
-      # Plex playlist sync configuration
       # - PLEX_M3U_DROP_SOURCE=${PLEX_M3U_DROP_SOURCE}
       # - PLEX_M3U_DROP_TARGET=${PLEX_M3U_DROP_TARGET}
-
-      # OpenAI configuration
       # - OPENAI_API_KEY=${OPENAI_API_KEY}
-
-      # Redis configuration
-      # REDIS_HOST=${REDIS_HOST}
-      # REDIS_PORT=${REDIS_PORT}
-
-  frontend:
-    build: ./frontend
-    ports:
-      - "${PORT}:80"
-    volumes:
-      - /app/node_modules
-    depends_on:
-      - backend
-    restart: unless-stopped
-    networks:
-      - playlist
+    healthcheck:
+      test: ["CMD", "/app/healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 ```
 
 ## Local Dev Setup

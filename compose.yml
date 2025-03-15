@@ -7,7 +7,7 @@ services:
       - "${PORT}:80"
     volumes:
       - ${MUSIC_PATH}:/music:ro
-      - ./data:/data:rw
+      - ${DATA_DIR}:/data:rw
       - ${PLEX_M3U_DROP_SOURCE}:/playlist:rw
       - ${CONFIG_PATH}:/config:rw
     restart: unless-stopped
