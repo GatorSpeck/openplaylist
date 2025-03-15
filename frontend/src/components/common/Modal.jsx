@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import '../../styles/Modal.css';
 
-const Modal = ({ children, title, onClose }) => {
+const Modal = ({ children, title, open, onClose }) => {
   // Close on ESC key
   useEffect(() => {
     const handleEsc = (event) => {
@@ -12,6 +12,8 @@ const Modal = ({ children, title, onClose }) => {
       window.removeEventListener('keydown', handleEsc);
     };
   }, [onClose]);
+
+  if (!open) return null;
 
   return (
     <div className="modal-overlay" onClick={onClose}>

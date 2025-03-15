@@ -99,6 +99,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         artist: Optional[str] = None,
         album: Optional[str] = None,
         genre: Optional[str] = None,
+        path: Optional[str] = None,
         exact=False,
         limit: int = 50,
     ) -> list[MusicFile]:
@@ -125,6 +126,9 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
                 query = query.filter(func.lower(MusicFileDB.album).ilike(f"%{album}%"))
         if genre:
             query = query.filter(func.lower(MusicFileDB.genres).any(genre))
+        
+        if path:
+            query = query.filter(MusicFileDB.path == path)
 
         results = query.limit(limit).all()
 

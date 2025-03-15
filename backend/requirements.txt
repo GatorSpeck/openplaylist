@@ -42,3 +42,4 @@ typing_extensions==4.12.2
 url-normalize==1.4.3
 urllib3==2.3.0
 uvicorn==0.34.0
+python-multipart==0.0.20

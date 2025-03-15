@@ -398,7 +398,10 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
             for entry in chunk.entries:
                 if entry.entry_type == "music_file":
-                    path = entry.details.path.replace(mapping_source, mapping_target)
+                    path = entry.details.path
+                    if mapping_source and mapping_target:
+                        path = path.replace(mapping_source, mapping_target)
+                        
                     # yield f"#EXTINF:{entry.details.length},{entry.details.artist} - {entry.details.title}\n"
                     yield f"{path}\n"
                 else:
@@ -413,13 +416,14 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         if playlist is None:
             raise ValueError(f"Playlist with ID {playlist_id} not found")
 
-        yield "{\n  \"playlist\": "
-        yield "{\n    \"id\": " + str(playlist.id) + ",\n"
-        yield "    \"name\": \"" + playlist.name + "\",\n"
-        yield "    \"entries\": [\n"
+        yield "{\"playlist\":"
+        yield "{\"id\":" + str(playlist.id) + ","
+        yield "\"name\": \"" + playlist.name + "\","
+        yield "\"entries\":["
         
         CHUNK_SIZE = 10000
         fetched = 0
+        need_comma = False
         while True:
             logging.info(f"Fetching chunk starting at {fetched}")
             chunk = self.filter_playlist(playlist_id, PlaylistFilter(offset=fetched, limit=CHUNK_SIZE), count_only=False)
@@ -427,11 +431,13 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 break
             for entry in chunk.entries:
                 if entry.details:
-                    yield "      " + json.dumps(entry.details.to_json()) + ",\n"
+                    comma_str = "," if need_comma else ""
+                    need_comma = True
+                    yield comma_str + json.dumps(entry.details.to_json())
             
             fetched += CHUNK_SIZE
 
-        yield "    ]\n  }\n}\n"
+        yield "]}}"
     
     def get_playlist_entry_details(self, playlist_id: int, entry_ids: List[int]):
         playlist = (

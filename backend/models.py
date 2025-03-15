@@ -196,7 +196,8 @@ class PlaylistDB(Base):
         back_populates="playlist",
         collection_class=ordering_list("order"),
         passive_deletes=True,
-        single_parent=True
+        single_parent=True,
+        cascade="all, delete-orphan",
     )
 
 class PlaylistEntryDB(Base):
