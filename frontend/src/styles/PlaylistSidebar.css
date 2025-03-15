@@ -78,3 +78,50 @@
   flex-direction: column;
   gap: 0.5rem;
 }
+
+.playlist-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.import-playlist-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-group label {
+  font-weight: 500;
+}
+
+.form-group input, 
+.form-group select {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.error-message {
+  color: #d32f2f;
+  font-size: 14px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.primary-button {
+  background-color: #1976d2;
+  color: white;
+  border: none;
+}

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import '../../styles/PlaylistSidebar.css';
 import RenameDialog from './RenameDialog';
-import SettingsModal from './SettingsModal'; // We'll create this component next
+import SettingsModal from './SettingsModal'; 
+import ImportPlaylistModal from './ImportPlaylistModal'; // Add this import
 
 const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex }) => (
   <div className="playlist-context-menu" style={{ left: x, top: y }}>
@@ -35,6 +36,7 @@ const PlaylistSidebar = ({
 
   const [renameDialog, setRenameDialog] = useState({ open: false, playlist: null });
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   const sidebarRef = useRef(null);
   const hamburgerRef = useRef(null);
@@ -81,6 +83,11 @@ const PlaylistSidebar = ({
     onPlaylistSelect(id);
   };
 
+  const handlePlaylistImported = (importedPlaylist) => {
+    // Refresh the playlists list after import
+    window.location.reload(); // Simple approach; could be more elegant with proper state management
+  };
+
   return (
     <>
       <button ref={hamburgerRef} className="hamburger-menu" onClick={() => onClose(!isOpen)}>
@@ -89,7 +96,10 @@ const PlaylistSidebar = ({
       <div ref={sidebarRef} className={`playlist-sidebar ${isOpen ? 'open' : ''}`}>
         <div className="playlist-sidebar-content">
           <h2>OpenPlaylist</h2>
-          <button onClick={onNewPlaylist}>New Playlist</button>
+          <div className="playlist-actions">
+            <button onClick={onNewPlaylist}>New Playlist</button>
+            <button onClick={() => setImportModalOpen(true)}>Import</button>
+          </div>
           <div className="playlist-list">
             {playlists.map((playlist, index) => (
               <div
@@ -154,7 +164,12 @@ const PlaylistSidebar = ({
         initialName={renameDialog.playlist?.name || ''}
       />
       
-      {/* Add the settings modal */}
+      <ImportPlaylistModal 
+        open={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onPlaylistImported={handlePlaylistImported}
+      />
+      
       <SettingsModal 
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}

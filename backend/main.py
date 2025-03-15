@@ -2,7 +2,7 @@ import os
 import pathlib
 import logging
 import urllib.parse
-from fastapi import FastAPI, Query, APIRouter, Request, Depends, BackgroundTasks, Body
+from fastapi import FastAPI, Query, APIRouter, Request, Depends, BackgroundTasks, Body, Form, File, UploadFile
 import uvicorn
 from mutagen.easyid3 import EasyID3
 from mutagen.flac import FLAC
@@ -595,7 +595,7 @@ def replace_track(playlist_id: int, details: ReplaceTrackRequest = Body(...), re
 def export_playlist(playlist_id: int, type: str = Query("m3u"), repo: PlaylistRepository = Depends(get_playlist_repository)):
     try:
         if type == "m3u":
-            export_generator = repo.export_to_m3u(playlist_id, mapping_source=os.getenv("PLEX_MAP_SOURCE"), mapping_target=os.getenv("PLEX_MAP_TARGET"))
+            export_generator = repo.export_to_m3u(playlist_id)
         elif type == "json":
             export_generator = repo.export_to_json(playlist_id)
         else:
@@ -614,6 +614,8 @@ def export_playlist(playlist_id: int, type: str = Query("m3u"), repo: PlaylistRe
     except Exception as e:
         logging.error(f"Failed to export playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to export playlist")
+
+
 
 @router.get("/playlists/{playlist_id}/artgrid")
 def get_playlist_art_grid(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
@@ -826,6 +828,149 @@ def browse_directories(current_path: Optional[str] = Query(None)):
 @router.get("/health")
 def health_check():
     return {"status": "ok"}
+
+@router.post("/playlists/import/m3u/{playlist_name}")
+async def import_m3u_playlist(
+    playlist_name: str,
+    file: UploadFile = File(...),
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+    music_repo: MusicFileRepository = Depends(get_music_file_repository)
+):
+    created_playlist = None
+
+    try:
+        content = await file.read()
+        lines = content.decode('utf-8').splitlines()
+
+        # Create a new playlist
+        playlist = Playlist(
+            name=playlist_name,
+            entries=[]
+        )
+
+        created_playlist = repo.create(playlist)
+
+        logging.info(f"Created playlist {created_playlist.id}")
+
+        entries = []
+
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+
+            # Try to find a matching track in the library
+            local_track = None
+
+            # Search for matching track by path
+            matches = music_repo.filter(
+                path=line,
+                limit=1
+            )
+            if matches:
+                local_track = matches[0]
+
+            # If track is found, add it as a regular entry
+            if local_track:
+                entries.append(MusicFileEntry(
+                    entry_type="music_file",
+                    music_file_id=local_track.id,
+                ))
+            else:
+                continue
+        
+        # Add all entries to the playlist
+        if entries:
+            repo.add_entries(created_playlist.id, entries)
+            logging.info(f"Added {len(entries)} entries to playlist {created_playlist.id}")
+        
+    except json.JSONDecodeError as e:
+        logging.error(e)
+        raise HTTPException(status_code=400, detail="Invalid JSON format")
+    except Exception as e:
+        logging.error(f"Failed to import playlist: {e}", exc_info=True)
+
+        # delete empty playlist
+        if (created_playlist):
+            repo.delete(created_playlist.id)
+        
+        raise HTTPException(status_code=500, detail=f"Failed to import playlist: {str(e)}")
+
+
+@router.post("/playlists/import/json/{playlist_name}")
+async def import_json_playlist(
+    playlist_name: str,
+    file: UploadFile = File(...),
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+    music_repo: MusicFileRepository = Depends(get_music_file_repository)
+):
+    created_playlist = None
+    try:
+        content = await file.read()
+        playlist_data = json.loads(content.decode('utf-8'))
+        
+        # Create a new playlist
+        playlist = Playlist(
+            name=playlist_name,
+            entries=[]
+        )
+        created_playlist = repo.create(playlist)
+
+        logging.info(f"Created playlist {created_playlist.id}")
+        
+        # Process tracks from the JSON file
+        if "entries" in playlist_data.get("playlist", {}):
+            entries = []
+            for entry in playlist_data["playlist"]["entries"]:
+                # Try to find a matching track in the library
+                local_track = None
+                
+                if "artist" in entry and "title" in entry:
+                    # Search for matching track by artist/title/album
+                    matches = music_repo.filter(
+                        artist=entry.get("artist"),
+                        title=entry.get("title"),
+                        album=entry.get("album"),
+                        limit=1
+                    )
+                    if matches:
+                        local_track = matches[0]
+                
+                # If track is found, add it as a regular entry
+                if local_track:
+                    entries.append(MusicFileEntry(
+                        entry_type="music_file",
+                        music_file_id=local_track.id,
+                    ))
+                else:
+                    # Add as a requested track
+                    details = TrackDetails(
+                        artist=entry.get("artist"),
+                        title=entry.get("title"),
+                        album=entry.get("album")
+                    )
+
+                    entries.append(RequestedTrackEntry(
+                        entry_type="requested",
+                        details=details,
+                    ))
+            
+            # Add all entries to the playlist
+            if entries:
+                repo.add_entries(created_playlist.id, entries)
+                logging.info(f"Added {len(entries)} entries to playlist {created_playlist.id}")
+            
+    except json.JSONDecodeError as e:
+        logging.error(e)
+        raise HTTPException(status_code=400, detail="Invalid JSON format")
+    except Exception as e:
+        logging.error(f"Failed to import playlist: {e}", exc_info=True)
+
+        # delete empty playlist
+        if created_playlist:
+            repo.delete(created_playlist.id)
+        
+        raise HTTPException(status_code=500, detail=f"Failed to import playlist: {str(e)}")
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
