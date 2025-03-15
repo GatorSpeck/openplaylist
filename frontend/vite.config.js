@@ -13,9 +13,9 @@ export default defineConfig({
     port: process.env.VITE_PORT || 8080,
     strictPort: true,
     hmr: {
-      clientPort: process.env.VITE_PORT || 8080,
-      port: parseInt(process.env.VITE_PORT || 8080) + 10,
-      protocol: 'ws',
+      host: "localhost",
+      port: process.env.VITE_PORT || 8080,
+      protocol: "ws",
     },
     proxy: {
       '/api': {
@@ -23,6 +23,10 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+    },
+    watch: {
+      usePolling: true,
+      interval: 1000
     },
     allowedHosts: process.env.VITE_ALLOWED_HOSTNAME ? [process.env.VITE_ALLOWED_HOSTNAME] : []
   }

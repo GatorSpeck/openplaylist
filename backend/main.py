@@ -594,19 +594,18 @@ def replace_track(playlist_id: int, details: ReplaceTrackRequest = Body(...), re
 @router.get("/playlists/{playlist_id}/export", response_class=StreamingResponse)
 def export_playlist(playlist_id: int, type: str = Query("m3u"), repo: PlaylistRepository = Depends(get_playlist_repository)):
     try:
-        export_content = None
         if type == "m3u":
-            export_content = repo.export_to_m3u(playlist_id, mapping_source=os.getenv("PLEX_MAP_SOURCE"), mapping_target=os.getenv("PLEX_MAP_TARGET"))
+            export_generator = repo.export_to_m3u(playlist_id, mapping_source=os.getenv("PLEX_MAP_SOURCE"), mapping_target=os.getenv("PLEX_MAP_TARGET"))
         elif type == "json":
-            export_content = repo.export_to_json(playlist_id)
+            export_generator = repo.export_to_json(playlist_id)
         else:
             raise HTTPException(status_code=400, detail="Invalid export type")
 
         playlist = repo.get_by_id(playlist_id)
 
-        # Create a StreamingResponse to return the .m3u file
         response = StreamingResponse(
-            io.StringIO(export_content), media_type="audio/x-mpegurl"
+            export_generator,
+            media_type="application/octet-stream" if type == "json" else "audio/x-mpegurl"
         )
         response.headers["Content-Disposition"] = (
             f"attachment; filename={playlist.name}.{type}"
@@ -653,8 +652,19 @@ def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(g
 
         m3u_path = pathlib.Path(M3U_SOURCE) / f"{playlist.name}.m3u"
 
+        logging.info(f"Writing playlist to {m3u_path}")
         with open(m3u_path, "w") as f:
-            f.write(m3u_content)
+            while True:
+                try:
+                    chunk = next(m3u_content)
+                except StopIteration:
+                    break
+                
+                if not chunk:
+                    break
+                f.write(chunk)
+        
+        logging.info("Done updating M3U file")
 
         plex_endpoint = os.getenv("PLEX_ENDPOINT")
         plex_token = os.getenv("PLEX_TOKEN")
