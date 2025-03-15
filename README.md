@@ -105,6 +105,19 @@ services:
       retries: 5
 ```
 
+## Applying Migrations
+If there is a breaking DB change, migrations can be run manually (for now) -
+```
+docker exec -it <your container> sh
+cd backend
+
+# install alembic
+pip install alembic
+
+# apply migrations
+alembic upgrade head
+```
+
 ## Local Dev Setup
 
 ### Backend
