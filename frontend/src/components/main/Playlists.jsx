@@ -111,6 +111,25 @@ const Playlists = () => {
     setSelectedPlaylistID(id);
   };
 
+  const togglePin = async (playlistID) => {
+    console.log('Toggling pin:', playlistID);
+    try {
+      const response = await playlistRepository.togglePin(playlistID);
+      setPlaylists(response);
+    } catch (error) {
+      console.error('Error toggling pin:', error);
+    }
+  };
+
+  const reorderPinnedPlaylist = async (oldIndex, newIndex) => {
+    try {
+      const response = await playlistRepository.reorderPinnedPlaylist(oldIndex, newIndex);
+      setPlaylists(response);
+    } catch (error) {
+      console.error('Error reordering pinned playlist:', error);
+    }
+  };
+
   const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistID);
  
   return (
@@ -124,6 +143,8 @@ const Playlists = () => {
         onNewPlaylist={() => setNewPlaylistModalVisible(true)}
         onClonePlaylist={handleClonePlaylist}
         onDeletePlaylist={deletePlaylist}
+        togglePin={togglePin}
+        reorderPinnedPlaylist={reorderPinnedPlaylist}
       />
       
       <div className="editor-panel">

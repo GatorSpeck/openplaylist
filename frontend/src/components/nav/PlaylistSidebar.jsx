@@ -3,9 +3,11 @@ import '../../styles/PlaylistSidebar.css';
 import RenameDialog from './RenameDialog';
 import SettingsModal from './SettingsModal'; 
 import ImportPlaylistModal from './ImportPlaylistModal'; // Add this import
+import playlistRepository from '../../repositories/PlaylistRepository';
 
-const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex }) => (
+const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex, pinned, onTogglePin }) => (
   <div className="playlist-context-menu" style={{ left: x, top: y }}>
+    <div onClick={onTogglePin}>{pinned ? 'Unpin Playlist' : 'Pin Playlist'}</div>
     <div onClick={onRenamePlaylist}>Rename Playlist</div>
     <div onClick={onClone}>Clone Playlist</div>
     <div onClick={onDelete}>Delete Playlist</div>
@@ -25,7 +27,9 @@ const PlaylistSidebar = ({
   onDeletePlaylist,
   onExport,
   onSyncToPlex,
-  onRenamePlaylist
+  onRenamePlaylist,
+  togglePin,
+  reorderPinnedPlaylist
 }) => {
   const [contextMenu, setContextMenu] = useState({ 
     visible: false, 
@@ -101,16 +105,33 @@ const PlaylistSidebar = ({
             <button onClick={() => setImportModalOpen(true)}>Import</button>
           </div>
           <div className="playlist-list">
-            {playlists.map((playlist, index) => (
-              <div
-                key={index}
-                className={`playlist-item ${selectedPlaylist?.id === playlist.id ? 'selected' : ''}`}
-                onClick={() => handlePlaylistClick(playlist.id)}
-                onContextMenu={(e) => handleContextMenu(e, playlist)}
-              >
-                {playlist.name}
-              </div>
-            ))}
+            {playlists
+              .sort((a, b) => {
+                // First sort by pinned status
+                if (a.pinned && !b.pinned) return -1;
+                if (!a.pinned && b.pinned) return 1;
+                
+                // If both are pinned, sort by pinned_order
+                if (a.pinned && b.pinned) {
+                  return a.pinned_order - b.pinned_order;
+                }
+                
+                // Otherwise sort by updated_at timestamp (newest first)
+                const dateA = a.updated_at ? new Date(a.updated_at) : new Date(0);
+                const dateB = b.updated_at ? new Date(b.updated_at) : new Date(0);
+                return dateB - dateA;
+              })
+              .map((playlist, index) => (
+                <div
+                  key={index} // Using playlist ID instead of index for a more stable key
+                  className={`playlist-item ${selectedPlaylist?.id === playlist.id ? 'selected' : ''}`}
+                  onClick={() => handlePlaylistClick(playlist.id)}
+                  onContextMenu={(e) => handleContextMenu(e, playlist)}
+                >
+                  {playlist.pinned && <span className="pinned-indicator">📌 </span>}
+                  {playlist.name}
+                </div>
+              ))}
           </div>
           
           {/* Add settings section at bottom of sidebar */}
@@ -153,6 +174,11 @@ const PlaylistSidebar = ({
               setRenameDialog({ open: true, playlist: contextMenu.playlist });
               setContextMenu({ visible: false });
             }}
+            onTogglePin={() => {
+              togglePin(contextMenu.playlist.id);
+              setContextMenu({ visible: false });
+            }}
+            pinned={contextMenu.playlist.pinned}
           />
         </div>
       )}

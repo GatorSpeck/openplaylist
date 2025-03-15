@@ -166,6 +166,22 @@ export class PlaylistRepository {
             console.error('Error fetching playlists by track:', error);
         }
     }
+    
+    async togglePin(id) {
+        const playlists = await this.getPlaylists();
+        console.log(playlists);
+        const pinned = !playlists.find(p => p.id === id).pinned;
+
+        await axios.put(`/api/playlists/${id}/updatepin?pin=${pinned}`);
+
+        return this.getPlaylists();
+    }
+
+    async reorderPinnedPlaylist(id, position) {
+        await axios.put(`/api/playlists/${id}/reorderpinned`, { position: position });
+
+        return this.getPlaylists();
+    }
 };
 
 const playlistRepository = new PlaylistRepository();

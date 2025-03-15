@@ -176,7 +176,9 @@ class Album(MusicEntity):
 class PlaylistBase(BaseModel):
     id: Optional[int] = None
     name: str
-
+    updated_at: Optional[datetime] = None
+    pinned: Optional[bool] = False
+    pinned_order: Optional[int] = None
 
 class PlaylistEntryBase(BaseModel, ABC):
     id: Optional[int] = None
@@ -429,7 +431,7 @@ class Playlist(PlaylistBase):
             else:
                 raise ValueError(f"Unknown entry type: {entry.entry_type}")
 
-        return cls(id=obj.id, name=obj.name, entries=entries)
+        return cls(id=obj.id, name=obj.name, entries=entries, updated_at=obj.updated_at, pinned=obj.pinned, pinned_order=obj.pinned_order)
 
 
 class SearchQuery(BaseModel):
