@@ -1,52 +1,29 @@
-networks:
-  playlist:
-    driver: bridge
-
 services:
-  backend:
-    build: ./backend
+  openplaylist:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT}:80"
     volumes:
       - ${MUSIC_PATH}:/music:ro
-      - ./data:/data:rw
+      - ${DATA_DIR}:/data:rw
       - ${PLEX_M3U_DROP_SOURCE}:/playlist:rw
       - ${CONFIG_PATH}:/config:rw
     restart: unless-stopped
-    networks:
-      - playlist
-    expose:
-      - 3000
     environment:
       - LASTFM_API_KEY=${LASTFM_API_KEY}
       - LASTFM_SHARED_SECRET=${LASTFM_SHARED_SECRET}
-      - MUSIC_PATH=/music
-
       - PLEX_ENDPOINT=${PLEX_ENDPOINT}
       - PLEX_TOKEN=${PLEX_TOKEN}
       - PLEX_LIBRARY=${PLEX_LIBRARY}
-
       - PLEX_MAP_SOURCE=${PLEX_MAP_SOURCE}
       - PLEX_MAP_TARGET=${PLEX_MAP_TARGET}
-
       - PLEX_M3U_DROP_SOURCE=${PLEX_M3U_DROP_SOURCE}
       - PLEX_M3U_DROP_TARGET=${PLEX_M3U_DROP_TARGET}
-
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-    
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://0.0.0.0:3000/api/health')"]
+      test: ["CMD", "/app/healthcheck.sh"]
       interval: 10s
       timeout: 5s
       retries: 5
-
-  frontend:
-    build:
-      context: ./frontend
-    ports:
-      - "5173:80"
-    volumes:
-      - /app/node_modules
-    depends_on:
-      - backend
-    restart: unless-stopped
-    networks:
-      - playlist
