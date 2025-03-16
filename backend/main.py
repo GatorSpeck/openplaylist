@@ -8,6 +8,7 @@ from mutagen.easyid3 import EasyID3
 from mutagen.flac import FLAC
 from mutagen.wave import WAVE
 from mutagen.mp4 import MP4
+from mutagen import File as MutagenFile
 import dotenv
 from typing import Optional, List, Callable
 import time
@@ -37,6 +38,7 @@ from plexapi.playlist import Playlist as PlexPlaylist
 from redis import Redis
 import json
 from pydantic import BaseModel
+import sys
 
 class TimingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable):
@@ -112,30 +114,75 @@ def get_last_fm_repo():
         return None
     return last_fm_repository(LASTFM_API_KEY, requests_cache_session)
 
-def extract_metadata(file_path, extractor):
+def extract_tag(dict, options, squash_list=True, to_string=True):
+    for option in options:
+        result = dict.get(option, None)
+        if result is not None:
+            while squash_list and (isinstance(result, list) or isinstance(result, tuple)):
+                result = result[0]
+
+            if to_string:
+                result = str(result)
+                
+            return result
+        
+    return None
+
+def extract_m4a(file_path) -> Optional[MusicFile]:
     try:
-        audio = extractor(file_path)
-        result = {
-            "title": audio.get("title", [None])[0],
-            "artist": audio.get("artist", [None])[0],
-            "album": audio.get("album", [None])[0],
-            "album_artist": audio.get("albumartist", [None])[0],
-            "year": audio.get("date", [None])[0],
-            "length": int(audio.info.length) if hasattr(audio, "info") else None,
-            "publisher": audio.get("organization", [None])[0],
-            "kind": audio.mime[0] if hasattr(audio, "mime") else None,
-            "genres": audio.get("genre", list()),
-            "track_number": audio.get("tracknumber", [None])[0],
-            "disc_number": audio.get("discnumber", [None])[0],
-            "rating": audio.get("rating", [None])[0],
-            "comments": audio.get("comment", [None])[0]
-        }
+        audio = MP4(file_path)
+        result = MusicFile(
+            path=file_path,
+            title=extract_tag(audio, ["\xa9nam"]),  # this is required
+            artist=extract_tag(audio, ["\xa9ART"]),
+            album=extract_tag(audio, ["\xa9alb"]),
+            album_artist=extract_tag(audio, ["aART"]),
+            year=extract_tag(audio, ["\xa9day"]),
+            length=None,
+            publisher=None,
+            kind="M4A",
+            genres=extract_tag(audio, ["\xa9gen"], squash_list=False, to_string=False) or list(),
+            track_number=try_parse_int(extract_tag(audio, ["trkn"])),
+            disc_number=try_parse_int(extract_tag(audio, ["disk"])),
+            rating=None,
+            comments=extract_tag(audio, ["\xa9cmt"])
+        )
         
         return result
     except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
         logging.error(f"Failed to read metadata for {file_path}: {e}")
+        logging.error(f"{exc_type} {exc_tb.tb_lineno}")
 
-    return {}
+    return None
+
+def extract_metadata(file_path, extractor) -> Optional[MusicFile]:
+    try:
+        audio = extractor(file_path)
+        result = MusicFile(
+            path=file_path,
+            title=extract_tag(audio, ["title", "TIT2"]),  # this is required
+            artist=extract_tag(audio, ["artist", "TPE2"]),
+            album=extract_tag(audio, ["album", "TALB"]),
+            album_artist=extract_tag(audio, ["albumartist"]),
+            year=extract_tag(audio, ["date"]),
+            length=int(audio.info.length) if hasattr(audio, "info") else None,
+            publisher=extract_tag(audio, ["organization"]),
+            kind=audio.mime[0] if hasattr(audio, "mime") else None,
+            genres=extract_tag(audio, ["genre"], squash_list=False, to_string=False) or list(),
+            track_number=try_parse_int(extract_tag(audio, ["tracknumber"])),
+            disc_number=try_parse_int(extract_tag(audio, ["discnumber"])),
+            rating=extract_tag(audio, ["rating"]),
+            comments=extract_tag(audio, ["comment"])
+        )
+        
+        return result
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        logging.error(f"Failed to read metadata for {file_path}: {e}")
+        logging.error(f"{exc_type} {exc_tb.tb_lineno}")
+
+    return None
 
 # singleton
 scan_results = ScanResults()
@@ -153,7 +200,7 @@ def scan_directory(directory: str, full=False):
     scan_results.files_missing = 0
     scan_results.files_updated = 0
 
-    logging.info(f"Scanning directory {directory}")
+    logging.info(f"Scanning directory {directory}, full={full}")
     start_time = time.time()
 
     # read directory paths from config file
@@ -180,6 +227,7 @@ def scan_directory(directory: str, full=False):
         try:
             files_seen += 1
             scan_results.progress = round(files_seen / total_files * 100, 1)
+
             if not full_path.lower().endswith(SUPPORTED_FILETYPES):
                 continue
 
@@ -196,26 +244,30 @@ def scan_directory(directory: str, full=False):
             if (not full) and (not found_existing_file) and existing_file and existing_file.last_scanned >= last_modified_time:
                 continue  # Skip files that have not changed
 
-            metadata = {}
+            metadata = None
 
-            if full_path.lower().endswith(".mp3"):
-                metadata = extract_metadata(full_path, EasyID3)
-            elif full_path.lower().endswith(".flac"):
-                metadata = extract_metadata(full_path, FLAC)
-            elif full_path.lower().endswith(".wav"):
-                metadata = extract_metadata(full_path, WAVE)
-            elif full_path.lower().endswith(".m4a"):
-                metadata = extract_metadata(full_path, MP4)
-            else:
-                logging.debug(f"Skipping file {full_path} with unsupported file type")
+            try:
+                if full_path.lower().endswith(".mp3"):
+                    metadata = extract_metadata(full_path, EasyID3)
+                elif full_path.lower().endswith(".flac"):
+                    metadata = extract_metadata(full_path, FLAC)
+                elif full_path.lower().endswith(".wav"):
+                    metadata = extract_metadata(full_path, WAVE)
+                elif full_path.lower().endswith(".m4a"):
+                    metadata = extract_m4a(full_path)
+                else:
+                    metadata = extract_metadata(full_path, MutagenFile)
+            except Exception as e:
+                logging.error(f"Failed to read metadata for {full_path}: {e}", exc_info=True)
                 continue
 
             if not metadata:
+                logging.warning(f"Failed to read metadata for {full_path}")
                 continue
 
             file_size = os.path.getsize(full_path)
 
-            year = metadata.get("year")
+            year = metadata.year
             release_year = None
             exact_release_date = None
 
@@ -234,13 +286,13 @@ def scan_directory(directory: str, full=False):
             album = None
 
             # create album entry if applicable
-            if metadata.get("album") and metadata.get("artist"):
-                album_and_artist = AlbumAndArtist(album=metadata.get("album"), artist=metadata.get("artist"))
+            if metadata.album and metadata.get_album_artist():
+                album_and_artist = AlbumAndArtist(album=metadata.album, artist=metadata.get_album_artist())
                 album = albums_and_artists_seen.get(album_and_artist)
                 if not album:
                     album = AlbumDB(
-                        artist=metadata.get("artist"),
-                        title=metadata.get("album"),
+                        artist=metadata.get_album_artist(),
+                        title=metadata.album,
                         year=exact_release_date if exact_release_date else release_year,
                         tracks = []
                     )
@@ -253,54 +305,31 @@ def scan_directory(directory: str, full=False):
                 scan_results.files_updated += 1
 
                 existing_file.last_modified = last_modified_time
-                existing_file.title = metadata.get("title")
-                existing_file.artist = metadata.get("artist")
-                existing_file.album = metadata.get("album")
-                existing_file.album_artist = metadata.get("album_artist")
+                existing_file.title = metadata.title
+                existing_file.artist = metadata.artist
+                existing_file.album = metadata.album
+                existing_file.album_artist = metadata.album_artist
                 existing_file.year = year
-                existing_file.length = metadata.get("length")
-                existing_file.publisher = metadata.get("publisher")
-                existing_file.kind = metadata.get("kind")
+                existing_file.length = metadata.length
+                existing_file.publisher = metadata.publisher
+                existing_file.kind = metadata.kind
                 existing_file.last_scanned = datetime.now()
                 existing_file.exact_release_date = exact_release_date
                 existing_file.release_year = release_year
                 existing_file.size = file_size
-                existing_file.rating = metadata.get("rating")
+                existing_file.rating = metadata.rating
                 existing_file.genres = [
                     TrackGenreDB(parent_type="music_file", genre=genre)
-                    for genre in metadata.get("genres", [])
+                    for genre in metadata.genres
                 ]
-                existing_file.comments = metadata.get("comments")
-                existing_file.track_number = metadata.get("track_number")
-                existing_file.disc_number = metadata.get("disc_number")
+                existing_file.comments = metadata.comments
+                existing_file.track_number = metadata.track_number
+                existing_file.disc_number = metadata.disc_number
             else:
                 scan_results.files_indexed += 1
                 scan_results.files_added += 1
 
-                this_track = MusicFileDB(
-                    path=full_path,
-                    title=metadata.get("title"),
-                    artist=metadata.get("artist"),
-                    album=metadata.get("album"),
-                    genres=[
-                        TrackGenreDB(parent_type="music_file", genre=genre)
-                        for genre in metadata.get("genres", [])
-                    ],
-                    album_artist=metadata.get("album_artist"),
-                    year=year,
-                    length=metadata.get("length"),
-                    publisher=metadata.get("publisher"),
-                    kind=metadata.get("kind"),
-                    first_scanned=datetime.now(),
-                    last_scanned=datetime.now(),
-                    exact_release_date=exact_release_date,
-                    release_year=release_year,
-                    size=file_size,
-                    rating=metadata.get("rating"),
-                    comments = metadata.get("comments"),
-                    track_number = metadata.get("track_number"),
-                    disc_number = metadata.get("disc_number")
-                )
+                this_track = metadata.to_db()
 
                 db.add(this_track)
 
@@ -340,7 +369,7 @@ def scan(background_tasks: BackgroundTasks):
 
 @router.get("/fullscan")
 def full_scan(background_tasks: BackgroundTasks):
-    background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), full=False)
+    background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), full=True)
     background_tasks.add_task(prune_music_files)
 
     return HTTPException(status_code=202, detail="Scan started")
