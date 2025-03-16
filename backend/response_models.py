@@ -88,6 +88,11 @@ class MusicFile(MusicEntity, TrackDetails):
             "album": self.album,
         }
 
+    def get_album_artist(self):
+        if self.album_artist:
+            return self.album_artist
+        return self.artist
+
     @classmethod
     def from_orm(cls, obj: MusicFileDB):
         return cls(
@@ -113,6 +118,31 @@ class MusicFile(MusicEntity, TrackDetails):
             disc_number=try_parse_int(obj.disc_number),
             comments=obj.comments,
             playlists=[]
+        )
+    
+    def to_db(self) -> MusicFileDB:
+        return MusicFileDB(
+            id=self.id,
+            path=self.path,
+            kind=self.kind,
+            first_scanned=self.first_scanned,
+            last_scanned=self.last_scanned,
+            title=self.title,
+            artist=self.artist,
+            album_artist=self.album_artist,
+            album=self.album,
+            year=self.year,
+            length=self.length,
+            publisher=self.publisher,
+            genres=[TrackGenreDB(genre=g) for g in self.genres],
+            missing=self.missing,
+            rating=self.rating,
+            exact_release_date=self.exact_release_date,
+            release_year=self.release_year,
+            size=self.size,
+            track_number=self.track_number,
+            disc_number=self.disc_number,
+            comments=self.comments,
         )
 
 class AlbumTrack(MusicEntity):
