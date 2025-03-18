@@ -80,7 +80,7 @@ services:
     ports:
       - "${PORT}:80"
     volumes:
-      - ${MUSIC_PATH}:/music:ro
+      # - /path/to/your/music:/music:ro
       - ${DATA_DIR}:/data:rw
       - ${CONFIG_PATH}:/config:rw
       # - ${PLEX_M3U_DROP_SOURCE}:/playlist:rw
