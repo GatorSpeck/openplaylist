@@ -24,6 +24,7 @@ import { formatDuration } from '../../lib/misc';
 import Modal from '../common/Modal';
 import MatchTrackModal from './MatchTrackModal';
 import MatchAlbumModal from './MatchAlbumModal';
+import EditItemModal from './EditItemModal';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -146,6 +147,10 @@ const PlaylistGrid = ({ playlistID }) => {
   const [albumMatchModalOpen, setAlbumMatchModalOpen] = useState(false);
   const [albumMatchResults, setAlbumMatchResults] = useState([]);
   const [albumToMatch, setAlbumToMatch] = useState(null);
+
+  // Add after your other state declarations
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [itemToEdit, setItemToEdit] = useState(null);
 
   // Apply debouncing to the filter
   useEffect(() => {
@@ -715,13 +720,15 @@ const PlaylistGrid = ({ playlistID }) => {
 
   const handleContextMenu = (e, track) => {
     e.preventDefault();
-
+  
     const isAlbum = track.entry_type === 'requested_album' || track.entry_type === 'album';
     const isMusicFile = track.entry_type === 'music_file';
     const isRequestedTrack = track.entry_type === 'requested' || track.entry_type === 'lastfm';
-
+    const canEdit = isRequestedTrack || (track.entry_type === 'requested_album');  // Track can be edited if it's a requested track or album
+  
     const options = [
       { label: 'Details', onClick: () => handleShowDetails(track) },
+      canEdit ? { label: 'Edit Details', onClick: () => handleEditItem(track) } : null,
       { label: 'Send to Search', onClick: () => searchFor(track.title) },
       !isAlbum ? { label: 'Find Similar Tracks (Last.fm)', onClick: (e) => findSimilarTracks(e, track) } : null,
       !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: (e) => findSimilarTracksWithOpenAI(e, track) } : null,
@@ -734,13 +741,13 @@ const PlaylistGrid = ({ playlistID }) => {
       isMusicFile ? { label: 'Re-Match Track', onClick: () => matchTrack(track) } : null,
       isMusicFile ? { label: 'Unmatch Track', onClick: () => unMatchTrack(track) } : null,
       isAlbum ? { label: 'Match Album on Last.fm', onClick: () => matchAlbum(track) } : null
-    ];
-
+    ].filter(Boolean);
+  
     setContextMenu({
       visible: true,
       x: e.clientX,
       y: e.clientY,
-      options
+      options: options.filter(option => option !== null)
     });
   }
 
@@ -811,6 +818,56 @@ const PlaylistGrid = ({ playlistID }) => {
       </button>
     </div>
   );
+
+  const handleEditItem = (item) => {
+    setItemToEdit(item);
+    setEditModalOpen(true);
+  };
+
+  const saveEditedItem = async (editedItem) => {
+    try {
+      const isAlbum = editedItem.entry_type === 'requested_album' || editedItem.entry_type === 'album';
+      
+      // Create updated item with edited details
+      const updatedItem = {
+        ...itemToEdit,
+        title: editedItem.title,
+        artist: editedItem.artist,
+        album: isAlbum ? editedItem.title : editedItem.album,
+        details: {
+          ...itemToEdit.details,
+          title: editedItem.title,
+          artist: editedItem.artist,
+          album: isAlbum ? editedItem.title : editedItem.album,
+        }
+      };
+      
+      // Update backend
+      await playlistRepository.replaceTrack(playlistID, itemToEdit.id, updatedItem);
+      
+      // Update local state
+      pushToHistory(entries);
+      const newEntries = [...entries];
+      const itemIndex = entries.findIndex(entry => entry.order === itemToEdit.order);
+      newEntries[itemIndex] = updatedItem;
+      setEntries(newEntries);
+      
+      setEditModalOpen(false);
+      
+      setSnackbar({
+        open: true,
+        message: `${isAlbum ? 'Album' : 'Track'} details updated`,
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error updating item:', error);
+      setSnackbar({
+        open: true,
+        message: `Error updating details: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  };
 
   return (
     <div className="main-playlist-view">
@@ -1019,6 +1076,15 @@ const PlaylistGrid = ({ playlistID }) => {
           initialMatches={albumMatchResults}
           onMatchSelect={replaceAlbumWithMatch}
           setSnackbar={setSnackbar}
+        />
+      )}
+
+      {editModalOpen && (
+        <EditItemModal
+          isOpen={editModalOpen}
+          onClose={() => setEditModalOpen(false)}
+          item={itemToEdit}
+          onSave={saveEditedItem}
         />
       )}
     </div>
