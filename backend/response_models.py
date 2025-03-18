@@ -194,6 +194,16 @@ class Album(MusicEntity):
             publisher=obj.publisher,
             tracks=[AlbumTrack.from_orm(t) for t in obj.tracks],
         )
+    
+    def to_db(self) -> AlbumDB:
+        return AlbumDB(
+            title=self.title,
+            artist=self.artist,
+            year=self.year,
+            publisher=self.publisher,
+            tracks=[t.to_db() for t in self.tracks],
+            art_url=self.art_url
+        )
 
     def to_json(self) -> dict:
         return {
@@ -409,7 +419,7 @@ class AlbumEntry(PlaylistEntryBase):
                 year=obj.details.year,
                 publisher=obj.details.publisher,
                 tracks=[AlbumTrack.from_orm(t) for t in obj.details.tracks],
-            ) if details else None,
+            ) if details and obj.details else None,
         )
 
 class RequestedAlbumEntry(PlaylistEntryBase):
@@ -439,6 +449,12 @@ class RequestedAlbumEntry(PlaylistEntryBase):
                 tracks=[AlbumTrack.from_orm(t) for t in obj.details.tracks],
                 art_url=obj.details.art_url,
             ) if details and obj.details else None,
+        )
+
+    def to_db(self) -> RequestedAlbumEntryDB:
+        return RequestedAlbumEntryDB(
+            album_id=self.requested_album_id,
+            details = self.details.to_db() if self.details else None
         )
 
 PlaylistEntry = Union[MusicFileEntry, NestedPlaylistEntry, LastFMEntry, RequestedTrackEntry, AlbumEntry, RequestedAlbumEntry]

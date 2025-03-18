@@ -23,6 +23,7 @@ import { BiLoaderAlt } from 'react-icons/bi';
 import { formatDuration } from '../../lib/misc';
 import Modal from '../common/Modal';
 import MatchTrackModal from './MatchTrackModal';
+import MatchAlbumModal from './MatchAlbumModal';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -137,6 +138,11 @@ const PlaylistGrid = ({ playlistID }) => {
   const [matchModalOpen, setMatchModalOpen] = useState(false);
   const [matchingTracks, setMatchingTracks] = useState([]);
   const [trackToMatch, setTrackToMatch] = useState(null);
+
+  // Add these new state variables alongside your other states
+  const [albumMatchModalOpen, setAlbumMatchModalOpen] = useState(false);
+  const [albumMatchResults, setAlbumMatchResults] = useState([]);
+  const [albumToMatch, setAlbumToMatch] = useState(null);
 
   // Apply debouncing to the filter
   useEffect(() => {
@@ -624,6 +630,87 @@ const PlaylistGrid = ({ playlistID }) => {
     }
   };
 
+  const matchAlbum = async (album) => {
+    try {
+      setPlaylistLoading(true);
+      
+      const albumResults = await lastFMRepository.searchAlbum(album.title, album.artist);
+      
+      if (!albumResults || albumResults.length === 0) {
+        setSnackbar({
+          open: true,
+          message: `No matching albums found for "${album.album || album.title}"`,
+          severity: 'warning'
+        });
+        return;
+      }
+      
+      // Set up the modal state for album matching
+      setAlbumMatchResults(albumResults);
+      setAlbumToMatch(album);
+      setAlbumMatchModalOpen(true);
+    } catch (error) {
+      console.error('Error matching album:', error);
+      setSnackbar({
+        open: true,
+        message: `Error searching for album: ${error.message}`,
+        severity: 'error'
+      });
+    } finally {
+      setPlaylistLoading(false);
+    }
+  };
+  
+  const replaceAlbumWithMatch = async (selectedMatch) => {
+    try {
+      if (!albumToMatch) return;
+      
+      // Get the track index in the playlist
+      const trackIndex = entries.findIndex(entry => entry.order === albumToMatch.order);
+      if (trackIndex === -1) return;
+      
+      // Create a new album entry with the Last.fm metadata
+      const newAlbum = {
+        ...albumToMatch,
+        title: selectedMatch.title,
+        artist: selectedMatch.artist,
+        art_url: selectedMatch.image_url || selectedMatch.art_url,
+        entry_type: 'requested_album',
+        details: {
+          ...albumToMatch.details,
+          title: selectedMatch.title,
+          artist: selectedMatch.artist,
+          art_url: selectedMatch.image_url || selectedMatch.art_url,
+          tracks: selectedMatch.tracks || []
+        }
+      };
+      
+      // Update backend
+      await playlistRepository.replaceTrack(playlistID, albumToMatch.id, newAlbum);
+      
+      // Update local state
+      pushToHistory(entries);
+      const newEntries = [...entries];
+      newEntries[trackIndex] = newAlbum;
+      setEntries(newEntries);
+      
+      setAlbumMatchModalOpen(false);
+      
+      setSnackbar({
+        open: true,
+        message: `Album matched to "${selectedMatch.title}" by ${selectedMatch.artist}`,
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error replacing album:', error);
+      setSnackbar({
+        open: true,
+        message: `Error replacing album: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  };
+
   const handleContextMenu = (e, track) => {
     e.preventDefault();
 
@@ -643,7 +730,8 @@ const PlaylistGrid = ({ playlistID }) => {
       { label: 'Remove by Album', onClick: () => onRemoveByAlbum(track.album) },
       isRequestedTrack ? { label: 'Match to Music File', onClick: () => matchTrack(track) } : null,
       isMusicFile ? { label: 'Re-Match Track', onClick: () => matchTrack(track) } : null,
-      isMusicFile ? { label: 'Unmatch Track', onClick: () => unMatchTrack(track) } : null
+      isMusicFile ? { label: 'Unmatch Track', onClick: () => unMatchTrack(track) } : null,
+      isAlbum ? { label: 'Match Album on Last.fm', onClick: () => matchAlbum(track) } : null
     ];
 
     setContextMenu({
@@ -917,6 +1005,17 @@ const PlaylistGrid = ({ playlistID }) => {
           track={trackToMatch}
           initialMatches={matchingTracks}
           onMatchSelect={replaceTrackWithMatch}
+          setSnackbar={setSnackbar}
+        />
+      )}
+
+      {albumMatchModalOpen && (
+        <MatchAlbumModal
+          isOpen={albumMatchModalOpen}
+          onClose={() => setAlbumMatchModalOpen(false)}
+          track={albumToMatch}
+          initialMatches={albumMatchResults}
+          onMatchSelect={replaceAlbumWithMatch}
           setSnackbar={setSnackbar}
         />
       )}

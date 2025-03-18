@@ -633,16 +633,24 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         existing_entry = self.session.query(PlaylistEntryDB).get(existing_entry_id)
         if existing_entry is None:
             return None
-        
+                
         # register requested track if applicable
         if new_entry.entry_type == "requested":
             track = new_entry.to_db()
             self.session.add(track)
             self.session.flush()
             new_entry.requested_track_id = track.id
+        elif new_entry.entry_type == "requested_album":
+            album = new_entry.details.to_db()
+            logging.info(album.__dict__)
+            self.session.add(album)
+            self.session.flush()
+            new_entry.requested_album_id = album.id
         
         # Create the new entry
         new_entry_db = new_entry.to_playlist(playlist_id)
+
+        logging.info(new_entry_db.__dict__)
         
         # Copy the order from the existing entry
         new_entry_db.order = existing_entry.order
