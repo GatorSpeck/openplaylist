@@ -47,12 +47,15 @@ const Row = memo(({ data, index, style }) => {
   } = data;
   
   // Check if we have real data for this index
-  if (index >= entries.length || !entries[index] || !entries[index].details?.title) {
+  if (
+    (index >= entries.length) || !entries[index] ||
+    (!entries[index].details?.title && !entries[index].details?.artist)
+  ){
     // Return a placeholder/loading row
     return (
       <div 
         style={style}
-        className="playlist-grid-row loading-row"
+        className={`playlist-grid-row loading-row ${index % 2 === 0 ? 'even-row' : 'odd-row'}`}
         onClick={() => toggleTrackSelection(index)}
       >
         <div className="grid-cell">{selectedEntries.includes(index) ? "✔" : index + 1}</div>
@@ -80,7 +83,7 @@ const Row = memo(({ data, index, style }) => {
             ...style,
             ...provided.draggableProps.style,
           }}
-          className={`playlist-grid-row ${sortColumn !== 'order' ? 'drag-disabled' : ''}`}
+          className={`playlist-grid-row ${track.order % 2 === 0 ? 'even-row' : 'odd-row'} ${sortColumn !== 'order' ? 'drag-disabled' : ''}`}
           isDragging={snapshot.isDragging}
           onClick={() => toggleTrackSelection(track.order)}
           onContextMenu={(e) => handleContextMenu(e, track)}
@@ -642,7 +645,6 @@ const PlaylistGrid = ({ playlistID }) => {
           message: `No matching albums found for "${album.album || album.title}"`,
           severity: 'warning'
         });
-        return;
       }
       
       // Set up the modal state for album matching

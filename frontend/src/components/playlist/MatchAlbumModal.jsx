@@ -11,7 +11,7 @@ const MatchAlbumModal = ({ isOpen, onClose, track, initialMatches, onMatchSelect
   const searchAlbums = async () => {
     try {
       setLoading(true);
-      const results = await lastFMRepository.searchAlbums(searchQuery);
+      const results = await lastFMRepository.searchAlbum(searchQuery);
       if (!results || results.length === 0) {
         setSnackbar({
           open: true,

@@ -351,3 +351,12 @@
   padding: 20px;
   font-style: italic;
 }
+
+/* Add to src/styles/PlaylistGrid.css */
+.even-row {
+  background-color: var(--even-row-bg, #ffffff);
+}
+
+.odd-row {
+  background-color: var(--odd-row-bg, #f5f5f5);
+}
