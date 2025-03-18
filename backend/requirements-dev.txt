@@ -7,5 +7,3 @@ pytest-skip-slow==0.0.5
 pytest-watch==4.2.0
 
 snakeviz==2.2.2
-
-alembic==1.15.1

@@ -61,7 +61,7 @@ export class LastFMRepository {
             });
             return response.data.map((album) => ({...album, entry_type: 'requested_album'}));
         } catch (error) {
-            throw new Error('Failed to fetch album information');
+            return [];
         }
     }
 

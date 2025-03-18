@@ -74,13 +74,12 @@ class last_fm_repository:
     def search_album(self, artist, title):
         # URL encode parameters
         encoded_title = urllib.parse.quote(title) if title else None
-        encoded_artist = urllib.parse.quote(artist) if artist else None  # TODO: not used
 
         if not encoded_title:
             return None
 
         # Make request to Last.FM API
-        url = f"http://ws.audioscrobbler.com/2.0/?method=album.search&api_key={self.api_key}&format=json&limit=10"
+        url = f"http://ws.audioscrobbler.com/2.0/?method=album.search&api_key={self.api_key}&format=json&limit=20"
         if encoded_title:
             url += f"&album={encoded_title}"
 
@@ -93,6 +92,12 @@ class last_fm_repository:
         data = response.json()
         # logging.info(json.dumps(data, indent=4))
         albums = data.get("results", {}).get("albummatches", {}).get("album", [])
+
+        if artist:
+            # put albums with artist match at the top
+            artist_albums = [album for album in albums if album.get("artist").lower() == artist.lower()]
+            other_albums = [album for album in albums if album.get("artist").lower() != artist.lower()]
+            albums = artist_albums + other_albums
 
         return [Album(
             title=album.get("name"),

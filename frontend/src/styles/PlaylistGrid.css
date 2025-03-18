@@ -242,3 +242,121 @@
   color: #666;
   margin-top: 4px;
 }
+
+/* Album matching modal styles */
+.match-album-modal {
+  padding: 15px;
+  max-width: 600px;
+}
+
+.match-album-modal .album-info {
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ddd;
+}
+
+.match-album-modal .album-title {
+  font-size: 18px;
+  font-weight: bold;
+  margin: 5px 0;
+}
+
+.match-album-modal .album-artist {
+  font-size: 16px;
+  color: #666;
+  margin: 5px 0;
+}
+
+.match-album-modal .search-controls {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.match-album-modal .search-input {
+  flex-grow: 1;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+
+.match-album-modal .album-list {
+  max-height: 400px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.match-album-modal .album-match {
+  display: flex;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.match-album-modal .album-match:hover {
+  background-color: #f5f5f5;
+}
+
+.match-album-modal .album-cover {
+  width: 80px;
+  height: 80px;
+  margin-right: 15px;
+  overflow: hidden;
+}
+
+.match-album-modal .album-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.match-album-modal .no-image {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f0f0f0;
+  color: #999;
+  font-size: 12px;
+}
+
+.match-album-modal .album-details {
+  flex-grow: 1;
+}
+
+.match-album-modal .album-name {
+  font-weight: bold;
+  margin: 0 0 5px 0;
+}
+
+.match-album-modal .album-artist {
+  color: #666;
+  margin: 0 0 5px 0;
+}
+
+.match-album-modal .track-count {
+  color: #888;
+  font-size: 14px;
+  margin: 5px 0 0 0;
+}
+
+.match-album-modal .no-matches {
+  color: #666;
+  text-align: center;
+  padding: 20px;
+  font-style: italic;
+}
+
+/* Add to src/styles/PlaylistGrid.css */
+.even-row {
+  background-color: var(--even-row-bg, #ffffff);
+}
+
+.odd-row {
+  background-color: var(--odd-row-bg, #f5f5f5);
+}

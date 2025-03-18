@@ -753,7 +753,7 @@ def get_album_info(artist: str = Query(...), album: str = Query(...)):
     return repo.get_album_info(artist, album, redis_session=redis_session)
 
 @router.get("/lastfm/album/search", response_model=List[Album])
-def search_album(artist: str = Query(...), album: str = Query(...)):
+def search_album(album: str = Query(...), artist: Optional[str] = Query(None), ):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
@@ -969,6 +969,20 @@ async def import_json_playlist(
             for entry in playlist_data["playlist"]["entries"]:
                 # Try to find a matching track in the library
                 local_track = None
+
+                if "artist" in entry and "album" in entry and "title" not in entry:
+                    # add as requested album
+                    details = Album(
+                        artist=entry.get("artist"),
+                        title=entry.get("album")
+                    )
+
+                    logging.info(f"Adding requested album {details.artist} - {details.title}")
+
+                    entries.append(RequestedAlbumEntry(
+                        entry_type="requested_album",
+                        details=details,
+                    ))
                 
                 if "artist" in entry and "title" in entry:
                     # Search for matching track by artist/title/album
@@ -981,29 +995,35 @@ async def import_json_playlist(
                     if matches:
                         local_track = matches[0]
                 
-                # If track is found, add it as a regular entry
-                if local_track:
-                    entries.append(MusicFileEntry(
-                        entry_type="music_file",
-                        music_file_id=local_track.id,
-                    ))
-                else:
-                    # Add as a requested track
-                    details = TrackDetails(
-                        artist=entry.get("artist"),
-                        title=entry.get("title"),
-                        album=entry.get("album")
-                    )
+                    # If track is found, add it as a regular entry
+                    if local_track:
+                        logging.info(f"Adding track {local_track.artist} - {local_track.title}")
 
-                    entries.append(RequestedTrackEntry(
-                        entry_type="requested",
-                        details=details,
-                    ))
+                        entries.append(MusicFileEntry(
+                            entry_type="music_file",
+                            music_file_id=local_track.id,
+                        ))
+                    else:
+                        # Add as a requested track
+                        details = TrackDetails(
+                            artist=entry.get("artist"),
+                            title=entry.get("title"),
+                            album=entry.get("album")
+                        )
+
+                        logging.info(f"Adding requested track {details.artist} - {details.title}")
+
+                        entries.append(RequestedTrackEntry(
+                            entry_type="requested",
+                            details=details,
+                        ))
             
             # Add all entries to the playlist
             if entries:
                 repo.add_entries(created_playlist.id, entries)
                 logging.info(f"Added {len(entries)} entries to playlist {created_playlist.id}")
+        else:
+            raise ValueError("Invalid JSON format")
             
     except json.JSONDecodeError as e:
         logging.error(e)
