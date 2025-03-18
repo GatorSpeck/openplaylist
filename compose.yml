@@ -22,6 +22,7 @@ services:
       - PLEX_M3U_DROP_SOURCE=${PLEX_M3U_DROP_SOURCE}
       - PLEX_M3U_DROP_TARGET=${PLEX_M3U_DROP_TARGET}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - TZ=${TZ}
     healthcheck:
       test: ["CMD", "/app/healthcheck.sh"]
       interval: 10s
