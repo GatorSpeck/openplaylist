@@ -10,8 +10,9 @@ In addition to local music, your playlists can be augmented with search results 
   - External search results are auto-matched with local files
 - Album art fetching via Last.FM
 - Export to Plex, .m3u, and JSON formats
+  - Import from .m3u and JSON
 - View track metadata
-  - e.g. FLAC/MP3 tags, date added to playlist, other playlists this track is part of
+  - e.g. ID3 tags, date added to playlist, other playlists this track is part of
 - Support for missing local files and un-matching/re-matching them later
 - Support for large playlists, with tens of thousands of entries
   - Server-side sorting and filtering with lazy loading based on viewable playlist entries
@@ -28,10 +29,8 @@ In addition to local music, your playlists can be augmented with search results 
 
 ## Future Features
 - Smart playlists
-- Support for more track file formats
 - More export options, including a "share page" for a playlist
 - Auth/Support for multiple users
-- Import options
 - More integrations
   - Suggestions/metadata APIs
   - Streaming services

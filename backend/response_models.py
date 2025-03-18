@@ -241,7 +241,7 @@ class MusicFileEntry(PlaylistEntryBase):
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             music_file_id=self.music_file_id,
-            date_added = datetime.now()
+            date_added = self.date_added or datetime.now()
         )
 
     def to_db(self) -> MusicFileDB:
@@ -273,7 +273,7 @@ class NestedPlaylistEntry(PlaylistEntryBase):
         return NestedPlaylistEntryDB(
             entry_type=self.entry_type,
             playlist_id=playlist_id,
-            date_added = datetime.now()
+            date_added = self.date_added or datetime.now()
         )
 
     def to_db(self) -> NestedPlaylistDB:
@@ -307,7 +307,7 @@ class LastFMEntry(PlaylistEntryBase):
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             lastfm_track_id=self.lastfm_track_id,
-            date_added = datetime.now()
+            date_added = self.date_added or datetime.now()
         )
 
     def to_db(self) -> LastFMTrackDB:
@@ -329,6 +329,7 @@ class LastFMEntry(PlaylistEntryBase):
             id=obj.id,
             order=obj.order,
             url=obj.details.url if details and obj.details else None,
+            date_added=obj.date_added,
             details=LastFMTrack(
                 url=obj.details.url,
                 title=obj.details.title,
@@ -349,7 +350,7 @@ class RequestedTrackEntry(PlaylistEntryBase):
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             requested_track_id=self.requested_track_id,
-            date_added = datetime.now()
+            date_added = self.date_added or datetime.now()
         )
 
     def to_db(self) -> RequestedTrackDB:
@@ -371,6 +372,7 @@ class RequestedTrackEntry(PlaylistEntryBase):
             id=obj.id,
             order=obj.order,
             entry_type="requested",
+            date_added=obj.date_added,
             details=TrackDetails(
                 title=obj.details.title,
                 artist=obj.details.artist,
@@ -393,7 +395,7 @@ class AlbumEntry(PlaylistEntryBase):
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             album_id=self.album_id,
-            date_added = datetime.now()
+            date_added = self.date_added or datetime.now()
         )
 
     def to_db(self) -> AlbumDB:
@@ -413,6 +415,7 @@ class AlbumEntry(PlaylistEntryBase):
             id=obj.id,
             order=obj.order,
             album_id=obj.album_id,
+            date_added=obj.date_added,
             details=Album(
                 title=obj.details.title,
                 artist=obj.details.artist,
@@ -432,7 +435,7 @@ class RequestedAlbumEntry(PlaylistEntryBase):
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             album_id=self.requested_album_id,
-            date_added = datetime.now()
+            date_added = self.date_added or datetime.now()
         )
 
     @classmethod
@@ -441,6 +444,7 @@ class RequestedAlbumEntry(PlaylistEntryBase):
             entry_type="requested_album",
             id=obj.id,
             order=obj.order,
+            date_added=obj.date_added,
             details=Album(
                 title=obj.details.title,
                 artist=obj.details.artist,

@@ -642,15 +642,12 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             new_entry.requested_track_id = track.id
         elif new_entry.entry_type == "requested_album":
             album = new_entry.details.to_db()
-            logging.info(album.__dict__)
             self.session.add(album)
             self.session.flush()
             new_entry.requested_album_id = album.id
         
         # Create the new entry
         new_entry_db = new_entry.to_playlist(playlist_id)
-
-        logging.info(new_entry_db.__dict__)
         
         # Copy the order from the existing entry
         new_entry_db.order = existing_entry.order
@@ -704,8 +701,6 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 if len(results) >= 4:
                     # TODO: increase to 9
                     break
-        
-        logging.info(results)
         
         if not results:
             return None
