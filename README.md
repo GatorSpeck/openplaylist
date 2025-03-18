@@ -42,7 +42,7 @@ In addition to local music, your playlists can be augmented with search results 
 CONFIG_PATH=./config  # needs read/write access, the dir to store the config
 PORT=5173  # the port to use to access the web app
 DATA_DIR=./data  # needs read/write access, the dir to store the SQLite DB
-TZ="America/Chicago"
+TZ="America/Chicago"  # not strictly required, but highly recommended
 
 # Optional settings
 ## Plex configuration for playlist syncing
@@ -108,11 +108,7 @@ services:
 ## Applying Migrations
 If there is a breaking DB change, migrations can be run manually (for now) -
 ```
-docker exec -it <your container> sh
-cd backend
-
-# apply migrations
-alembic upgrade head
+docker exec -it <your container> bash -c "cd backend && alembic upgrade head"
 ```
 
 ## Local Dev Setup
