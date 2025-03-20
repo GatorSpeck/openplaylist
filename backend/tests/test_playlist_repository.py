@@ -234,6 +234,7 @@ def test_filter_playlist(test_db, playlist_repo, sample_playlist):
     for i in range(10):
         f = add_music_file(test_db, f"Test Song {i}")
         entry = MusicFileEntry(
+            order=i, 
             entry_type="music_file",
             music_file_id=f.id,
             details=MusicFile.from_orm(f)
@@ -245,7 +246,7 @@ def test_filter_playlist(test_db, playlist_repo, sample_playlist):
     filter = PlaylistFilter(
         filter="Song 5"
     )
-    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter).entries
 
     assert len(results) == 1
     assert results[0].details.title == "Test Song 5"
@@ -253,16 +254,20 @@ def test_filter_playlist(test_db, playlist_repo, sample_playlist):
     filter = PlaylistFilter(
         filter="Song",
         offset=0,
-        limit=5
+        limit=5,
     )
-    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter).entries
+
+    for i, entry in enumerate(results):
+        print(entry.order)
+        print(entry.details.title)
 
     assert len(results) == 5
     assert results[0].details.title == "Test Song 0"
     assert results[4].details.title == "Test Song 4"
 
     filter.offset = 5
-    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter).entries
 
     assert len(results) == 5
     assert results[0].details.title == "Test Song 5"
@@ -271,8 +276,32 @@ def test_filter_playlist(test_db, playlist_repo, sample_playlist):
     # now reverse it, keeping the same pagination settings
     filter.sortDirection = PlaylistSortDirection.DESC
 
-    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter).entries
     
     assert len(results) == 5
     assert results[0].details.title == "Test Song 4"
     assert results[4].details.title == "Test Song 0"
+
+def test_remove_from_playlist(test_db, playlist_repo, sample_playlist):
+    initial_entries = []
+    for i in range(10):
+        f = add_music_file(test_db, f"Test Song {i}")
+        entry = MusicFileEntry(
+            order=i, 
+            entry_type="music_file",
+            music_file_id=f.id,
+            details=MusicFile.from_orm(f)
+        )
+        initial_entries.append(entry)
+
+    playlist_repo.add_entries(sample_playlist.id, initial_entries)
+
+    entry_to_remove = playlist_repo.filter_playlist(sample_playlist.id, PlaylistFilter(filter="Song 5")).entries[0]
+    playlist_repo.remove_entries(sample_playlist.id, [entry_to_remove])
+
+    result = playlist_repo.filter_playlist(sample_playlist.id, PlaylistFilter(filter="Song 5")).entries
+    assert len(result) == 0
+
+    result = playlist_repo.filter_playlist(sample_playlist.id, PlaylistFilter()).entries
+    assert len(result) == 9
+    assert "Test Song 5" not in [e.details.title for e in result]

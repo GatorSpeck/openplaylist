@@ -366,12 +366,13 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             .first()
         ).entries
 
-        entry_ids = set([e.order for e in entries])
+        entry_ids = set([e.id for e in entries])
 
         count = 0
         for entry in playlist_entries:
-            if entry.order in entry_ids:
+            if entry.id in entry_ids:
                 count += 1
+                logging.info(f"Removing entry {entry.id} from playlist {playlist_id}")
                 self.session.delete(entry)
         
         playlist = self.session.query(PlaylistDB).get(playlist_id)
@@ -614,10 +615,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         
         entries = query.all()
 
-        offset_to_use = filter.offset or 0
-
         # convert to response models
-        entries = [playlist_orm_to_response(e, order=(i + offset_to_use)) for i, e in enumerate(entries)]
+        entries = [playlist_orm_to_response(e, order=e.order) for e in entries]
         return PlaylistEntriesResponse(entries=entries)
 
     def get_details(self, playlist_id):
