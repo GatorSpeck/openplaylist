@@ -614,10 +614,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         
         entries = query.all()
 
-        offset_to_use = filter.offset or 0
-
         # convert to response models
-        entries = [playlist_orm_to_response(e, order=(i + offset_to_use)) for i, e in enumerate(entries)]
+        entries = [playlist_orm_to_response(e, order=e.order) for e in entries]
         return PlaylistEntriesResponse(entries=entries)
 
     def get_details(self, playlist_id):

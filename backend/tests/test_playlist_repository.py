@@ -234,6 +234,7 @@ def test_filter_playlist(test_db, playlist_repo, sample_playlist):
     for i in range(10):
         f = add_music_file(test_db, f"Test Song {i}")
         entry = MusicFileEntry(
+            order=i, 
             entry_type="music_file",
             music_file_id=f.id,
             details=MusicFile.from_orm(f)
@@ -245,7 +246,7 @@ def test_filter_playlist(test_db, playlist_repo, sample_playlist):
     filter = PlaylistFilter(
         filter="Song 5"
     )
-    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter).entries
 
     assert len(results) == 1
     assert results[0].details.title == "Test Song 5"
@@ -253,16 +254,20 @@ def test_filter_playlist(test_db, playlist_repo, sample_playlist):
     filter = PlaylistFilter(
         filter="Song",
         offset=0,
-        limit=5
+        limit=5,
     )
-    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter).entries
+
+    for i, entry in enumerate(results):
+        print(entry.order)
+        print(entry.details.title)
 
     assert len(results) == 5
     assert results[0].details.title == "Test Song 0"
     assert results[4].details.title == "Test Song 4"
 
     filter.offset = 5
-    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter).entries
 
     assert len(results) == 5
     assert results[0].details.title == "Test Song 5"
@@ -271,7 +276,7 @@ def test_filter_playlist(test_db, playlist_repo, sample_playlist):
     # now reverse it, keeping the same pagination settings
     filter.sortDirection = PlaylistSortDirection.DESC
 
-    results = playlist_repo.filter_playlist(sample_playlist.id, filter)
+    results = playlist_repo.filter_playlist(sample_playlist.id, filter).entries
     
     assert len(results) == 5
     assert results[0].details.title == "Test Song 4"
