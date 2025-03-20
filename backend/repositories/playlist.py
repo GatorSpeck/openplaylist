@@ -366,12 +366,13 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             .first()
         ).entries
 
-        entry_ids = set([e.order for e in entries])
+        entry_ids = set([e.id for e in entries])
 
         count = 0
         for entry in playlist_entries:
-            if entry.order in entry_ids:
+            if entry.id in entry_ids:
                 count += 1
+                logging.info(f"Removing entry {entry.id} from playlist {playlist_id}")
                 self.session.delete(entry)
         
         playlist = self.session.query(PlaylistDB).get(playlist_id)

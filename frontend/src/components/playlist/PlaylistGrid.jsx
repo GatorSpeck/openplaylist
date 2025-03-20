@@ -57,7 +57,6 @@ const Row = memo(({ data, index, style }) => {
       <div 
         style={style}
         className={`playlist-grid-row loading-row ${index % 2 === 0 ? 'even-row' : 'odd-row'}`}
-        onClick={() => toggleTrackSelection(index)}
       >
         <div className="grid-cell">{selectedEntries.includes(index) ? "✔" : index + 1}</div>
         <div className="grid-cell">Loading...</div>
@@ -70,8 +69,8 @@ const Row = memo(({ data, index, style }) => {
   
   return (
     <Draggable 
-      key={track.order}
-      draggableId={`track-${track.order}`}
+      key={track.id}
+      draggableId={`track-${track.id}`}
       index={index}
       isDragDisabled={sortColumn !== 'order'}
     >
@@ -86,9 +85,9 @@ const Row = memo(({ data, index, style }) => {
           }}
           className={`playlist-grid-row ${track.order % 2 === 0 ? 'even-row' : 'odd-row'} ${sortColumn !== 'order' ? 'drag-disabled' : ''}`}
           isDragging={snapshot.isDragging}
-          onClick={() => toggleTrackSelection(track.order)}
+          onClick={() => toggleTrackSelection(track.id)}
           onContextMenu={(e) => handleContextMenu(e, track)}
-          isChecked={selectedEntries.includes(track.order)}
+          isChecked={selectedEntries.includes(track.id)}
           track={track}
         />
       )}
@@ -376,14 +375,16 @@ const PlaylistGrid = ({ playlistID }) => {
 
     pushToHistory(entries);
 
+    const entriesToRemove = entries.filter((e) => indexes.includes(e.id));
+
     const newEntries = entries
-      .filter((_, index) => !indexes.includes(index))
+      .filter((e) => !indexes.includes(e.id))
       .map((entry, index) => ({ ...entry, order: index }));
     
     setEntries(newEntries);
     setTotalCount(prevCount => prevCount - length);
 
-    playlistRepository.removeTracks(playlistID, indexes.map(i => entries[i]));
+    playlistRepository.removeTracks(playlistID, entriesToRemove);
   }
 
   const exportPlaylist = async (id) => {
