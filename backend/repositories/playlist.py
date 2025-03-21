@@ -336,6 +336,15 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         this_playlist = self.session.query(PlaylistDB).get(playlist_id)
         if this_playlist is None:
             raise ValueError(f"Playlist with ID {playlist_id} not found")
+        
+        def get_current_order():
+            current_order = len(this_playlist.entries)
+
+            while True:
+                yield current_order
+                current_order += 1
+
+        order_generator = get_current_order()
 
         # Batch process entries in chunks
         CHUNK_SIZE = 1000
@@ -344,7 +353,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             
             # Create all entries for this chunk
             playlist_entries = [
-                entry.to_playlist(playlist_id)
+                entry.to_playlist(playlist_id, order=next(order_generator))
                 for entry in chunk
             ]
             
@@ -466,11 +475,13 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         return [playlist_orm_to_response(e) for e in entries]
     
     def undo_reorder_entries(self, playlist_id: int, indices_to_reorder: List[int], new_index: int):
-        playlist_entries = (
+        playlist = (
             self._get_playlist_query(playlist_id, details=False)
             .filter(self.model.id == playlist_id)
             .first()
-        ).entries
+        )
+        
+        playlist_entries = playlist.entries
 
         entries_to_move = []
         for _ in indices_to_reorder:
@@ -481,7 +492,20 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         for i in reversed_list:
             entry = entries_to_move.pop(0)
             playlist_entries.insert(i, entry)
-
+        
+        # First set all entries to temporary negative order values to avoid unique constraint violations
+        for i, entry in enumerate(playlist_entries):
+            entry.order = -(i + 1)  # Using negative values to avoid conflicts
+        
+        # Flush changes to database
+        self.session.flush()
+        
+        # Now set the final order values
+        for i, entry in enumerate(playlist_entries):
+            entry.order = i
+        
+        playlist.updated_at = func.now()
+        
         self.session.commit()
 
     def reorder_entries(self, playlist_id: int, indices_to_reorder: List[int], new_index: int):
@@ -495,11 +519,23 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
         reversed_list = sorted(indices_to_reorder, reverse=True)
 
+        # pull moved entries out of the list
         entries_to_move = [playlist_entries.pop(i) for i in reversed_list]
 
         # move block of entries to new index
-        for entry in entries_to_move:
+        for entry in entries_to_move:  # Insert in reverse order to maintain order
             playlist_entries.insert(new_index, entry)
+        
+        # First set all entries to temporary negative order values to avoid unique constraint violations
+        for i, entry in enumerate(playlist_entries):
+            entry.order = -(i + 1)  # Using negative values to avoid conflicts
+        
+        # Flush changes to database
+        self.session.flush()
+        
+        # Now set the final order values
+        for i, entry in enumerate(playlist_entries):
+            entry.order = i
         
         playlist.updated_at = func.now()
         
@@ -615,8 +651,10 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         
         entries = query.all()
 
+        offset_to_use = filter.offset or 0
+
         # convert to response models
-        entries = [playlist_orm_to_response(e, order=e.order) for e in entries]
+        entries = [playlist_orm_to_response(e, order=e.order) for i, e in enumerate(entries)]
         return PlaylistEntriesResponse(entries=entries)
 
     def get_details(self, playlist_id):
@@ -649,11 +687,15 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         new_entry_db = new_entry.to_playlist(playlist_id)
         
         # Copy the order from the existing entry
-        new_entry_db.order = existing_entry.order
+        new_entry_db.order = None
+
+        original_order = existing_entry.order
         
         # Replace the existing entry with the new one
         self.session.delete(existing_entry)
+        self.session.flush()
         self.session.add(new_entry_db)
+        new_entry_db.order = original_order
 
         this_playlist = self.session.query(PlaylistDB).get(playlist_id)
         this_playlist.updated_at = func.now()
@@ -763,4 +805,3 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             p.pinned_order = i
         
         self.session.commit()
-    

@@ -688,7 +688,8 @@ const PlaylistGrid = ({ playlistID }) => {
       if (trackIndex === -1) return;
       
       // Create a new album entry with the Last.fm metadata
-      const newAlbum = selectedMatch.toRequestedAlbum();
+      let newAlbum = selectedMatch.toRequestedAlbum();
+      newAlbum.order = albumToMatch.order;
       
       // Update backend
       console.log(albumToMatch.id);
@@ -939,7 +940,7 @@ const PlaylistGrid = ({ playlistID }) => {
                 {...provided.draggableProps}
                 {...provided.dragHandleProps}
                 isDragging={snapshot.isDragging}
-                track={entries[rubric.source.index]}
+                entry={new PlaylistEntry(entries[rubric.source.index])}
                 isChecked={selectedEntries.includes(rubric.source.index)}
                 handleContextMenu={handleContextMenu}
                 className="playlist-grid-row"

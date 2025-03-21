@@ -237,8 +237,9 @@ class MusicFileEntry(PlaylistEntryBase):
     music_file_id: int
     details: Optional[MusicFile] = None
 
-    def to_playlist(self, playlist_id) -> MusicFileEntryDB:
+    def to_playlist(self, playlist_id, order=None) -> MusicFileEntryDB:
         return MusicFileEntryDB(
+            order=order,
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             music_file_id=self.music_file_id,
@@ -270,8 +271,9 @@ class NestedPlaylistEntry(PlaylistEntryBase):
     playlist_id: int
     details: Optional[PlaylistBase] = None
 
-    def to_playlist(self, playlist_id) -> NestedPlaylistEntryDB:
+    def to_playlist(self, playlist_id, order=None) -> NestedPlaylistEntryDB:
         return NestedPlaylistEntryDB(
+            order=order,
             entry_type=self.entry_type,
             playlist_id=playlist_id,
             date_added = self.date_added or datetime.now()
@@ -303,8 +305,9 @@ class LastFMEntry(PlaylistEntryBase):
     lastfm_track_id: Optional[int] = None
     details: Optional[LastFMTrack] = None
 
-    def to_playlist(self, playlist_id) -> LastFMEntryDB:
+    def to_playlist(self, playlist_id, order=None) -> LastFMEntryDB:
         return LastFMEntryDB(
+            order=order,
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             lastfm_track_id=self.lastfm_track_id,
@@ -346,8 +349,9 @@ class RequestedTrackEntry(PlaylistEntryBase):
     requested_track_id: Optional[int] = None
     details: Optional[TrackDetails] = None
 
-    def to_playlist(self, playlist_id) -> RequestedTrackEntryDB:
+    def to_playlist(self, playlist_id, order=None) -> RequestedTrackEntryDB:
         return RequestedTrackEntryDB(
+            order=order,
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             requested_track_id=self.requested_track_id,
@@ -391,8 +395,9 @@ class AlbumEntry(PlaylistEntryBase):
     album_id: Optional[int] = None
     details: Optional[Album] = None
 
-    def to_playlist(self, playlist_id) -> AlbumEntryDB:
+    def to_playlist(self, playlist_id, order=None) -> AlbumEntryDB:
         return AlbumEntryDB(
+            order=order,
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             album_id=self.album_id,
@@ -431,8 +436,9 @@ class RequestedAlbumEntry(PlaylistEntryBase):
     details: Optional[Album] = None
     requested_album_id: Optional[int] = None
 
-    def to_playlist(self, playlist_id) -> RequestedAlbumEntryDB:
+    def to_playlist(self, playlist_id, order=None) -> RequestedAlbumEntryDB:
         return RequestedAlbumEntryDB(
+            order=order,
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             album_id=self.requested_album_id,

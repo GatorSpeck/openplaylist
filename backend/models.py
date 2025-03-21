@@ -219,6 +219,8 @@ class PlaylistEntryDB(Base):
 
     __mapper_args__ = {"polymorphic_on": entry_type, "polymorphic_identity": "entry"}
 
+    __table_args__ = (Index("uq_playlist_entries_playlist_id_order", "playlist_id", "order", unique=True),)
+
 Index("playlist_entries_playlist_idx", PlaylistEntryDB.playlist_id)
 
 # Add a composite index on playlist entries table
