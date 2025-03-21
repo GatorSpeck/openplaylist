@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Modal from '../common/Modal';
 import lastFMRepository from '../../repositories/LastFMRepository';
 import { BiLoaderAlt } from 'react-icons/bi';
+import PlaylistEntry from '../../lib/PlaylistEntry';
 
 const MatchAlbumModal = ({ isOpen, onClose, track, initialMatches, onMatchSelect, setSnackbar }) => {
   const [searchQuery, setSearchQuery] = useState(`${track?.artist || ''} ${track?.album || track?.title || ''}`);
@@ -20,7 +21,8 @@ const MatchAlbumModal = ({ isOpen, onClose, track, initialMatches, onMatchSelect
         });
         return;
       }
-      setMatches(results);
+
+      setMatches(results.map(album => new PlaylistEntry(album)));
     } catch (error) {
       console.error('Error searching for albums:', error);
       setSnackbar({
@@ -38,8 +40,8 @@ const MatchAlbumModal = ({ isOpen, onClose, track, initialMatches, onMatchSelect
       <div className="match-album-modal">
         <div className="album-info">
           <h4>Looking for album match for:</h4>
-          <p className="album-title">{track?.album || track?.title || 'Unknown Album'}</p>
-          <p className="album-artist">by {track?.artist || 'Unknown Artist'}</p>
+          <p className="album-title">{track.getAlbum() || 'Unknown Album'}</p>
+          <p className="album-artist">by {track.getAlbumArtist() || 'Unknown Artist'}</p>
         </div>
 
         <div className="search-controls">
@@ -66,17 +68,17 @@ const MatchAlbumModal = ({ isOpen, onClose, track, initialMatches, onMatchSelect
               {matches.map((album, index) => (
                 <div key={index} className="album-match" onClick={() => onMatchSelect(album)}>
                   <div className="album-cover">
-                    {album.art_url ? (
-                      <img src={album.art_url} alt={album.name} />
+                    {album.details.art_url ? (
+                      <img src={album.details.art_url} alt={album.getAlbum()} />
                     ) : (
                       <div className="no-image">No Image</div>
                     )}
                   </div>
                   <div className="album-details">
-                    <p className="album-name">{album.title}</p>
-                    <p className="album-artist">{album.artist}</p>
+                    <p className="album-name">{album.getAlbum()}</p>
+                    <p className="album-artist">{album.getAlbumArtist()}</p>
                     {album.tracks && (
-                      <p className="track-count">{album.tracks.length} tracks</p>
+                      <p className="track-count">{album.details.tracks.length} tracks</p>
                     )}
                   </div>
                 </div>

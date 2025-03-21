@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Modal from '../common/Modal';
 import { formatDuration } from '../../lib/misc';
 import libraryRepository from '../../repositories/LibraryRepository';
+import PlaylistEntry from '../../lib/PlaylistEntry';
 
 const MatchTrackModal = ({ 
   isOpen, 
@@ -22,7 +23,7 @@ const MatchTrackModal = ({
       const results = await libraryRepository.searchLibrary(searchQuery);
       
       if (results && results.length > 0) {
-        setMatchingTracks(results);
+        setMatchingTracks(results.map((track) => new PlaylistEntry(track)));
       } else {
         setSnackbar({
           open: true,
@@ -44,14 +45,15 @@ const MatchTrackModal = ({
 
   return (
     <Modal
-      title={`Select a match for "${track?.title}"`}
+      open={isOpen}
+      title={`Select a match for "${track.getTitle()}"`}
       onClose={onClose}
     >
       <div className="match-search-container">
         <input
           type="text"
           placeholder="Search for more matches..."
-          defaultValue={`${track?.artist || ''} ${track?.title || ''}`}
+          defaultValue={`${track.getArtist() || ''} ${track.getTitle() || ''}`}
           className="match-search-input"
           ref={(input) => input && setTimeout(() => input.select(), 100)}
           onKeyDown={(e) => e.key === 'Enter' && document.getElementById('match-search-button').click()}
@@ -71,9 +73,9 @@ const MatchTrackModal = ({
             className="match-item"
             onClick={() => onMatchSelect(match)}
           >
-            <div>{match.artist} - {match.title}</div>
+            <div>{match.getArtist()} - {match.getTitle()}</div>
             <div className="match-details">
-              Album: {match.album} | {match.duration ? formatDuration(match.duration) : 'Unknown duration'}
+              Album: {match.getAlbum()} | {match.details.duration ? formatDuration(match.details.duration) : 'Unknown duration'}
             </div>
           </div>
         ))}

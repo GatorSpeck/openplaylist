@@ -160,12 +160,19 @@ def test_reorder(test_db, playlist_repo, sample_playlist, sample_music_file):
     playlist_repo.reorder_entries(sample_playlist.id, [1, 3], 0)
 
     result = playlist_repo.get_with_entries(sample_playlist.id)
+    print(list([e.details.title for e in result.entries]))
     assert [e.details.title for e in result.entries[0:5]] == ["Test Song 1", "Test Song 3", "Test Song 0", "Test Song 2", "Test Song 4"]
 
+    # undo
     playlist_repo.undo_reorder_entries(sample_playlist.id, [1, 3], 0)
 
     result = playlist_repo.get_with_entries(sample_playlist.id)
     assert [e.details.title for e in result.entries] == [e.details.title for e in initial_entries]
+
+    playlist_repo.reorder_entries(sample_playlist.id, [4], 3)
+
+    result = playlist_repo.get_with_entries(sample_playlist.id)
+    assert [e.details.title for e in result.entries[0:5]] == ["Test Song 0", "Test Song 1", "Test Song 2", "Test Song 4", "Test Song 3"]
 
 def test_playlist_pagination(playlist_repo, test_db):
     # Create a playlist with multiple entries
@@ -234,7 +241,6 @@ def test_filter_playlist(test_db, playlist_repo, sample_playlist):
     for i in range(10):
         f = add_music_file(test_db, f"Test Song {i}")
         entry = MusicFileEntry(
-            order=i, 
             entry_type="music_file",
             music_file_id=f.id,
             details=MusicFile.from_orm(f)
@@ -268,6 +274,10 @@ def test_filter_playlist(test_db, playlist_repo, sample_playlist):
 
     filter.offset = 5
     results = playlist_repo.filter_playlist(sample_playlist.id, filter).entries
+
+    for i, entry in enumerate(results):
+        print(entry.order)
+        print(entry.details.title)
 
     assert len(results) == 5
     assert results[0].details.title == "Test Song 5"

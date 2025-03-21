@@ -4,7 +4,7 @@ import '../../styles/PlaylistGrid.css';
 import lastFMRepository from '../../repositories/LastFMRepository';
 
 const PlaylistEntryRow = forwardRef(({ 
-  track, 
+  entry, 
   isChecked, 
   onClick, 
   onContextMenu,
@@ -18,30 +18,24 @@ const PlaylistEntryRow = forwardRef(({
 
   useEffect(() => {
     const fetchAlbumArt = async () => {
-        if (track.details.art_url) {
-          setImageUrl(track.details.art_url);
+        if (entry.details.art_url) {
+          setImageUrl(entry.details.art_url);
           return;
         }
         
-        const artistToFetch = track.album_artist || track.artist;
-        const url = await lastFMRepository.fetchAlbumArt(artistToFetch, track.album);
+        const url = await lastFMRepository.fetchAlbumArt(entry.getAlbumArtist(), entry.details.album);
         if (!url) return;
         setImageUrl(url.image_url);
     }
 
     fetchAlbumArt();
-  }, [track]);
+  }, [entry]);
 
-  const isAlbum = track.entry_type === "album" || track.entry_type === "requested_album";
-
-  const contents = isAlbum ? (
+  const contents = entry.isAlbum() ? (
     <div onClick={() => setIsExpanded(!isExpanded)}>
-      {isExpanded ? track.details.tracks.map(track => track.linked_track.title).join(', ') : `(${track.details.tracks.length} tracks)`}
+      {isExpanded ? entry.details.tracks.map(track => track.linked_track.title).join(', ') : `(${entry.details.tracks.length} tracks)`}
     </div>
-  ) : track.title;
-
-  const artistToUse = track.artist || track.album_artist;
-  const albumTitle = isAlbum ? track.title : track.album;
+  ) : entry.getTitle();
 
   return (
     <div 
@@ -61,15 +55,15 @@ const PlaylistEntryRow = forwardRef(({
             </div>
         ) : (
             <div>
-                <EntryTypeBadge type={track.entry_type} />
+                <EntryTypeBadge type={entry.entry_type} />
             </div>
         ))}
       </div>
       
       <div className="grid-cell artist-cell">
         <div className="track-info">
-          <div className="artist truncate-text">{artistToUse}</div>
-          <div className="album truncate-text" overflow="auto"><i>{albumTitle}</i></div>
+          <div className="artist truncate-text">{entry.getArtist()}</div>
+          <div className="album truncate-text" overflow="auto"><i>{entry.getAlbum()}</i></div>
         </div>
       </div>
       <div className="grid-cell truncate-text" overflow="auto">

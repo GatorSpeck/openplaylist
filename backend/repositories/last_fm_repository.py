@@ -103,6 +103,7 @@ class last_fm_repository:
             title=album.get("name"),
             artist=album.get("artist"),
             art_url=album.get("image")[-1].get("#text"),
+            url=album.get("url"),
             tracks=[]
         ) for album in albums]
 
