@@ -25,6 +25,7 @@ import Modal from '../common/Modal';
 import MatchTrackModal from './MatchTrackModal';
 import MatchAlbumModal from './MatchAlbumModal';
 import EditItemModal from './EditItemModal';
+import PlaylistEntry from '../../lib/PlaylistEntry';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -46,11 +47,13 @@ const Row = memo(({ data, index, style }) => {
     sortColumn,
     provided 
   } = data;
-  
+
+  const track = ((index >= entries.length) || !entries[index]) ? null : new PlaylistEntry(entries[index]);
+
   // Check if we have real data for this index
   if (
-    (index >= entries.length) || !entries[index] ||
-    (!entries[index].details?.title && !entries[index].details?.artist)
+    !track ||
+    !track.hasDetails()
   ){
     // Return a placeholder/loading row
     return (
@@ -64,8 +67,6 @@ const Row = memo(({ data, index, style }) => {
       </div>
     );
   }
-  
-  const track = entries[index];
   
   return (
     <Draggable 
@@ -88,7 +89,7 @@ const Row = memo(({ data, index, style }) => {
           onClick={() => toggleTrackSelection(track.id)}
           onContextMenu={(e) => handleContextMenu(e, track)}
           isChecked={selectedEntries.includes(track.id)}
-          track={track}
+          entry={track}
         />
       )}
     </Draggable>
@@ -1025,7 +1026,7 @@ const PlaylistGrid = ({ playlistID }) => {
 
       {showTrackDetails && (
         <TrackDetailsModal
-          track={selectedTrack}
+          entry={selectedTrack}
           onClose={() => setShowTrackDetails(false)}
         />
       )}
