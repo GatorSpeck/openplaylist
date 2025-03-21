@@ -342,6 +342,8 @@ const PlaylistGrid = ({ playlistID }) => {
   };
 
   const onRemoveByAlbum = async (album) => {
+    if (!album) return;
+
     // identify indexes of tracks to remove
     const indexes = entries.map((entry, idx) => entry.album === album ? idx : null).filter(idx => idx !== null);
     
@@ -350,6 +352,8 @@ const PlaylistGrid = ({ playlistID }) => {
   }
 
   const onRemoveByArtist = async (artist) => {
+    if (!artist) return;
+
     const indexes = entries.map((entry, idx) => entry.artist === artist ? idx : null).filter(idx => idx !== null);
 
     playlistRepository.removeTracks(playlistID, indexes.map(i => entries[i]));
@@ -546,8 +550,8 @@ const PlaylistGrid = ({ playlistID }) => {
     const newTrack = {
       order: track.order,
       details: {
-        artist: track.artist,
-        title: track.title,
+        artist: track.details.artist,
+        title: track.details.title,
       },
       entry_type: 'requested'
     };
@@ -567,15 +571,17 @@ const PlaylistGrid = ({ playlistID }) => {
   const matchTrack = async (track) => {
     try {
       setPlaylistLoading(true);
+
+      console.log(track);
       
       // Search for potential matches based on track info
-      const searchQuery = `${track.artist} ${track.title}`;
+      const searchQuery = `${track.getArtist()} ${track.getTitle()}`;
       const potentialMatches = await libraryRepository.searchLibrary(searchQuery);
       
       if (!potentialMatches || potentialMatches.length === 0) {
         setSnackbar({
           open: true,
-          message: `No matching tracks found for "${track.title}"`,
+          message: `No matching tracks found for "${track.getTitle()}"`,
           severity: 'warning'
         });
       }
@@ -607,10 +613,11 @@ const PlaylistGrid = ({ playlistID }) => {
       // Create the new track entry
       const newTrack = {
         ...mapToTrackModel(selectedMatch),
+        id: trackToMatch.id,
         order: trackToMatch.order,
         music_file_id: selectedMatch.id,
         entry_type: 'music_file',
-        details: selectedMatch
+        details: selectedMatch.details
       };
       
       // Update backend
@@ -627,7 +634,7 @@ const PlaylistGrid = ({ playlistID }) => {
       
       setSnackbar({
         open: true,
-        message: `Track "${trackToMatch.title}" matched to "${selectedMatch.title}"`,
+        message: `Track "${trackToMatch.details.title}" matched to "${selectedMatch.details.title}"`,
         severity: 'success'
       });
     } catch (error) {
@@ -644,15 +651,17 @@ const PlaylistGrid = ({ playlistID }) => {
     try {
       setPlaylistLoading(true);
       
-      const albumResults = await lastFMRepository.searchAlbum(album.title, album.artist);
+      const albumResults = await lastFMRepository.searchAlbum(album.details.title, album.details.artist);
       
       if (!albumResults || albumResults.length === 0) {
         setSnackbar({
           open: true,
-          message: `No matching albums found for "${album.album || album.title}"`,
+          message: `No matching albums found for "${album.details.album || album.details.title}"`,
           severity: 'warning'
         });
       }
+
+      console.log(album);
       
       // Set up the modal state for album matching
       setAlbumMatchResults(albumResults);
@@ -679,22 +688,10 @@ const PlaylistGrid = ({ playlistID }) => {
       if (trackIndex === -1) return;
       
       // Create a new album entry with the Last.fm metadata
-      const newAlbum = {
-        ...albumToMatch,
-        title: selectedMatch.title,
-        artist: selectedMatch.artist,
-        art_url: selectedMatch.image_url || selectedMatch.art_url,
-        entry_type: 'requested_album',
-        details: {
-          ...albumToMatch.details,
-          title: selectedMatch.title,
-          artist: selectedMatch.artist,
-          art_url: selectedMatch.image_url || selectedMatch.art_url,
-          tracks: selectedMatch.tracks || []
-        }
-      };
+      const newAlbum = selectedMatch.toRequestedAlbum();
       
       // Update backend
+      console.log(albumToMatch.id);
       await playlistRepository.replaceTrack(playlistID, albumToMatch.id, newAlbum);
       
       // Update local state
@@ -707,7 +704,7 @@ const PlaylistGrid = ({ playlistID }) => {
       
       setSnackbar({
         open: true,
-        message: `Album matched to "${selectedMatch.title}" by ${selectedMatch.artist}`,
+        message: `Album matched to "${selectedMatch.details.title}" by ${selectedMatch.details.artist}`,
         severity: 'success'
       });
     } catch (error) {
@@ -731,14 +728,14 @@ const PlaylistGrid = ({ playlistID }) => {
     const options = [
       { label: 'Details', onClick: () => handleShowDetails(track) },
       canEdit ? { label: 'Edit Details', onClick: () => handleEditItem(track) } : null,
-      { label: 'Send to Search', onClick: () => searchFor(track.title) },
+      { label: 'Send to Search', onClick: () => searchFor(track.getTitle()) },
       !isAlbum ? { label: 'Find Similar Tracks (Last.fm)', onClick: (e) => findSimilarTracks(e, track) } : null,
       !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: (e) => findSimilarTracksWithOpenAI(e, track) } : null,
-      { label: 'Search for Album', onClick: () => searchFor(track.album) },
-      { label: 'Search for Artist', onClick: () => searchFor(track.artist) },
+      { label: 'Search for Album', onClick: () => searchFor(track.getAlbum()) },
+      { label: 'Search for Artist', onClick: () => searchFor(track.getAlbumArtist()) },
       { label: 'Remove', onClick: () => removeSongsFromPlaylist([track.order]) },
-      { label: 'Remove by Artist', onClick: () => onRemoveByArtist(track.artist) },
-      { label: 'Remove by Album', onClick: () => onRemoveByAlbum(track.album) },
+      { label: 'Remove by Artist', onClick: () => onRemoveByArtist(track.details.artist) },
+      { label: 'Remove by Album', onClick: () => onRemoveByAlbum(track.details.album) },
       isRequestedTrack ? { label: 'Match to Music File', onClick: () => matchTrack(track) } : null,
       isMusicFile ? { label: 'Re-Match Track', onClick: () => matchTrack(track) } : null,
       isMusicFile ? { label: 'Unmatch Track', onClick: () => unMatchTrack(track) } : null,
@@ -833,18 +830,19 @@ const PlaylistGrid = ({ playlistID }) => {
       // Create updated item with edited details
       const updatedItem = {
         ...itemToEdit,
-        title: editedItem.title,
-        artist: editedItem.artist,
-        album: isAlbum ? editedItem.title : editedItem.album,
+        title: editedItem.details.title,
+        artist: editedItem.details.artist,
+        album: isAlbum ? editedItem.title : editedItem.details.album,
         details: {
           ...itemToEdit.details,
-          title: editedItem.title,
-          artist: editedItem.artist,
-          album: isAlbum ? editedItem.title : editedItem.album,
+          title: editedItem.details.title,
+          artist: editedItem.details.artist,
+          album: isAlbum ? editedItem.details.title : editedItem.details.album,
         }
       };
       
       // Update backend
+      console.log(itemToEdit.id);
       await playlistRepository.replaceTrack(playlistID, itemToEdit.id, updatedItem);
       
       // Update local state
@@ -1064,7 +1062,7 @@ const PlaylistGrid = ({ playlistID }) => {
           isOpen={matchModalOpen}
           onClose={() => setMatchModalOpen(false)}
           track={trackToMatch}
-          initialMatches={matchingTracks}
+          initialMatches={matchingTracks.map(track => new PlaylistEntry(track))}
           onMatchSelect={replaceTrackWithMatch}
           setSnackbar={setSnackbar}
         />
@@ -1075,7 +1073,7 @@ const PlaylistGrid = ({ playlistID }) => {
           isOpen={albumMatchModalOpen}
           onClose={() => setAlbumMatchModalOpen(false)}
           track={albumToMatch}
-          initialMatches={albumMatchResults}
+          initialMatches={albumMatchResults.map(album => new PlaylistEntry(album))}
           onMatchSelect={replaceAlbumWithMatch}
           setSnackbar={setSnackbar}
         />

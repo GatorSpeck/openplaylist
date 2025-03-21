@@ -24,29 +24,28 @@ class PlaylistEntry {
     
     // Track details - handles both direct properties and nested details object
     const detailsToUse = entryData.details || entryData;
-    this.title = detailsToUse.title || null;
-    this.artist = detailsToUse.artist || null;
-    this.album = detailsToUse.album || null;
-    this.album_artist = detailsToUse.album_artist || null;
-    this.year = detailsToUse.year || null;
-    this.length = detailsToUse.length || 0;
-    this.genres = detailsToUse.genres || [];
-    this.path = detailsToUse.path || null;
-    this.publisher = detailsToUse.publisher || null;
-    this.kind = detailsToUse.kind || null;
-    this.missing = detailsToUse.missing || false;
-    this.track_number = detailsToUse.track_number || null;
-    this.disc_number = detailsToUse.disc_number || null;
-    this.url = entryData.url || detailsToUse.url || null;
-    this.art_url = detailsToUse.art_url || null;
+    this.details = {};
+
+    this.details.title = detailsToUse.title || null;
+    this.details.artist = detailsToUse.artist || null;
+    this.details.album = detailsToUse.album || null;
+    this.details.album_artist = detailsToUse.album_artist || null;
+    this.details.year = detailsToUse.year || null;
+    this.details.length = detailsToUse.length || 0;
+    this.details.genres = detailsToUse.genres || [];
+    this.details.path = detailsToUse.path || null;
+    this.details.publisher = detailsToUse.publisher || null;
+    this.details.kind = detailsToUse.kind || null;
+    this.details.missing = detailsToUse.missing || false;
+    this.details.track_number = detailsToUse.track_number || null;
+    this.details.disc_number = detailsToUse.disc_number || null;
+    this.details.url = entryData.url || detailsToUse.url || null;
+    this.details.art_url = detailsToUse.art_url || null;
     
     // For album types, handle tracks
     if (detailsToUse.tracks) {
-      this.tracks = detailsToUse.tracks;
+      this.details.tracks = detailsToUse.tracks;
     }
-    
-    // Keep original details if needed
-    this.details = entryData.details || null;
   }
 
   hasDetails() {
@@ -54,19 +53,19 @@ class PlaylistEntry {
   }
 
   getAlbumArtist() {
-    return this.album_artist || this.artist;
+    return this.details.album_artist || this.details.artist;
   }
 
   getArtist() {
-    return this.artist || this.album_artist;
+    return this.details.artist || this.details.album_artist;
   }
 
   getTitle() {
-    return !this.isAlbum() ? this.title : this.album;
+    return !this.isAlbum() ? this.details.title : this.details.album;
   }
 
   getAlbum() {
-    return this.isAlbum() ? this.title : this.album;
+    return this.isAlbum() ? this.details.title : this.details.album;
   }
 
   isAlbum() {
@@ -98,14 +97,6 @@ class PlaylistEntry {
   }
 
   /**
-   * Check if this entry is an album
-   * @returns {boolean}
-   */
-  isAlbum() {
-    return this.entry_type === 'album' || this.entry_type === 'requested_album';
-  }
-
-  /**
    * Check if this entry can be edited
    * @returns {boolean}
    */
@@ -118,17 +109,20 @@ class PlaylistEntry {
    * @returns {PlaylistEntry} New entry with requested track type
    */
   toRequestedTrack() {
+    console.log(this);
     return new PlaylistEntry({
       ...this,
       entry_type: 'requested',
       music_file_id: null,
-      lastfm_track_id: null,
-      details: {
-        title: this.title,
-        artist: this.artist,
-        album: this.album,
-        album_artist: this.album_artist
-      }
+      lastfm_track_id: null
+    });
+  }
+
+  toRequestedAlbum() {
+    return new PlaylistEntry({
+      ...this,
+      details: this.details,
+      entry_type: 'requested_album'
     });
   }
 
@@ -201,10 +195,10 @@ class PlaylistEntry {
    * @returns {string}
    */
   getDisplayTitle() {
-    if (this.isAlbum() && this.tracks) {
-      return `${this.title} (${this.tracks.length} tracks)`;
+    if (this.isAlbum() && this.details.tracks) {
+      return `${this.details.title} (${this.details.tracks.length} tracks)`;
     }
-    return this.title || 'Unknown Title';
+    return this.details.title || 'Unknown Title';
   }
 
   /**
@@ -212,7 +206,7 @@ class PlaylistEntry {
    * @returns {string}
    */
   getDisplayArtist() {
-    return this.artist || this.album_artist || 'Unknown Artist';
+    return this.details.artist || this.details.album_artist || 'Unknown Artist';
   }
 
   /**
@@ -221,9 +215,9 @@ class PlaylistEntry {
    */
   getDisplayAlbum() {
     if (this.isAlbum()) {
-      return this.title || 'Unknown Album';
+      return this.details.title || 'Unknown Album';
     }
-    return this.album || 'Unknown Album';
+    return this.details.album || 'Unknown Album';
   }
 }
 

@@ -41,26 +41,26 @@ const TrackDetailsModal = ({ entry, onClose }) => {
         <div className="track-details">
           <p><strong>ID:</strong> {entry.id}</p>
           <p><strong>Title:</strong> {entry.getTitle()}</p>
-          <p><strong>Artist:</strong> {entry.artist}</p>
-          <p><strong>Album Artist:</strong> {entry.album_artist}</p>
+          <p><strong>Artist:</strong> {entry.details.artist}</p>
+          <p><strong>Album Artist:</strong> {entry.details.album_artist}</p>
           <p><strong>Album:</strong> {entry.getAlbum()}</p>
-          {entry.disc_number ? <p><strong>Disc:</strong>{entry.disc_number}</p> : null}
-          {entry.track_number ? <p><strong>Track:</strong>{entry.track_number}</p> : null}
-          {entry.length ? <p><strong>Length:</strong> {formatDuration(entry.length)}</p> : null}
-          <p><strong>Release Date:</strong> {releaseDate || entry.year}</p>
-          <p><strong>Genres:</strong> {entry.genres ? entry.genres.join(", ") : null}</p>
-          {entry.path ? (<p><strong>Path:</strong>
-            {entry.missing ? <s>{entry.path}</s> : <span>{entry.path}</span>}
+          {entry.details.disc_number ? <p><strong>Disc:</strong>{entry.details.disc_number}</p> : null}
+          {entry.details.track_number ? <p><strong>Track:</strong>{entry.details.track_number}</p> : null}
+          {entry.details.length ? <p><strong>Length:</strong> {formatDuration(entry.details.length)}</p> : null}
+          <p><strong>Release Date:</strong> {releaseDate || entry.details.year}</p>
+          <p><strong>Genres:</strong> {entry.details.genres ? entry.details.genres.join(", ") : null}</p>
+          {entry.details.path ? (<p><strong>Path:</strong>
+            {entry.details.missing ? <s>{entry.details.path}</s> : <span>{entry.details.path}</span>}
           </p>) : null}
-          {entry.publisher ? <p><strong>Publisher:</strong> {entry.publisher}</p> : null}
-          {entry.kind ? <p><strong>Kind:</strong> {entry.kind}</p> : null}
-          {entry.url ? <p><strong>URL:</strong> <a href={entry.url}>{entry.url}</a></p> : null}
-          {entry.notes ? <p><strong>Notes:</strong> {entry.notes}</p> : null}
-          {entry.comments ? <p><strong>Comments:</strong> {entry.comments}</p> : null}
-          {entry.size ? <p><strong>Size:</strong> {formatSize(entry.size)}</p> : null}
+          {entry.details.publisher ? <p><strong>Publisher:</strong> {entry.details.publisher}</p> : null}
+          {entry.details.kind ? <p><strong>Kind:</strong> {entry.details.kind}</p> : null}
+          {entry.details.url ? <p><strong>URL:</strong> <a href={entry.details.url}>{entry.details.url}</a></p> : null}
+          {entry.details.notes ? <p><strong>Notes:</strong> {entry.details.notes}</p> : null}
+          {entry.details.comments ? <p><strong>Comments:</strong> {entry.details.comments}</p> : null}
+          {entry.details.size ? <p><strong>Size:</strong> {formatSize(entry.details.size)}</p> : null}
           {dateAdded ? <p><strong>Date Added to Playlist:</strong> {dateAdded}</p> : null}
-          {entry.last_scanned ? <p><strong>Last Scanned:</strong> {formatDate(entry.last_scanned, 'MMMM Do YYYY, h:mm:ss a')}</p> : null}
-          {entry.first_scanned ? <p><strong>First Scanned:</strong> {formatDate(entry.first_scanned, 'MMMM Do YYYY, h:mm:ss a')}</p> : null}
+          {entry.details.last_scanned ? <p><strong>Last Scanned:</strong> {formatDate(entry.details.last_scanned, 'MMMM Do YYYY, h:mm:ss a')}</p> : null}
+          {entry.details.first_scanned ? <p><strong>First Scanned:</strong> {formatDate(entry.details.first_scanned, 'MMMM Do YYYY, h:mm:ss a')}</p> : null}
           {playlistsList}
         </div>
         <div className="modal-actions">

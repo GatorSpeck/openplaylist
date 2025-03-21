@@ -18,12 +18,12 @@ const PlaylistEntryRow = forwardRef(({
 
   useEffect(() => {
     const fetchAlbumArt = async () => {
-        if (entry.art_url) {
-          setImageUrl(entry.art_url);
+        if (entry.details.art_url) {
+          setImageUrl(entry.details.art_url);
           return;
         }
         
-        const url = await lastFMRepository.fetchAlbumArt(entry.getAlbumArtist(), entry.album);
+        const url = await lastFMRepository.fetchAlbumArt(entry.getAlbumArtist(), entry.details.album);
         if (!url) return;
         setImageUrl(url.image_url);
     }
@@ -33,7 +33,7 @@ const PlaylistEntryRow = forwardRef(({
 
   const contents = entry.isAlbum() ? (
     <div onClick={() => setIsExpanded(!isExpanded)}>
-      {isExpanded ? entry.tracks.map(track => track.linked_track.title).join(', ') : `(${entry.tracks.length} tracks)`}
+      {isExpanded ? entry.details.tracks.map(track => track.linked_track.title).join(', ') : `(${entry.details.tracks.length} tracks)`}
     </div>
   ) : entry.getTitle();
 

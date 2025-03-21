@@ -9,8 +9,8 @@ export class LastFMRepository {
         try {
             const response = await axios.get(`/api/lastfm/similar`, {
                 params: {
-                artist: track.artist,
-                title: track.title
+                artist: track.getArtist(),
+                title: track.getTitle()
                 }
             });
 

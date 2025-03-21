@@ -183,6 +183,7 @@ class Album(MusicEntity):
     publisher: Optional[str] = None
     tracks: List[AlbumTrack] = []
     art_url: Optional[str] = None
+    url: Optional[str] = None
 
     @classmethod
     def from_orm(cls, obj: AlbumDB):
