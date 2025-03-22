@@ -1,19 +1,35 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Modal from '../common/Modal';
-import lastFMRepository from '../../repositories/LastFMRepository';
+import lastFMRepository, { LastFMRepository } from '../../repositories/LastFMRepository';
 import { BiLoaderAlt } from 'react-icons/bi';
 import PlaylistEntry from '../../lib/PlaylistEntry';
 
-const MatchAlbumModal = ({ isOpen, onClose, track, initialMatches, onMatchSelect, setSnackbar }) => {
-  const [searchQuery, setSearchQuery] = useState(`${track?.artist || ''} ${track?.album || track?.title || ''}`);
-  const [matches, setMatches] = useState(initialMatches || []);
+const MatchAlbumModal = ({ isOpen, onClose, track, onMatchSelect, setSnackbar }) => {
+  const [searchQuery, setSearchQuery] = useState(`${track.getArtist() || ''} ${track.getAlbum() || ''}`);
+  const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const searchAlbums = async () => {
+  const searchAlbums = async (includeTrack) => {
     try {
       setLoading(true);
-      const results = await lastFMRepository.searchAlbum(searchQuery);
-      if (!results || results.length === 0) {
+
+      let promises = [
+        lastFMRepository.searchAlbum(searchQuery),
+      ];
+
+      if (includeTrack) {
+        promises.push(lastFMRepository.getAlbumInfo(track.getAlbum(), track.getAlbumArtist()));
+      }
+
+      const results = await Promise.all(promises);
+      console.log(results);
+
+      const searchResults = results[0] || [];
+      const infoResults = [results[1]];
+
+      const jointResults = infoResults.concat(searchResults);
+
+      if (!jointResults || results.length === 0) {
         setSnackbar({
           open: true,
           message: "No albums found with that search query",
@@ -22,7 +38,7 @@ const MatchAlbumModal = ({ isOpen, onClose, track, initialMatches, onMatchSelect
         return;
       }
 
-      setMatches(results.map(album => new PlaylistEntry(album)));
+      setMatches(jointResults.map(album => new PlaylistEntry(album)));
     } catch (error) {
       console.error('Error searching for albums:', error);
       setSnackbar({
@@ -34,6 +50,12 @@ const MatchAlbumModal = ({ isOpen, onClose, track, initialMatches, onMatchSelect
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (isOpen) {
+      searchAlbums(true);
+    }
+  }, [isOpen, track]);
 
   return (
     <Modal open={isOpen} onClose={onClose} title="Match Album">
@@ -54,7 +76,7 @@ const MatchAlbumModal = ({ isOpen, onClose, track, initialMatches, onMatchSelect
           />
           <button 
             className="search-button" 
-            onClick={searchAlbums} 
+            onClick={() => searchAlbums(false)} 
             disabled={loading}
           >
             {loading ? <BiLoaderAlt className="spinner-icon" /> : 'Search'}
@@ -77,7 +99,7 @@ const MatchAlbumModal = ({ isOpen, onClose, track, initialMatches, onMatchSelect
                   <div className="album-details">
                     <p className="album-name">{album.getAlbum()}</p>
                     <p className="album-artist">{album.getAlbumArtist()}</p>
-                    {album.tracks && (
+                    {album.details.tracks && (
                       <p className="track-count">{album.details.tracks.length} tracks</p>
                     )}
                   </div>

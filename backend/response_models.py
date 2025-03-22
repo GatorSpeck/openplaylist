@@ -159,7 +159,7 @@ class AlbumTrack(MusicEntity):
                 this_track = MusicFile.from_orm(obj.linked_track)
             elif obj.linked_track.entry_type == "requested_track":
                 this_track = RequestedTrack.from_orm(obj.linked_track)
-            elif obj.linked_track.entry_type == "lastfm":
+            elif obj.linked_track.entry_type == "lastfm_track":
                 this_track = LastFMTrack.from_orm(obj.linked_track)
             else:
                 raise ValueError(f"Unknown linked track type: {obj.linked_track.entry_type}")
@@ -174,6 +174,13 @@ class AlbumTrack(MusicEntity):
         if self.linked_track is None:
             return None
         return self.linked_track.to_json()
+
+    def to_db(self) -> AlbumTrackDB:
+        return AlbumTrackDB(
+            id=self.id,
+            order=self.order,
+            linked_track=self.linked_track.to_db() if self.linked_track else None
+        )
 
 
 class Album(MusicEntity):
@@ -298,6 +305,32 @@ class NestedPlaylistEntry(PlaylistEntryBase):
 class LastFMTrack(MusicEntity, TrackDetails):
     url: str
     music_file_id: Optional[int] = None  # linked music file if available
+
+    def to_db(self) -> LastFMTrackDB:
+        return LastFMTrackDB(
+            url=self.url,
+            title=self.title,
+            artist=self.artist,
+            album_artist=self.album_artist,
+            album=self.album,
+            year=self.year,
+            length=self.length,
+            publisher=self.publisher,
+        )
+    
+    @classmethod
+    def from_orm(cls, obj: LastFMTrackDB):
+        return cls(
+            id=obj.id,
+            url=obj.url,
+            title=obj.title,
+            artist=obj.artist,
+            album=obj.album,
+            year=obj.year,
+            length=obj.length,
+            publisher=obj.publisher,
+            genres=[],
+        )
 
 
 class LastFMEntry(PlaylistEntryBase):

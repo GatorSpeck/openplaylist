@@ -622,6 +622,10 @@ const PlaylistGrid = ({ playlistID }) => {
       
       // Update backend
       console.log(trackToMatch.id);
+      if (!trackToMatch.id) {
+        console.error('No track ID found for track to match');
+        return;
+      }
       await playlistRepository.replaceTrack(playlistID, trackToMatch.id, newTrack);
       
       // Update local state
@@ -651,20 +655,6 @@ const PlaylistGrid = ({ playlistID }) => {
     try {
       setPlaylistLoading(true);
       
-      const albumResults = await lastFMRepository.searchAlbum(album.details.title, album.details.artist);
-      
-      if (!albumResults || albumResults.length === 0) {
-        setSnackbar({
-          open: true,
-          message: `No matching albums found for "${album.details.album || album.details.title}"`,
-          severity: 'warning'
-        });
-      }
-
-      console.log(album);
-      
-      // Set up the modal state for album matching
-      setAlbumMatchResults(albumResults);
       setAlbumToMatch(album);
       setAlbumMatchModalOpen(true);
     } catch (error) {
@@ -689,10 +679,15 @@ const PlaylistGrid = ({ playlistID }) => {
       
       // Create a new album entry with the Last.fm metadata
       let newAlbum = selectedMatch.toRequestedAlbum();
+      newAlbum.id = albumToMatch.id;
       newAlbum.order = albumToMatch.order;
       
       // Update backend
-      console.log(albumToMatch.id);
+      if (!albumToMatch.id) {
+        console.error('No album ID found for album to match');
+        return;
+      }
+
       await playlistRepository.replaceTrack(playlistID, albumToMatch.id, newAlbum);
       
       // Update local state
@@ -827,10 +822,13 @@ const PlaylistGrid = ({ playlistID }) => {
   const saveEditedItem = async (editedItem) => {
     try {
       const isAlbum = editedItem.entry_type === 'requested_album' || editedItem.entry_type === 'album';
+
+      console.log(itemToEdit);
       
       // Create updated item with edited details
       const updatedItem = {
         ...itemToEdit,
+        id: itemToEdit.id,
         title: editedItem.details.title,
         artist: editedItem.details.artist,
         album: isAlbum ? editedItem.title : editedItem.details.album,
@@ -843,7 +841,6 @@ const PlaylistGrid = ({ playlistID }) => {
       };
       
       // Update backend
-      console.log(itemToEdit.id);
       await playlistRepository.replaceTrack(playlistID, itemToEdit.id, updatedItem);
       
       // Update local state
@@ -1074,7 +1071,6 @@ const PlaylistGrid = ({ playlistID }) => {
           isOpen={albumMatchModalOpen}
           onClose={() => setAlbumMatchModalOpen(false)}
           track={albumToMatch}
-          initialMatches={albumMatchResults.map(album => new PlaylistEntry(album))}
           onMatchSelect={replaceAlbumWithMatch}
           setSnackbar={setSnackbar}
         />

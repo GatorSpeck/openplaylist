@@ -5,10 +5,17 @@ from response_models import LastFMTrack, Album, AlbumTrack, AlbumAndArtist
 import os
 import warnings
 import json
-from typing import Optional
+from typing import Optional, List
 
 import dotenv
 dotenv.load_dotenv(override=True)
+
+LASTFM_API_KEY = os.getenv("LASTFM_API_KEY", None)
+
+def get_last_fm_repo(requests_cache_session):
+    if not LASTFM_API_KEY:
+        return None
+    return last_fm_repository(LASTFM_API_KEY, requests_cache_session)
 
 def from_json(payload) -> Optional[Album]:
     if "album" not in payload:
@@ -71,12 +78,12 @@ class last_fm_repository:
 
         return [LastFMTrack(title=track.get("name", ""), artist=track.get("artist", ""), url=track.get("url")) for track in tracks]
     
-    def search_album(self, artist, title):
+    def search_album(self, artist, title) -> List[Album]:
         # URL encode parameters
         encoded_title = urllib.parse.quote(title) if title else None
 
         if not encoded_title:
-            return None
+            raise ValueError("Title is required to search for albums")
 
         # Make request to Last.FM API
         url = f"http://ws.audioscrobbler.com/2.0/?method=album.search&api_key={self.api_key}&format=json&limit=20"
@@ -104,7 +111,6 @@ class last_fm_repository:
             artist=album.get("artist"),
             art_url=album.get("image")[-1].get("#text"),
             url=album.get("url"),
-            tracks=[]
         ) for album in albums]
 
     def get_album_art(self, artist, album):
