@@ -1,5 +1,7 @@
 services:
   openplaylist:
+    image: ghcr.io/gatorspeck/openplaylist:latest
+    container_name: openplaylist
     build:
       context: .
       dockerfile: Dockerfile
