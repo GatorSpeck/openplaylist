@@ -74,6 +74,8 @@ TZ="America/Chicago"  # not strictly required, but highly recommended
 ```
 services:
   openplaylist:
+    image: ghcr.io/gatorspeck/openplaylist:latest
+    container_name: openplaylist
     build:
       context: .
       dockerfile: Dockerfile
@@ -108,7 +110,7 @@ services:
 ## Applying Migrations
 If there is a breaking DB change, migrations can be run manually (for now) -
 ```
-docker exec -it <your container> bash -c "cd backend && alembic upgrade head"
+docker exec -it openplaylist bash -c "cd backend && alembic upgrade head"
 ```
 
 ## Local Dev Setup
