@@ -10,6 +10,13 @@ from typing import Optional, List
 import dotenv
 dotenv.load_dotenv(override=True)
 
+LASTFM_API_KEY = os.getenv("LASTFM_API_KEY", None)
+
+def get_last_fm_repo(requests_cache_session):
+    if not LASTFM_API_KEY:
+        return None
+    return last_fm_repository(LASTFM_API_KEY, requests_cache_session)
+
 def from_json(payload) -> Optional[Album]:
     if "album" not in payload:
         return None
