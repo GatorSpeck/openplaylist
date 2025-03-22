@@ -472,8 +472,8 @@ def get_album_info(artist: str = Query(...), album: str = Query(...)):
     if not api_key:
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
-    repo = last_fm_repository(api_key, requests_cache_session)
-    return repo.get_album_info(artist, album, redis_session=redis_session)
+    repo = last_fm_repository(api_key, requests_cache_session, redis_session=redis_session)
+    return repo.get_album_info(artist, album)
 
 @router.get("/lastfm/album/search", response_model=List[Album])
 def search_album(album: str = Query(...), artist: Optional[str] = Query(None), ):

@@ -111,7 +111,6 @@ class last_fm_repository:
             artist=album.get("artist"),
             art_url=album.get("image")[-1].get("#text"),
             url=album.get("url"),
-            tracks=[]
         ) for album in albums]
 
     def get_album_art(self, artist, album):
