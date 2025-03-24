@@ -75,7 +75,7 @@ TZ="America/Chicago"  # not strictly required, but highly recommended
 ```
 services:
   openplaylist:
-    image: ghcr.io/gatorspeck/openplaylist:latest
+    image: ghcr.io/gatorspeck/openplaylist:${OPENPLAYLIST_TAG}
     container_name: openplaylist
     build:
       context: .
