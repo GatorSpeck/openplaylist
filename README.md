@@ -39,6 +39,7 @@ In addition to local music, your playlists can be augmented with search results 
 - Create .env file:
 ```
 # Required settings
+OPENPLAYLIST_TAG=latest  # https://github.com/GatorSpeck/openplaylist/pkgs/container/openplaylist
 CONFIG_PATH=./config  # needs read/write access, the dir to store the config
 PORT=5173  # the port to use to access the web app
 DATA_DIR=./data  # needs read/write access, the dir to store the SQLite DB

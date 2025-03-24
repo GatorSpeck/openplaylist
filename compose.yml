@@ -1,6 +1,6 @@
 services:
   openplaylist:
-    image: ghcr.io/gatorspeck/openplaylist:latest
+    image: ghcr.io/gatorspeck/openplaylist:${OPENPLAYLIST_TAG}
     container_name: openplaylist
     build:
       context: .
@@ -10,7 +10,7 @@ services:
     volumes:
       - ${MUSIC_PATH}:/music:ro
       - ${DATA_DIR}:/data:rw
-      - ${PLEX_M3U_DROP_SOURCE}:/playlist:rw
+      - ${PLEX_M3U_DROP_SOURCE}:${PLEX_M3U_DROP_SOURCE}:rw
       - ${CONFIG_PATH}:/config:rw
     restart: unless-stopped
     environment:
