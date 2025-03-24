@@ -121,6 +121,20 @@ const Playlists = () => {
     }
   };
 
+  const onRenamePlaylist = async (playlistID, newName) => {
+    try {
+      await playlistRepository.rename(playlistID, newName);
+
+      let playlistsToEdit = [...playlists];
+      const index = playlistsToEdit.findIndex(p => p.id === playlistID);
+      playlistsToEdit[index].name = newName;
+
+      setPlaylists(playlistsToEdit);
+    } catch (error) {
+      console.error('Error renaming playlist:', error);
+    }
+  };
+
   const reorderPinnedPlaylist = async (oldIndex, newIndex) => {
     try {
       const response = await playlistRepository.reorderPinnedPlaylist(oldIndex, newIndex);
@@ -143,6 +157,7 @@ const Playlists = () => {
         onNewPlaylist={() => setNewPlaylistModalVisible(true)}
         onClonePlaylist={handleClonePlaylist}
         onDeletePlaylist={deletePlaylist}
+        onRenamePlaylist={onRenamePlaylist}
         togglePin={togglePin}
         reorderPinnedPlaylist={reorderPinnedPlaylist}
       />

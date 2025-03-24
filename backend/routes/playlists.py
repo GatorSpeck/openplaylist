@@ -242,8 +242,11 @@ def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(g
         MAP_SOURCE = os.getenv("PLEX_MAP_SOURCE")
         MAP_TARGET = os.getenv("PLEX_MAP_TARGET")
 
+        if MAP_SOURCE and MAP_TARGET:
+            logging.info(f"Mapping track paths: source = {MAP_SOURCE}, target = {MAP_TARGET}")
+
         m3u_content = repo.export_to_m3u(
-            playlist_id, mapping_source=os.getenv("PLEX_MAP_SOURCE"), mapping_target=os.getenv("PLEX_MAP_TARGET")
+            playlist_id, mapping_source=MAP_SOURCE, mapping_target=MAP_TARGET
         )
 
         playlist = repo.get_by_id(playlist_id)
@@ -271,7 +274,10 @@ def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(g
         server = PlexServer(plex_endpoint, token=plex_token)
 
         if M3U_SOURCE and M3U_TARGET:
-            endpoint = str(m3u_path).replace(MAP_SOURCE, MAP_TARGET)
+            logging.info(f"Mapping m3u path: source = {M3U_SOURCE}, target = {M3U_TARGET}")
+            endpoint = str(m3u_path).replace(M3U_SOURCE, M3U_TARGET)
+        
+        logging.info(f"Syncing playlist to Plex: m3u path sent to Plex = {endpoint}")
 
         PlexPlaylist.create(server, playlist.name, section=server.library.section(plex_library), m3ufilepath=endpoint)
     except Exception as e:
