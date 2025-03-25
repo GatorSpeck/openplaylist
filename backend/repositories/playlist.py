@@ -341,8 +341,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             current_order = len(this_playlist.entries)
 
             while True:
-                yield current_order
                 current_order += 1
+                yield current_order
 
         order_generator = get_current_order()
 
