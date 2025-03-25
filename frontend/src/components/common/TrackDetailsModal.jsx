@@ -55,6 +55,7 @@ const TrackDetailsModal = ({ entry, onClose }) => {
           {entry.details.publisher ? <p><strong>Publisher:</strong> {entry.details.publisher}</p> : null}
           {entry.details.kind ? <p><strong>Kind:</strong> {entry.details.kind}</p> : null}
           {entry.details.url ? <p><strong>URL:</strong> <a href={entry.details.url}>{entry.details.url}</a></p> : null}
+          {entry.details.last_fm_url ? <p><strong>Last.fm URL:</strong> <a href={entry.details.last_fm_url}>{entry.details.last_fm_url}</a></p> : null}
           {entry.details.notes ? <p><strong>Notes:</strong> {entry.details.notes}</p> : null}
           {entry.details.comments ? <p><strong>Comments:</strong> {entry.details.comments}</p> : null}
           {entry.details.size ? <p><strong>Size:</strong> {formatSize(entry.details.size)}</p> : null}

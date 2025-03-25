@@ -190,7 +190,7 @@ class Album(MusicEntity):
     publisher: Optional[str] = None
     tracks: List[AlbumTrack] = []
     art_url: Optional[str] = None
-    url: Optional[str] = None
+    last_fm_url: Optional[str] = None
 
     @classmethod
     def from_orm(cls, obj: AlbumDB):
@@ -201,6 +201,8 @@ class Album(MusicEntity):
             year=obj.year,
             publisher=obj.publisher,
             tracks=[AlbumTrack.from_orm(t) for t in obj.tracks],
+            art_url=obj.art_url,
+            last_fm_url=obj.last_fm_url
         )
     
     def to_db(self) -> AlbumDB:
@@ -210,7 +212,8 @@ class Album(MusicEntity):
             year=self.year,
             publisher=self.publisher,
             tracks=[t.to_db() for t in self.tracks],
-            art_url=self.art_url
+            art_url=self.art_url,
+            last_fm_url=self.url
         )
 
     def to_json(self) -> dict:
@@ -492,6 +495,7 @@ class RequestedAlbumEntry(PlaylistEntryBase):
                 publisher=obj.details.publisher,
                 tracks=[AlbumTrack.from_orm(t) for t in obj.details.tracks],
                 art_url=obj.details.art_url,
+                last_fm_url=obj.details.last_fm_url
             ) if details and obj.details else None,
         )
 

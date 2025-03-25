@@ -41,6 +41,12 @@ class PlaylistEntry {
     this.details.disc_number = detailsToUse.disc_number || null;
     this.details.url = entryData.url || detailsToUse.url || null;
     this.details.art_url = detailsToUse.art_url || null;
+    this.details.last_fm_url = detailsToUse.last_fm_url || null;
+    this.details.notes = detailsToUse.notes || null;
+    this.details.comments = detailsToUse.comments || null;
+    this.details.size = detailsToUse.size || null;
+    this.details.last_scanned = detailsToUse.last_scanned || null;
+    this.details.first_scanned = detailsToUse.first_scanned || null;
     
     // For album types, handle tracks
     if (detailsToUse.tracks) {

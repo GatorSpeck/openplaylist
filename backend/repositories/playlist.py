@@ -288,7 +288,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 album = AlbumDB(
                     artist=entry.details.artist,
                     title=entry.details.title,
-                    art_url=entry.details.art_url
+                    art_url=entry.details.art_url,
+                    last_fm_url=entry.details.last_fm_url,
                 )
                 # Add album to session to get its ID
                 self.session.add(album)
