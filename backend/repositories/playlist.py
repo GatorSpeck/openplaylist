@@ -338,7 +338,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             raise ValueError(f"Playlist with ID {playlist_id} not found")
         
         def get_current_order():
-            current_order = len(this_playlist.entries)
+            # get max order
+            current_order = self.session.query(func.max(PlaylistEntryDB.order)).filter(PlaylistEntryDB.playlist_id == playlist_id).scalar()
 
             while True:
                 current_order += 1
