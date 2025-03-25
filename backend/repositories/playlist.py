@@ -288,7 +288,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 album = AlbumDB(
                     artist=entry.details.artist,
                     title=entry.details.title,
-                    art_url=entry.details.art_url
+                    art_url=entry.details.art_url,
+                    last_fm_url=entry.details.last_fm_url,
                 )
                 # Add album to session to get its ID
                 self.session.add(album)
@@ -339,7 +340,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         
         def get_current_order():
             # get max order
-            current_order = self.session.query(func.max(PlaylistEntryDB.order)).filter(PlaylistEntryDB.playlist_id == playlist_id).scalar()
+            current_order = self.session.query(func.max(PlaylistEntryDB.order)).filter(PlaylistEntryDB.playlist_id == playlist_id).scalar() or 0
 
             while True:
                 current_order += 1

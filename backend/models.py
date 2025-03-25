@@ -156,6 +156,7 @@ class AlbumDB(BaseNode):
     )
     art_url = Column(String, nullable=True)
     publisher = Column(String, index=True)
+    last_fm_url = Column(String, nullable=True)  # last.fm url
 
     __mapper_args__ = {"polymorphic_identity": "album"}
 
