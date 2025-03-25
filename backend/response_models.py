@@ -47,7 +47,6 @@ class RequestedTrack(MusicEntity, TrackDetails):
     @classmethod
     def from_orm(cls, obj: RequestedTrackDB):
         return cls(
-            entry_type="requested_track",
             id=obj.id,
             title=obj.title,
             artist=obj.artist,
@@ -213,7 +212,7 @@ class Album(MusicEntity):
             publisher=self.publisher,
             tracks=[t.to_db() for t in self.tracks],
             art_url=self.art_url,
-            last_fm_url=self.url
+            last_fm_url=self.last_fm_url
         )
 
     def to_json(self) -> dict:
@@ -368,7 +367,6 @@ class LastFMEntry(PlaylistEntryBase):
             entry_type="lastfm",
             id=obj.id,
             order=obj.order,
-            url=obj.details.url if details and obj.details else None,
             date_added=obj.date_added,
             details=LastFMTrack(
                 url=obj.details.url,
