@@ -315,3 +315,62 @@ def test_remove_from_playlist(test_db, playlist_repo, sample_playlist):
     result = playlist_repo.filter_playlist(sample_playlist.id, PlaylistFilter()).entries
     assert len(result) == 9
     assert "Test Song 5" not in [e.details.title for e in result]
+
+def test_match_album_entry(test_db, playlist_repo, sample_playlist):
+    # Create a simple requested album entry (like a user manually entered album)
+    initial_album = Album(
+        title="Initial Album",
+        artist="Initial Artist",
+        tracks=[AlbumTrack(order=0, linked_track={"title": "Initial Track", "artist": "Initial Artist"})]
+    )
+
+    initial_entry = RequestedAlbumEntry(
+        order=0,
+        entry_type="requested_album",
+        details=initial_album
+    )
+    
+    # Add the initial album entry to the playlist
+    playlist_repo.add_entries(sample_playlist.id, [initial_entry])
+    result = playlist_repo.get_with_entries(sample_playlist.id)
+    
+    # Verify initial state
+    assert len(result.entries) == 1
+    assert result.entries[0].entry_type == "requested_album"
+    assert result.entries[0].details.title == "Initial Album"
+    
+    # Create a "matched" album from Last.fm with more complete metadata
+    matched_album = Album(
+        title="Matched Album Title",
+        artist="Matched Artist",
+        art_url="https://lastfm.com/album_art.jpg",
+        last_fm_url="https://lastfm.com/album/123",
+        tracks=[
+            AlbumTrack(order=0, linked_track={"title": "Track 1", "artist": "Matched Artist"}),
+            AlbumTrack(order=1, linked_track={"title": "Track 2", "artist": "Matched Artist"})
+        ]
+    )
+    
+    matched_entry = RequestedAlbumEntry(
+        entry_type="requested_album",
+        details=matched_album
+    )
+    
+    # Get the ID of the entry we want to replace
+    entry_to_replace = result.entries[0]
+    
+    # Replace the initial album with the matched one
+    replaced_entry = playlist_repo.replace_track(sample_playlist.id, entry_to_replace.id, matched_entry)
+    
+    # Get the playlist with the updated entry
+    updated_result = playlist_repo.get_with_entries(sample_playlist.id)
+    
+    # Verify replacement was successful
+    assert len(updated_result.entries) == 1
+    assert updated_result.entries[0].entry_type == "requested_album"
+    assert updated_result.entries[0].details.title == "Matched Album Title"
+    assert updated_result.entries[0].details.artist == "Matched Artist"
+    assert updated_result.entries[0].details.art_url == "https://lastfm.com/album_art.jpg"
+    assert len(updated_result.entries[0].details.tracks) == 2
+    assert updated_result.entries[0].details.tracks[0].linked_track.title == "Track 1"
+    assert updated_result.entries[0].details.tracks[1].linked_track.title == "Track 2"

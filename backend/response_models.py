@@ -60,6 +60,14 @@ class RequestedTrack(MusicEntity, TrackDetails):
             "album": self.album,
         }
 
+    def to_db(self) -> RequestedTrackDB:
+        return RequestedTrackDB(
+            id=self.id,
+            title=self.title,
+            artist=self.artist,
+            album=self.album,
+        )
+
 def try_parse_int(value):
     if value is None:
         return None
