@@ -133,7 +133,7 @@ class MusicFile(MusicEntity, TrackDetails):
             year=self.year,
             length=self.length,
             publisher=self.publisher,
-            genres=[TrackGenreDB(genre=g) for g in self.genres],
+            genres=[TrackGenreDB(parent_type="music_file", genre=g) for g in self.genres],
             missing=self.missing,
             rating=self.rating,
             exact_release_date=self.exact_release_date,
