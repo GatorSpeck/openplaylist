@@ -60,6 +60,14 @@ class RequestedTrack(MusicEntity, TrackDetails):
             "album": self.album,
         }
 
+    def to_db(self) -> RequestedTrackDB:
+        return RequestedTrackDB(
+            id=self.id,
+            title=self.title,
+            artist=self.artist,
+            album=self.album,
+        )
+
 def try_parse_int(value):
     if value is None:
         return None
@@ -133,7 +141,7 @@ class MusicFile(MusicEntity, TrackDetails):
             year=self.year,
             length=self.length,
             publisher=self.publisher,
-            genres=[TrackGenreDB(genre=g) for g in self.genres],
+            genres=[TrackGenreDB(parent_type="music_file", genre=g) for g in self.genres],
             missing=self.missing,
             rating=self.rating,
             exact_release_date=self.exact_release_date,
