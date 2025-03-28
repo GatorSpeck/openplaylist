@@ -107,6 +107,7 @@ services:
       # - OPENAI_API_KEY=${OPENAI_API_KEY}
       # - REDIS_HOST=${REDIS_HOST}
       # - REDIS_PORT=${REDIS_PORT}
+      # - LOG_LEVEL=INFO
     healthcheck:
       test: ["CMD", "/app/healthcheck.sh"]
       interval: 10s

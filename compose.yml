@@ -26,6 +26,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - TZ=${TZ}
       - ALLOW_ORIGINS=${ALLOW_ORIGINS}
+      - LOG_LEVEL=${LOG_LEVEL}
     healthcheck:
       test: ["CMD", "/app/healthcheck.sh"]
       interval: 10s

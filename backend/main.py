@@ -538,6 +538,17 @@ def save_index_paths(paths: List[str]):
         json.dump({'music_paths': paths}, f)
     return {"success": True}
 
+@router.get("/settings")
+def get_settings():
+    return {
+        "lastFmApiKeyConfigured": os.getenv("LASTFM_API_KEY") is not None,
+        "openAiApiKeyConfigured": os.getenv("OPENAI_API_KEY") is not None,
+        "plexConfigured": os.getenv("PLEX_TOKEN") is not None,
+        "redisConfigured": redis_session is not None,
+        "configDir": str(CONFIG_DIR),
+        "logLevel": log_level,
+    }
+
 class Directory(BaseModel):
     name: str
     path: str
