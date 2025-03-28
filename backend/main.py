@@ -66,15 +66,6 @@ class TimingMiddleware(BaseHTTPMiddleware):
 
 app = FastAPI()
 
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
-)
-
 app.add_middleware(TimingMiddleware)
 
 dotenv.load_dotenv(override=True)
@@ -84,6 +75,19 @@ log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 
 # Set up logging
 logging.basicConfig(level=log_level)
+
+ALLOW_ORIGINS = [origin.strip() for origin in os.getenv("ALLOW_ORIGINS", "http://localhost:80").split(",")]
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOW_ORIGINS + ["null", ""],
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
+logging.info(f"Allowed origins: {ALLOW_ORIGINS}")
 
 # Create the database tables
 Base.metadata.create_all(bind=Database.get_engine())
@@ -225,7 +229,7 @@ def scan_directory(directory: str, full=False):
                 found_existing_file = True
                 existing_file.missing = False
 
-            if (not full) and (not found_existing_file) and existing_file and existing_file.last_scanned >= last_modified_time:
+            if (not full) and (not found_existing_file) and existing_file and existing_file.last_scanned and existing_file.last_scanned >= last_modified_time:
                 continue  # Skip files that have not changed
 
             metadata = None

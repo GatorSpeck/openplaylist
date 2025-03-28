@@ -28,7 +28,7 @@ export class PlaylistRepository {
     // get playlist names and IDs
     async getPlaylists() {
         try {
-            const response = await axios.get(`/api/playlists`);
+            const response = await axios.get(`/api/playlists/`);
             return response.data;
         } catch (error) {
             console.error('Error fetching playlists:', error);
@@ -44,7 +44,7 @@ export class PlaylistRepository {
     }
 
     async create(name) {
-        return await axios.post(`/api/playlists`, {
+        return await axios.post(`/api/playlists/`, {
             name: name,
             entries: []
         });

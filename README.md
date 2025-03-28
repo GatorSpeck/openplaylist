@@ -41,9 +41,10 @@ In addition to local music, your playlists can be augmented with search results 
 # Required settings
 OPENPLAYLIST_TAG=latest  # https://github.com/GatorSpeck/openplaylist/pkgs/container/openplaylist
 CONFIG_PATH=./config  # needs read/write access, the dir to store the config
-PORT=5173  # the port to use to access the web app
-DATA_DIR=./data  # needs read/write access, the dir to store the SQLite DB
+PORT=5173  # the port used to access the web app
+DATA_DIR=./data  # dir to store the SQLite DB (needs read/write access)
 TZ="America/Chicago"  # not strictly required, but highly recommended
+ALLOW_ORIGINS=localhost  # for CORS
 
 # Optional settings
 ## Plex configuration for playlist syncing
@@ -89,6 +90,11 @@ services:
       # - ${PLEX_M3U_DROP_SOURCE}:/playlist:rw
     restart: unless-stopped
     environment:
+      # required
+      # - ALLOW_ORIGINS=${ALLOW_ORIGINS}
+      # - TZ=${TZ}
+
+      # optional
       # - LASTFM_API_KEY=${LASTFM_API_KEY}
       # - LASTFM_SHARED_SECRET=${LASTFM_SHARED_SECRET}
       # - PLEX_ENDPOINT=${PLEX_ENDPOINT}
