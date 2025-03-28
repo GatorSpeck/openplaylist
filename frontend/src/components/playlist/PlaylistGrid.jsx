@@ -363,13 +363,6 @@ const PlaylistGrid = ({ playlistID }) => {
   const addSongsToPlaylist = async (songs) => {
     const songsArray = Array.isArray(songs) ? songs : [songs];
     await addTracksToPlaylist(songsArray);
-    
-    // Scroll to bottom using the List ref instead
-    setTimeout(() => {
-      if (listRef.current) {
-        listRef.current.scrollToItem(entries.length - 1);
-      }
-    }, 100);
   };
 
   const removeSongsFromPlaylist = async (indexes) => {
