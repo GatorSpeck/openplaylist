@@ -33,7 +33,7 @@ const PlaylistEntryRow = forwardRef(({
 
   const contents = entry.isAlbum() ? (
     <div onClick={() => setIsExpanded(!isExpanded)}>
-      {isExpanded ? entry.details.tracks.map(track => track.linked_track.title).join(', ') : `(${entry.details.tracks.length} tracks)`}
+      {isExpanded ? entry.details?.tracks.map(track => track.linked_track.title).join(', ') : `(${entry.details?.tracks.length} tracks)`}
     </div>
   ) : entry.getTitle();
 
