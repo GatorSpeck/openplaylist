@@ -168,7 +168,6 @@ const PlaylistGrid = ({ playlistID }) => {
 
   useEffect(() => {
     setPage(0); // Reset page on filter/sort changes
-    console.log("loading for new filter");
     fetchPlaylistArtGrid();
     fetchPlaylistDetails(true);
   }, [playlistID, debouncedFilter, sortColumn, sortDirection]);
@@ -223,8 +222,6 @@ const PlaylistGrid = ({ playlistID }) => {
         offset = entries.length;
         setIsLoadingMore(true);
       }
-      
-      console.log(`Fetching with offset: ${offset}, limit: ${pageSize}, targetPosition: ${targetPosition}`);
       
       const filterParams = {
         filter: debouncedFilter,
