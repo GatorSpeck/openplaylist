@@ -70,6 +70,10 @@ ALLOW_ORIGINS=localhost  # for CORS
 ## Redis configuration (for caching of OpenAI and Last.FM queries)
 # REDIS_HOST=localhost
 # REDIS_PORT=6379
+
+## Spotify configuration (for playlist import)
+# SPOTIFY_CLIENT_ID=foo  # https://developer.spotify.com/documentation/web-api/tutorials/getting-started
+# SPOTIFY_CLIENT_SECRET=foo
 ```
 
 - Run with `docker-compose up --build -d`
@@ -108,6 +112,8 @@ services:
       # - REDIS_HOST=${REDIS_HOST}
       # - REDIS_PORT=${REDIS_PORT}
       # - LOG_LEVEL=INFO
+      # - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      # - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
     healthcheck:
       test: ["CMD", "/app/healthcheck.sh"]
       interval: 10s

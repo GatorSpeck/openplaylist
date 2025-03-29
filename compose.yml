@@ -27,6 +27,8 @@ services:
       - TZ=${TZ}
       - ALLOW_ORIGINS=${ALLOW_ORIGINS}
       - LOG_LEVEL=${LOG_LEVEL}
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
     healthcheck:
       test: ["CMD", "/app/healthcheck.sh"]
       interval: 10s

@@ -29,6 +29,7 @@ from repositories.playlist import PlaylistRepository
 from repositories.open_ai_repository import open_ai_repository
 from repositories.last_fm_repository import last_fm_repository
 from repositories.requests_cache_session import requests_cache_session
+from repositories.spotify_repository import get_spotify_repo
 from redis import Redis
 import json
 from pydantic import BaseModel
@@ -548,6 +549,33 @@ def get_settings():
         "configDir": str(CONFIG_DIR),
         "logLevel": log_level,
     }
+
+@router.post("/spotify/import")
+def import_spotify_playlist(
+    params: SpotifyImportParams,
+    playlist_repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    spotify_repo = get_spotify_repo(requests_cache_session)
+    if not spotify_repo:
+        raise HTTPException(status_code=500, detail="Spotify API key not configured")
+    
+    playlist = spotify_repo.get_playlist(params.playlist_id)
+
+    new_playlist = Playlist(name=params.playlist_name, description=playlist.description, entries=[])
+    for t in playlist.tracks:
+        track = RequestedTrackEntry(
+            entry_type="requested",
+            details=TrackDetails(
+                title=t.title,
+                artist=t.artist,
+                album=t.album,
+            )
+        )
+        new_playlist.entries.append(track)
+
+    playlist_repo.create(new_playlist)
+
+    return playlist
 
 class Directory(BaseModel):
     name: str
