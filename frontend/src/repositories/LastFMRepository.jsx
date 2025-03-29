@@ -20,8 +20,23 @@ export class LastFMRepository {
         }
     }
 
+    async isConfigured() {
+        try {
+            const response = await axios.get('/api/settings');
+            return response.data.lastFmApiKeyConfigured ? true : false;
+        }
+        catch (error) {
+            console.error('Error checking LastFM configuration:', error);
+            return false;
+        }
+    }
+
     async fetchAlbumArt(artist, album) {
         if (!artist || !album) {
+            return null;
+        }
+
+        if (!this.isConfigured()) {
             return null;
         }
         

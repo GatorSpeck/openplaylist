@@ -51,6 +51,12 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
   const [hasMore, setHasMore] = useState(true);
   const [openAILoading, setOpenAILoading] = useState(false);
 
+  const [manualEntryOpen, setManualEntryOpen] = useState(false);
+  const [entryType, setEntryType] = useState('track'); // 'track' or 'album'
+  const [manualTitle, setManualTitle] = useState('');
+  const [manualArtist, setManualArtist] = useState('');
+  const [manualAlbum, setManualAlbum] = useState('');
+
   const ITEMS_PER_PAGE = 50;
 
   const extractSearchResults = (response) => {
@@ -440,6 +446,41 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
     setSearchResults([]);
   };
 
+  const handleManualEntrySubmit = (e) => {
+    e.preventDefault();
+    
+    if (!manualTitle || !manualArtist) {
+      setSnackbar({
+        open: true,
+        message: 'Title and artist are required',
+        severity: 'error'
+      });
+      return;
+    }
+    
+    const newEntry = {
+      entry_type: entryType === 'track' ? 'requested' : 'requested_album',
+      title: manualTitle,
+      artist: manualArtist,
+      album: entryType === 'track' ? manualAlbum : null,
+      tracks: entryType === 'album' ? [] : null
+    };
+    
+    onAddSongs([newEntry]);
+    
+    // Reset form
+    setManualTitle('');
+    setManualArtist('');
+    setManualAlbum('');
+    setManualEntryOpen(false);
+    
+    setSnackbar({
+      open: true,
+      message: `Added requested ${entryType}`,
+      severity: 'success'
+    });
+  };
+
   return (
     <>
       <button 
@@ -472,6 +513,78 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
             onChange={handleFilterChange}
           />
           <button onClick={() => clearSearchResults()}>Clear</button>
+        </div>
+
+        <div className="manual-entry-section">
+          <button 
+            onClick={() => setManualEntryOpen(!manualEntryOpen)} 
+            className="manual-entry-toggle"
+          >
+            {manualEntryOpen ? 'Hide Manual Entry' : 'Manual Entry'}
+          </button>
+          
+          {manualEntryOpen && (
+            <form className="manual-entry-form" onSubmit={handleManualEntrySubmit}>
+              <div className="entry-type-selector">
+                <label>
+                  <input 
+                    type="radio" 
+                    value="track" 
+                    checked={entryType === 'track'} 
+                    onChange={() => setEntryType('track')}
+                  />
+                  Track
+                </label>
+                <label>
+                  <input 
+                    type="radio" 
+                    value="album" 
+                    checked={entryType === 'album'} 
+                    onChange={() => setEntryType('album')}
+                  />
+                  Album
+                </label>
+              </div>
+
+              <div className="form-group">
+                <label>Title:</label>
+                <input 
+                  type="text" 
+                  value={manualTitle} 
+                  onChange={(e) => setManualTitle(e.target.value)}
+                  placeholder={entryType === 'track' ? 'Track Title' : 'Album Title'} 
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Artist:</label>
+                <input 
+                  type="text" 
+                  value={manualArtist} 
+                  onChange={(e) => setManualArtist(e.target.value)}
+                  placeholder="Artist Name" 
+                  required
+                />
+              </div>
+
+              {entryType === 'track' && (
+                <div className="form-group">
+                  <label>Album:</label>
+                  <input 
+                    type="text" 
+                    value={manualAlbum} 
+                    onChange={(e) => setManualAlbum(e.target.value)}
+                    placeholder="Album Name (optional)"
+                  />
+                </div>
+              )}
+
+              <button type="submit" className="add-manual-entry">
+                Add Requested {entryType === 'track' ? 'Track' : 'Album'}
+              </button>
+            </form>
+          )}
         </div>
 
         <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedSearchResults.length > 0 ? 'visible' : 'hidden' }}>

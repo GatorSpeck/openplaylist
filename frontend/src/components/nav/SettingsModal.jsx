@@ -22,6 +22,7 @@ const SettingsModal = ({ open, onClose }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [indexPaths, setIndexPaths] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [settings, setSettings] = useState({});
   
   // Load settings when the modal opens
   useEffect(() => {
@@ -36,6 +37,10 @@ const SettingsModal = ({ open, onClose }) => {
       // Fetch paths from the backend
       const response = await axios.get('/api/settings/paths');
       setIndexPaths(response.data || []);
+
+      // fetch other settings
+      const settingsResp = await axios.get('/api/settings');
+      setSettings(settingsResp.data || {});
     } catch (error) {
       console.error('Error loading settings:', error);
     } finally {
@@ -72,6 +77,7 @@ const SettingsModal = ({ open, onClose }) => {
         <Tab label="Last.fm" />
         <Tab label="Plex" />
         <Tab label="OpenAI" />
+        <Tab label="Redis" />
       </Tabs>
       
       <DialogContent>
@@ -85,17 +91,22 @@ const SettingsModal = ({ open, onClose }) => {
         
         <TabPanel value={activeTab} index={1}>
           <h3>Last.fm Settings</h3>
-          {/* Last.fm settings content */}
+          <strong>Last.fm API Configured:</strong>{settings.lastFmApiKeyConfigured ? ' Yes' : ' No'}
         </TabPanel>
         
         <TabPanel value={activeTab} index={2}>
           <h3>Plex Settings</h3>
-          {/* Plex settings content */}
+          <strong>Plex Configured:</strong>{settings.plexConfigured ? ' Yes' : ' No'}
         </TabPanel>
         
         <TabPanel value={activeTab} index={3}>
           <h3>OpenAI Settings</h3>
-          {/* OpenAI settings content */}
+          <strong>OpenAI API Configured:</strong>{settings.openAiApiKeyConfigured ? ' Yes' : ' No'}
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={4}>
+          <h3>Redis Settings</h3>
+          <strong>Redis Configured:</strong>{settings.redisConfigured ? ' Yes' : ' No'}
         </TabPanel>
       </DialogContent>
       

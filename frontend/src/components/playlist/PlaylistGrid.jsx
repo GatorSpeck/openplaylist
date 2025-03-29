@@ -26,6 +26,7 @@ import MatchTrackModal from './MatchTrackModal';
 import MatchAlbumModal from './MatchAlbumModal';
 import EditItemModal from './EditItemModal';
 import PlaylistEntry from '../../lib/PlaylistEntry';
+import SelectPlaylistModal from './SelectPlaylistModal';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -118,6 +119,7 @@ const PlaylistGrid = ({ playlistID }) => {
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [playlistModalVisible, setPlaylistModalVisible] = useState(false);
+  const [selectPlaylistModalVisible, setSelectPlaylistModalVisible] = useState(false);
   const gridContentRef = useRef(null);
   const [displayedItems, setDisplayedItems] = useState(50);
   const [hasMore, setHasMore] = useState(true);
@@ -133,6 +135,7 @@ const PlaylistGrid = ({ playlistID }) => {
   const [pageSize, setPageSize] = useState(100);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [tracksToAddToOtherPlaylist, setTracksToAddToOtherPlaylist] = useState([]);
 
   // Add these state variables to track visible ranges
   const [visibleStartIndex, setVisibleStartIndex] = useState(0);
@@ -165,7 +168,6 @@ const PlaylistGrid = ({ playlistID }) => {
 
   useEffect(() => {
     setPage(0); // Reset page on filter/sort changes
-    console.log("loading for new filter");
     fetchPlaylistArtGrid();
     fetchPlaylistDetails(true);
   }, [playlistID, debouncedFilter, sortColumn, sortDirection]);
@@ -220,8 +222,6 @@ const PlaylistGrid = ({ playlistID }) => {
         offset = entries.length;
         setIsLoadingMore(true);
       }
-      
-      console.log(`Fetching with offset: ${offset}, limit: ${pageSize}, targetPosition: ${targetPosition}`);
       
       const filterParams = {
         filter: debouncedFilter,
@@ -363,13 +363,6 @@ const PlaylistGrid = ({ playlistID }) => {
   const addSongsToPlaylist = async (songs) => {
     const songsArray = Array.isArray(songs) ? songs : [songs];
     await addTracksToPlaylist(songsArray);
-    
-    // Scroll to bottom using the List ref instead
-    setTimeout(() => {
-      if (listRef.current) {
-        listRef.current.scrollToItem(entries.length - 1);
-      }
-    }, 100);
   };
 
   const removeSongsFromPlaylist = async (indexes) => {
@@ -713,6 +706,11 @@ const PlaylistGrid = ({ playlistID }) => {
     }
   };
 
+  const handleAddToOtherPlaylist = (tracks) => {
+    setTracksToAddToOtherPlaylist(tracks);
+    setSelectPlaylistModalVisible(true);
+  }
+
   const handleContextMenu = (e, track) => {
     e.preventDefault();
   
@@ -724,6 +722,7 @@ const PlaylistGrid = ({ playlistID }) => {
     const options = [
       { label: 'Details', onClick: () => handleShowDetails(track) },
       canEdit ? { label: 'Edit Details', onClick: () => handleEditItem(track) } : null,
+      { label: 'Add to Playlist...', onClick: () => handleAddToOtherPlaylist([track]) },
       { label: 'Send to Search', onClick: () => searchFor(track.getTitle()) },
       !isAlbum ? { label: 'Find Similar Tracks (Last.fm)', onClick: (e) => findSimilarTracks(e, track) } : null,
       !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: (e) => findSimilarTracksWithOpenAI(e, track) } : null,
@@ -1082,6 +1081,16 @@ const PlaylistGrid = ({ playlistID }) => {
           onClose={() => setEditModalOpen(false)}
           item={itemToEdit}
           onSave={saveEditedItem}
+        />
+      )}
+
+      {selectPlaylistModalVisible && (
+        <SelectPlaylistModal
+          isOpen={selectPlaylistModalVisible}
+          onClose={() => setSelectPlaylistModalVisible(false)}
+          onAddToPlaylist={addTracksToPlaylist}
+          selectedEntries={tracksToAddToOtherPlaylist}
+          setSnackbar={setSnackbar}
         />
       )}
     </div>
