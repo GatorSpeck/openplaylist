@@ -542,9 +542,10 @@ def save_index_paths(paths: List[str]):
 @router.get("/settings")
 def get_settings():
     return {
-        "lastFmApiKeyConfigured": os.getenv("LASTFM_API_KEY") is not None,
+        "lastFmApiKeyConfigured": all([os.getenv("LASTFM_API_KEY"), os.getenv("LASTFM_SHARED_SECRET")]),
         "openAiApiKeyConfigured": os.getenv("OPENAI_API_KEY") is not None,
-        "plexConfigured": os.getenv("PLEX_TOKEN") is not None,
+        "plexConfigured": all([os.getenv("PLEX_TOKEN"), os.getenv("PLEX_ENDPOINT"), os.getenv("PLEX_LIBRARY")]),
+        "spotifyConfigured": all([os.getenv("SPOTIFY_CLIENT_ID"), os.getenv("SPOTIFY_CLIENT_SECRET")]),
         "redisConfigured": redis_session is not None,
         "configDir": str(CONFIG_DIR),
         "logLevel": log_level,

@@ -78,6 +78,7 @@ const SettingsModal = ({ open, onClose }) => {
         <Tab label="Plex" />
         <Tab label="OpenAI" />
         <Tab label="Redis" />
+        <Tab label="Spotify" />
       </Tabs>
       
       <DialogContent>
@@ -107,6 +108,11 @@ const SettingsModal = ({ open, onClose }) => {
         <TabPanel value={activeTab} index={4}>
           <h3>Redis Settings</h3>
           <strong>Redis Configured:</strong>{settings.redisConfigured ? ' Yes' : ' No'}
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={5}>
+          <h3>Spotify Settings</h3>
+          <strong>Spotify Configured:</strong>{settings.spotifyConfigured ? ' Yes' : ' No'}
         </TabPanel>
       </DialogContent>
       
