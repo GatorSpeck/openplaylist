@@ -2,6 +2,7 @@ import os
 import dotenv
 from fastapi import HTTPException
 import requests
+import logging
 from response_models import SpotifyPlaylist, SpotifyTrack
 
 dotenv.load_dotenv(override=True)
@@ -51,8 +52,8 @@ class spotify_repository:
 
         if resp.status_code != 200:
             raise HTTPException(status_code=resp.status_code, detail="Failed to fetch playlist")
-        
-        # TODO: handle pagination
+
+        tracks = []
 
         data = resp.json()
         results = SpotifyPlaylist(
@@ -63,7 +64,26 @@ class spotify_repository:
             tracks=[]
         )
 
-        for item in data.get("tracks", {}).get("items", []):
+        tracks.extend(data.get("tracks", {}).get("items", []))
+
+        while True:
+            # handle pagination
+
+            if "next" in data.get("tracks", {}):
+                next_url = data.get("tracks", {}).get("next")
+                resp = self.requests_cache_session.get(next_url, headers={
+                    'Authorization': f'Bearer {self.access_token}'
+                })
+                if resp.status_code != 200:
+                    raise HTTPException(status_code=resp.status_code, detail="Failed to fetch playlist tracks")
+                data = resp.json()
+                tracks.extend(data.get("items", []))
+            else:
+                break
+        
+        logging.info(f"Fetched {len(tracks)} tracks from playlist {playlist_id}")
+
+        for item in tracks:
             track_data = item.get("track")
             if track_data:
                 artist = None
