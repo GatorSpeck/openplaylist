@@ -198,7 +198,6 @@ class PlaylistDB(Base):
     entries: Mapped[List["PlaylistEntryDB"]] = relationship(
         order_by="PlaylistEntryDB.order",
         back_populates="playlist",
-        collection_class=ordering_list("order"),
         passive_deletes=True,
         single_parent=True,
         cascade="all, delete-orphan",
@@ -219,8 +218,6 @@ class PlaylistEntryDB(Base):
     details = relationship("BaseNode", foreign_keys=[details_id])
 
     __mapper_args__ = {"polymorphic_on": entry_type, "polymorphic_identity": "entry"}
-
-    __table_args__ = (Index("uq_playlist_entries_playlist_id_order", "playlist_id", "order", unique=True),)
 
 Index("playlist_entries_playlist_idx", PlaylistEntryDB.playlist_id)
 

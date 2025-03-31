@@ -42,22 +42,26 @@ dotenv.load_dotenv(override=True)
 import logging
 logger = logging.getLogger(__name__)
 
-def playlist_orm_to_response(playlist: PlaylistEntryDB, order=0, details: bool = True):
-    playlist.order = order
+def playlist_orm_to_response(playlist: PlaylistEntryDB, order: Optional[int] = None, details: bool = True):
     if playlist.entry_type == "music_file":
-        return MusicFileEntry.from_orm(playlist, details=details)
+        result = MusicFileEntry.from_orm(playlist, details=details)
     elif playlist.entry_type == "nested_playlist":
-        return NestedPlaylistEntry.from_orm(playlist, details=details)
+        result = NestedPlaylistEntry.from_orm(playlist, details=details)
     elif playlist.entry_type == "lastfm":
-        return LastFMEntry.from_orm(playlist, details=details)
+        result = LastFMEntry.from_orm(playlist, details=details)
     elif playlist.entry_type == "requested":
-        return RequestedTrackEntry.from_orm(playlist, details=details)
+        result = RequestedTrackEntry.from_orm(playlist, details=details)
     elif playlist.entry_type == "album":
-        return AlbumEntry.from_orm(playlist, details=details)
+        result = AlbumEntry.from_orm(playlist, details=details)
     elif playlist.entry_type == "requested_album":
-        return RequestedAlbumEntry.from_orm(playlist, details=details)
+        result = RequestedAlbumEntry.from_orm(playlist, details=details)
     else:
         raise ValueError(f"Unknown entry type: {playlist.entry_type}")
+    
+    if order is not None:
+        result.order = order
+    
+    return result
     
 
 class PlaylistSortCriteria(IntEnum):
@@ -334,7 +338,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
         entries = self.create_entry_dependencies(entries)
 
-        this_playlist = self.session.query(PlaylistDB).get(playlist_id)
+        this_playlist = self.session.get(PlaylistDB, playlist_id)
         if this_playlist is None:
             raise ValueError(f"Playlist with ID {playlist_id} not found")
         
@@ -343,7 +347,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             current_order = self.session.query(func.max(PlaylistEntryDB.order)).filter(PlaylistEntryDB.playlist_id == playlist_id).scalar() or 0
 
             while True:
-                current_order += 1
+                current_order += 100
                 yield current_order
 
         order_generator = get_current_order()
@@ -386,7 +390,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 logging.info(f"Removing entry {entry.id} from playlist {playlist_id}")
                 self.session.delete(entry)
         
-        playlist = self.session.query(PlaylistDB).get(playlist_id)
+        playlist = self.session.get(PlaylistDB, playlist_id)
         playlist.updated_at = func.now()
 
         self.session.commit()
@@ -477,70 +481,158 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         return [playlist_orm_to_response(e) for e in entries]
     
     def undo_reorder_entries(self, playlist_id: int, indices_to_reorder: List[int], new_index: int):
-        playlist = (
-            self._get_playlist_query(playlist_id, details=False)
-            .filter(self.model.id == playlist_id)
-            .first()
-        )
+        logging.info("starting undo reorder")
+        # Use a no_autoflush block to prevent premature flushing
+        with self.session.no_autoflush:
+            playlist_entries = self.session.query(PlaylistEntryDB).filter(
+                PlaylistEntryDB.playlist_id == playlist_id
+            ).order_by(PlaylistEntryDB.order).all()
+            
+            # Get entries to move from new position (the entries we previously moved)
+            entries_to_move = []
+            for i in range(len(indices_to_reorder)):
+                if new_index + i < len(playlist_entries):
+                    entries_to_move.append(playlist_entries[new_index + i])
+            
+            # Convert to response models
+            converted_entries = [playlist_orm_to_response(e, details=False) for e in entries_to_move]
+            
+            # Delete entries from their current positions
+            for entry in entries_to_move:
+                self.session.delete(entry)
+            
+            # Flush to ensure deletions take effect
+            self.session.flush()
+            
+            # Now remove from the in-memory list
+            for i in range(len(entries_to_move)):
+                if new_index < len(playlist_entries):
+                    playlist_entries.pop(new_index)
+            
+            # logging.info([e.order for e in playlist_entries])
+            
+            # Insert entries at their original positions
+            # Sort to ensure we insert in the correct order
+            pairs = list(zip(indices_to_reorder, converted_entries))
+            sorted_pairs = sorted(pairs, key=lambda x: x[0])
+            
+            for original_index, entry in sorted_pairs:
+                playlist_entries = self.insert_entry(
+                    playlist_id, 
+                    entry, 
+                    new_index=original_index, 
+                    cached_list=playlist_entries
+                )
+                # logging.info([e.order for e in playlist_entries])
         
-        playlist_entries = playlist.entries
-
-        entries_to_move = []
-        for _ in indices_to_reorder:
-            entries_to_move.append(playlist_entries.pop(new_index))
-        
-        reversed_list = sorted(indices_to_reorder)
-
-        for i in reversed_list:
-            entry = entries_to_move.pop(0)
-            playlist_entries.insert(i, entry)
-        
-        # First set all entries to temporary negative order values to avoid unique constraint violations
-        for i, entry in enumerate(playlist_entries):
-            entry.order = -(i + 1)  # Using negative values to avoid conflicts
-        
-        # Flush changes to database
-        self.session.flush()
-        
-        # Now set the final order values
-        for i, entry in enumerate(playlist_entries):
-            entry.order = i
-        
-        playlist.updated_at = func.now()
-        
+        # Commit outside of no_autoflush block
         self.session.commit()
 
+    def insert_entry(self, playlist_id: int, entry: PlaylistEntryBase, new_index: int = -1, cached_list: Optional[List[PlaylistEntry]] = None):
+        logging.info(f"Adding entry {entry} to playlist {playlist_id} at index {new_index}")
+        def refresh_entries(self, playlist_id: int):
+            return (
+                self.session.query(PlaylistEntryDB)
+                .filter(PlaylistEntryDB.playlist_id == playlist_id)
+                .order_by(PlaylistEntryDB.order)
+            ).all()
+        
+        if cached_list is None:
+            cached_list = refresh_entries(self, playlist_id)
+        
+        # logging.info([e.order for e in cached_list])
+        
+        if (new_index == -1) or (new_index >= len(cached_list)):
+            # add at end
+            if not cached_list:
+                # empty playlist
+                new_entry_db = entry.to_playlist(playlist_id)
+                new_entry_db.order = 100
+                logging.info(f"New entry order: {new_entry_db.order}")
+                self.session.add(new_entry_db)  # Add to session
+                cached_list.append(new_entry_db)
+                return cached_list
+            else:
+                current_tail = cached_list[-1]
+                new_order = current_tail.order + 100
+                new_entry_db = entry.to_playlist(playlist_id)
+                new_entry_db.order = new_order
+                logging.info(f"New entry order: {new_entry_db.order}")
+                self.session.add(new_entry_db)  # Add to session
+                cached_list.append(new_entry_db)
+                return cached_list
+        elif new_index == 0:
+            # add at start
+            head = cached_list[0]
+            new_order = head.order // 2
+            if (new_order == 0) or (new_order == head.order):
+                # need to rebalance
+                self.rebalance_playlist(playlist_id)
+                cached_list = refresh_entries(self, playlist_id)
+                head = cached_list[0]
+                new_order = head.order // 2
+
+            new_entry_db = entry.to_playlist(playlist_id)
+            new_entry_db.order = new_order
+            logging.info(f"New entry order: {new_entry_db.order}")
+            self.session.add(new_entry_db)  # Add to session
+            cached_list.insert(0, new_entry_db)
+            return cached_list
+        
+        slice = cached_list[new_index - 1:new_index + 1]
+        floor, ceiling = (slice[0].order, slice[1].order) if len(slice) > 1 else (slice[0].order, slice[0].order + 100)
+
+        new_order = (floor + ceiling) // 2
+        logging.info(f"New index: {new_order} (floor: {floor}, ceiling: {ceiling})")
+        if (new_order == floor) or (new_order == ceiling):
+            # need to rebalance
+            self.rebalance_playlist(playlist_id)
+            cached_list = refresh_entries(self, playlist_id)
+            slice = cached_list[new_index - 1:new_index + 1]
+            floor, ceiling = (slice[0].order, slice[1].order) if len(slice) > 1 else (slice[0].order, slice[0].order + 100)
+            new_order = (floor + ceiling) // 2
+        
+        new_entry_db = entry.to_playlist(playlist_id)
+        new_entry_db.order = new_order
+        logging.info(f"New entry order: {new_entry_db.order}")
+        self.session.add(new_entry_db)  # Add to session
+        cached_list.insert(new_index, new_entry_db)
+        return cached_list
+
     def reorder_entries(self, playlist_id: int, indices_to_reorder: List[int], new_index: int):
-        playlist = (
-            self._get_playlist_query(playlist_id, details=False)
-            .filter(self.model.id == playlist_id)
-            .first()
-        )
-
-        playlist_entries = playlist.entries
-
-        reversed_list = sorted(indices_to_reorder, reverse=True)
-
-        # pull moved entries out of the list
-        entries_to_move = [playlist_entries.pop(i) for i in reversed_list]
-
-        # move block of entries to new index
-        for entry in entries_to_move:  # Insert in reverse order to maintain order
-            playlist_entries.insert(new_index, entry)
+        logging.info("starting reorder")
+        # Use a no_autoflush block to prevent premature flushing
+        with self.session.no_autoflush:
+            logging.info("gathering existing entries")
+            playlist_entries = self.session.query(PlaylistEntryDB).filter(PlaylistEntryDB.playlist_id == playlist_id).order_by(PlaylistEntryDB.order).all()
+            
+            # Get entries to move
+            entries_to_move = [playlist_entries[i] for i in sorted(indices_to_reorder, reverse=True)]
+            
+            # Convert to response models
+            converted_entries = [playlist_orm_to_response(e, details=False) for e in entries_to_move]
+            
+            # Delete original entries from database
+            logging.info("deleting moved entries")
+            for entry in entries_to_move:
+                self.session.delete(entry)
+            
+            # Flush to ensure deletions take effect
+            self.session.flush()
+            
+            # Now remove from the in-memory list
+            for i in sorted(indices_to_reorder, reverse=True):
+                playlist_entries.pop(i)
+            
+            # logging.info([e.order for e in playlist_entries])
+            
+            logging.info("re-inserting moved entries")
+            # Insert entries at new position
+            for e in converted_entries:
+                playlist_entries = self.insert_entry(playlist_id, e, new_index=new_index, cached_list=playlist_entries)
         
-        # First set all entries to temporary negative order values to avoid unique constraint violations
-        for i, entry in enumerate(playlist_entries):
-            entry.order = -(i + 1)  # Using negative values to avoid conflicts
-        
-        # Flush changes to database
-        self.session.flush()
-        
-        # Now set the final order values
-        for i, entry in enumerate(playlist_entries):
-            entry.order = i
-        
-        playlist.updated_at = func.now()
-        
+        # Commit outside of no_autoflush block
+        logging.info("reorder complete - committing")
         self.session.commit()
 
     def undo_add_entries(self, playlist_id: int, entries: List[PlaylistEntryBase]):
@@ -656,7 +748,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         offset_to_use = filter.offset or 0
 
         # convert to response models
-        entries = [playlist_orm_to_response(e, order=e.order) for i, e in enumerate(entries)]
+        entries = [playlist_orm_to_response(e, order=offset_to_use + i) for i, e in enumerate(entries)]
         return PlaylistEntriesResponse(entries=entries)
 
     def get_details(self, playlist_id):
@@ -669,7 +761,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
     def replace_track(self, playlist_id, existing_entry_id, new_entry: PlaylistEntryBase):
         # Get the existing entry
-        existing_entry = self.session.query(PlaylistEntryDB).get(existing_entry_id)
+        existing_entry = self.session.get(PlaylistEntryDB, existing_entry_id)
         if existing_entry is None:
             return None
                 
@@ -699,7 +791,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         self.session.add(new_entry_db)
         new_entry_db.order = original_order
 
-        this_playlist = self.session.query(PlaylistDB).get(playlist_id)
+        this_playlist = self.session.get(PlaylistDB, playlist_id)
         this_playlist.updated_at = func.now()
         
         self.session.commit()
@@ -805,5 +897,25 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         # update the pinned order for all playlists
         for i, p in enumerate(pinned_playlists):
             p.pinned_order = i
+        
+        self.session.commit()
+
+    def rebalance_playlist(self, playlist_id):
+        """Rebalance the order of entries in a playlist to ensure they are unique and sequential, leaving space for sparse ordering."""
+        logging.info("rebalancing")
+        entries = self.session.query(PlaylistEntryDB).filter(PlaylistEntryDB.playlist_id == playlist_id).order_by(PlaylistEntryDB.order).all()
+
+        if not entries:
+            return
+        
+        # logging.info(list([e.order for e in entries]))
+        
+        # Reorder the entries in the playlist (starting from the back)
+        idx = len(entries)
+        for entry in entries[::-1]:
+            entry.order = idx * 100
+            idx -= 1
+
+        # logging.info(list([e.order for e in entries]))
         
         self.session.commit()

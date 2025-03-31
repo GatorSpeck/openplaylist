@@ -7,6 +7,17 @@ from response_models import *
 import datetime
 from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 
+# include line number with logging
+import logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+
 @pytest.fixture
 def playlist_repo(test_db):
     return PlaylistRepository(test_db)
@@ -157,22 +168,84 @@ def test_reorder(test_db, playlist_repo, sample_playlist, sample_music_file):
     assert [e.details.title for e in result.entries] == [e.details.title for e in initial_entries]
     
     # Reorder entries
+    logging.info("reorder 1")
     playlist_repo.reorder_entries(sample_playlist.id, [1, 3], 0)
 
     result = playlist_repo.get_with_entries(sample_playlist.id)
-    print(list([e.details.title for e in result.entries]))
+    logging.info(list([e.details.title for e in result.entries]))
     assert [e.details.title for e in result.entries[0:5]] == ["Test Song 1", "Test Song 3", "Test Song 0", "Test Song 2", "Test Song 4"]
+
+    logging.info("undo")
 
     # undo
     playlist_repo.undo_reorder_entries(sample_playlist.id, [1, 3], 0)
 
     result = playlist_repo.get_with_entries(sample_playlist.id)
+    logging.info(list([e.details.title for e in result.entries]))
     assert [e.details.title for e in result.entries] == [e.details.title for e in initial_entries]
+
+    logging.info("reorder 2")
 
     playlist_repo.reorder_entries(sample_playlist.id, [4], 3)
 
     result = playlist_repo.get_with_entries(sample_playlist.id)
+    logging.info(list([e.details.title for e in result.entries]))
     assert [e.details.title for e in result.entries[0:5]] == ["Test Song 0", "Test Song 1", "Test Song 2", "Test Song 4", "Test Song 3"]
+
+def test_sparse_ordering(test_db, playlist_repo, sample_playlist, sample_music_file):
+    initial_entries = []
+    for i in range(3):
+        f = add_music_file(test_db, f"Test Song {i}")
+        entry = MusicFileEntry(
+            entry_type="music_file",
+            music_file_id=f.id,
+            details=MusicFile.from_orm(f)
+        )
+        initial_entries.append(entry)
+    
+    playlist_repo.add_entries(sample_playlist.id, initial_entries)
+
+    logging.info("1")
+
+    playlist_repo.reorder_entries(sample_playlist.id, [2], 1)
+    entries = playlist_repo.get_with_entries(sample_playlist.id).entries
+    assert [e.details.title for e in entries] == ["Test Song 0", "Test Song 2", "Test Song 1"]
+
+    logging.info("2")
+
+    playlist_repo.reorder_entries(sample_playlist.id, [2], 1)
+    entries = playlist_repo.get_with_entries(sample_playlist.id).entries
+    assert [e.details.title for e in entries] == ["Test Song 0", "Test Song 1", "Test Song 2"]
+
+    logging.info("3")
+
+    playlist_repo.reorder_entries(sample_playlist.id, [2], 1)
+    entries = playlist_repo.get_with_entries(sample_playlist.id).entries
+    assert [e.details.title for e in entries] == ["Test Song 0", "Test Song 2", "Test Song 1"]
+
+    logging.info("4")
+
+    playlist_repo.reorder_entries(sample_playlist.id, [2], 1)
+    entries = playlist_repo.get_with_entries(sample_playlist.id).entries
+    assert [e.details.title for e in entries] == ["Test Song 0", "Test Song 1", "Test Song 2"]
+
+    logging.info("5")
+
+    playlist_repo.reorder_entries(sample_playlist.id, [2], 1)
+    entries = playlist_repo.get_with_entries(sample_playlist.id).entries
+    assert [e.details.title for e in entries] == ["Test Song 0", "Test Song 2", "Test Song 1"]
+
+    logging.info("6")
+
+    playlist_repo.reorder_entries(sample_playlist.id, [2], 1)
+    entries = playlist_repo.get_with_entries(sample_playlist.id).entries
+    assert [e.details.title for e in entries] == ["Test Song 0", "Test Song 1", "Test Song 2"]
+
+    logging.info("7")
+
+    playlist_repo.reorder_entries(sample_playlist.id, [2], 1)  # rebalancing would happen here
+    entries = playlist_repo.get_with_entries(sample_playlist.id).entries
+    assert [e.details.title for e in entries] == ["Test Song 0", "Test Song 2", "Test Song 1"]
 
 def test_playlist_pagination(playlist_repo, test_db):
     # Create a playlist with multiple entries

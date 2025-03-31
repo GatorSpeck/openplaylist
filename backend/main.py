@@ -75,7 +75,11 @@ dotenv.load_dotenv(override=True)
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 
 # Set up logging
-logging.basicConfig(level=log_level)
+logging.basicConfig(
+    level=log_level,
+    format='%(asctime)s.%(msecs)03d - %(levelname)s - %(name)s:%(filename)s:%(lineno)d - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 ALLOW_ORIGINS = [origin.strip() for origin in os.getenv("ALLOW_ORIGINS", "http://localhost:80").split(",")]
 
@@ -87,8 +91,6 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
-
-logging.info(f"Allowed origins: {ALLOW_ORIGINS}")
 
 # Create the database tables
 Base.metadata.create_all(bind=Database.get_engine())
@@ -649,6 +651,8 @@ host = os.getenv("HOST", "0.0.0.0")
 port = int(os.getenv("PORT", 3000))
 
 if __name__ == "__main__":
+    logging.info(f"Allowed origins: {ALLOW_ORIGINS}")
+    
     music_path = os.getenv("MUSIC_PATH", "/music")
     if not pathlib.Path(music_path).exists():
         logging.warning(f"Music path {music_path} does not exist")
