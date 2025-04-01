@@ -29,6 +29,7 @@ from repositories.playlist import PlaylistRepository
 from repositories.open_ai_repository import open_ai_repository
 from repositories.last_fm_repository import last_fm_repository
 from repositories.requests_cache_session import requests_cache_session
+from repositories.spotify_repository import get_spotify_repo
 from redis import Redis
 import json
 from pydantic import BaseModel
@@ -74,7 +75,11 @@ dotenv.load_dotenv(override=True)
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 
 # Set up logging
-logging.basicConfig(level=log_level)
+logging.basicConfig(
+    level=log_level,
+    format='%(asctime)s.%(msecs)03d - %(levelname)s - %(name)s:%(filename)s:%(lineno)d - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 ALLOW_ORIGINS = [origin.strip() for origin in os.getenv("ALLOW_ORIGINS", "http://localhost:80").split(",")]
 
@@ -86,8 +91,6 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
-
-logging.info(f"Allowed origins: {ALLOW_ORIGINS}")
 
 # Create the database tables
 Base.metadata.create_all(bind=Database.get_engine())
@@ -541,13 +544,41 @@ def save_index_paths(paths: List[str]):
 @router.get("/settings")
 def get_settings():
     return {
-        "lastFmApiKeyConfigured": os.getenv("LASTFM_API_KEY") is not None,
+        "lastFmApiKeyConfigured": all([os.getenv("LASTFM_API_KEY"), os.getenv("LASTFM_SHARED_SECRET")]),
         "openAiApiKeyConfigured": os.getenv("OPENAI_API_KEY") is not None,
-        "plexConfigured": os.getenv("PLEX_TOKEN") is not None,
+        "plexConfigured": all([os.getenv("PLEX_TOKEN"), os.getenv("PLEX_ENDPOINT"), os.getenv("PLEX_LIBRARY")]),
+        "spotifyConfigured": all([os.getenv("SPOTIFY_CLIENT_ID"), os.getenv("SPOTIFY_CLIENT_SECRET")]),
         "redisConfigured": redis_session is not None,
         "configDir": str(CONFIG_DIR),
         "logLevel": log_level,
     }
+
+@router.post("/spotify/import")
+def import_spotify_playlist(
+    params: SpotifyImportParams,
+    playlist_repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    spotify_repo = get_spotify_repo(requests_cache_session)
+    if not spotify_repo:
+        raise HTTPException(status_code=500, detail="Spotify API key not configured")
+    
+    playlist = spotify_repo.get_playlist(params.playlist_id)
+
+    new_playlist = Playlist(name=params.playlist_name, description=playlist.description, entries=[])
+    for t in playlist.tracks:
+        track = RequestedTrackEntry(
+            entry_type="requested",
+            details=TrackDetails(
+                title=t.title,
+                artist=t.artist,
+                album=t.album,
+            )
+        )
+        new_playlist.entries.append(track)
+
+    playlist_repo.create(new_playlist)
+
+    return playlist
 
 class Directory(BaseModel):
     name: str
@@ -620,6 +651,8 @@ host = os.getenv("HOST", "0.0.0.0")
 port = int(os.getenv("PORT", 3000))
 
 if __name__ == "__main__":
+    logging.info(f"Allowed origins: {ALLOW_ORIGINS}")
+    
     music_path = os.getenv("MUSIC_PATH", "/music")
     if not pathlib.Path(music_path).exists():
         logging.warning(f"Music path {music_path} does not exist")

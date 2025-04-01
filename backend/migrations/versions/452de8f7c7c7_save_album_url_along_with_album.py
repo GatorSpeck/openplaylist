@@ -21,7 +21,11 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Upgrade schema."""
     # Add column works fine with SQLite
-    op.add_column('albums', sa.Column('last_fm_url', sa.String(), nullable=True))
+    try:
+        op.add_column('albums', sa.Column('last_fm_url', sa.String(), nullable=True))
+    except sa.exc.OperationalError:
+        # Handle the case where the column already exists
+        pass
 
 
 def downgrade() -> None:

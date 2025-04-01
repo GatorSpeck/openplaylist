@@ -575,3 +575,22 @@ class PlaylistEntriesResponse(BaseModel):
 class ReplaceTrackRequest(BaseModel):
     existing_track_id: int
     new_track: Optional[PlaylistEntry] = None
+
+class SpotifyImportParams(BaseModel):
+    playlist_id: str
+    playlist_name: str
+
+class SpotifyTrack(BaseModel):
+    id: str
+    title: str
+    artist: str
+    album: str
+    track_uri: str
+    album_uri: str
+
+class SpotifyPlaylist(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    tracks: List[SpotifyTrack] = []
+    last_updated: Optional[datetime] = None
