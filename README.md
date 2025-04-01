@@ -10,7 +10,7 @@ In addition to local music, your playlists can be augmented with search results 
   - External search results are auto-matched with local files
 - Album art fetching via Last.FM
 - Export to Plex, .m3u, and JSON formats
-  - Import from .m3u and JSON
+  - Import from .m3u, JSON, and Spotify
 - View track metadata
   - e.g. ID3 tags, date added to playlist, other playlists this track is part of
 - Support for missing local files and un-matching/re-matching them later
