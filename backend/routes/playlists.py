@@ -2,17 +2,16 @@ from fastapi import APIRouter
 from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
 from repositories.playlist import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
-from plexapi.server import PlexServer
-from plexapi.playlist import Playlist as PlexPlaylist
 from fastapi import Query, APIRouter, Depends, Body, File, UploadFile
 from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, ReplaceTrackRequest, MusicFileEntry, RequestedAlbumEntry, Album, RequestedTrackEntry, TrackDetails
 import json
 from repositories.playlist import PlaylistRepository
 from repositories.music_file import MusicFileRepository
 from repositories.last_fm_repository import get_last_fm_repo
+from repositories.plex_repository import plex_repository
 import logging
 from fastapi.exceptions import HTTPException
-from dependencies import get_music_file_repository, get_playlist_repository
+from dependencies import get_music_file_repository, get_playlist_repository, get_plex_repository
 from typing import Optional, List
 from database import Database
 from models import PlaylistDB
@@ -231,55 +230,9 @@ def get_playlists_by_track(track_id: int, repo: PlaylistRepository = Depends(get
         raise HTTPException(status_code=500, detail="Failed to get playlists by track")
 
 @router.get("/{playlist_id}/synctoplex")
-def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
+def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository), plex_repo: plex_repository = Depends(get_plex_repository)):
     try:
-        M3U_SOURCE = os.getenv("PLEX_M3U_DROP_SOURCE", None)
-        M3U_TARGET = os.getenv("PLEX_M3U_DROP_TARGET", None)
-    
-        if not M3U_SOURCE or not M3U_TARGET:
-            raise HTTPException(status_code=500, detail="Plex drop path not configured")
-        
-        MAP_SOURCE = os.getenv("PLEX_MAP_SOURCE")
-        MAP_TARGET = os.getenv("PLEX_MAP_TARGET")
-
-        if MAP_SOURCE and MAP_TARGET:
-            logging.info(f"Mapping track paths: source = {MAP_SOURCE}, target = {MAP_TARGET}")
-
-        m3u_content = repo.export_to_m3u(
-            playlist_id, mapping_source=MAP_SOURCE, mapping_target=MAP_TARGET
-        )
-
-        playlist = repo.get_by_id(playlist_id)
-
-        m3u_path = pathlib.Path(M3U_SOURCE) / f"{playlist.name}.m3u"
-
-        logging.info(f"Writing playlist to {m3u_path}")
-        with open(m3u_path, "w") as f:
-            while True:
-                try:
-                    chunk = next(m3u_content)
-                except StopIteration:
-                    break
-                
-                if not chunk:
-                    break
-                f.write(chunk)
-        
-        logging.info("Done updating M3U file")
-
-        plex_endpoint = os.getenv("PLEX_ENDPOINT")
-        plex_token = os.getenv("PLEX_TOKEN")
-        plex_library = os.getenv("PLEX_LIBRARY")
-
-        server = PlexServer(plex_endpoint, token=plex_token)
-
-        if M3U_SOURCE and M3U_TARGET:
-            logging.info(f"Mapping m3u path: source = {M3U_SOURCE}, target = {M3U_TARGET}")
-            endpoint = str(m3u_path).replace(M3U_SOURCE, M3U_TARGET)
-        
-        logging.info(f"Syncing playlist to Plex: m3u path sent to Plex = {endpoint}")
-
-        PlexPlaylist.create(server, playlist.name, section=server.library.section(plex_library), m3ufilepath=endpoint)
+        plex_repo.sync_playlist_to_plex(repo, playlist_id)
     except Exception as e:
         logging.error(f"Failed to sync playlist to Plex: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to sync playlist to Plex")

@@ -289,3 +289,11 @@ class RequestedAlbumEntryDB(PlaylistEntryDB):
     details = relationship("AlbumDB", foreign_keys=[album_id], passive_deletes=True)
 
     __mapper_args__ = {"polymorphic_identity": "requested_album"}
+
+class PlaylistSnapshot(Base):
+    __tablename__ = "playlist_snapshots"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    contents = Column(JSON)
+    last_updated = Column(DateTime, index=True)
+    
