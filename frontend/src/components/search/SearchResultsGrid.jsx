@@ -25,7 +25,6 @@ const secondsToDaysHoursMins = (seconds) => {
 }
 
 const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackbar }) => {
-  const [filterQuery, setFilterQuery] = useState(filter);
   const [selectedSearchResults, setSelectedSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [allSearchResultsSelected, setAllSongsSelected] = useState(false);
@@ -51,9 +50,8 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
   const [hasMore, setHasMore] = useState(true);
   const [openAILoading, setOpenAILoading] = useState(false);
 
-  // Add this state for advanced search toggle
-  const [advancedSearch, setAdvancedSearch] = useState(false);
-  const [advancedFilters, setAdvancedFilters] = useState({
+  // Keep this part but rename it from "advancedFilters" to just "filters"
+  const [filters, setFilters] = useState({
     title: '',
     artist: '',
     album: ''
@@ -100,7 +98,6 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
 
   const handleFilterByAlbum = async (album) => {
     setContextMenu({ visible: false });
-    setFilterQuery("");
     try {
       const response = await axios.get(`/api/filter`, {
         params: { album }
@@ -141,7 +138,6 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
 
   const handleFilterByArtist = async (artist) => {
     setContextMenu({ visible: false });
-    setFilterQuery("");
     
     try {
       const response = await axios.get(`/api/filter`, {
@@ -185,15 +181,17 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
 
   // Update filter handler
   const handleFilterChange = (e) => {
-    const query = e.target.value;
-    setFilterQuery(query);
-    debouncedFetchSongs(query);
+    const { name, value } = e.target;
+    setFilters(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
   // Add this function to handle advanced filter changes
   const handleAdvancedFilterChange = (e) => {
     const { name, value } = e.target;
-    setAdvancedFilters(prev => ({
+    setFilters(prev => ({
       ...prev,
       [name]: value
     }));
@@ -205,9 +203,9 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
     try {
       const response = await axios.get(`/api/filter`, {
         params: { 
-          title: advancedFilters.title || null,
-          artist: advancedFilters.artist || null,
-          album: advancedFilters.album || null,
+          title: filters.title || null,
+          artist: filters.artist || null,
+          album: filters.album || null,
           limit: ITEMS_PER_PAGE
         }
       });
@@ -222,7 +220,6 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
   };
 
   const searchFor = (query) => {
-    setFilterQuery(query);
     fetchSongs(query);
   }
 
@@ -451,7 +448,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
             itemCount={hasMore ? searchResults.length + 1 : searchResults.length}
             loadMoreItems={() => {
               if (!isLoading && hasMore) {
-                return fetchSongs(filterQuery, page + 1);
+                return fetchSongs(filters.title, page + 1);
               }
               return Promise.resolve();
             }}
@@ -475,7 +472,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
   );
 
   const clearSearchResults = () => {
-    setFilterQuery('');
+    setFilters({ title: '', artist: '', album: '' });
     setSearchResults([]);
   };
 
@@ -526,142 +523,77 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
         </div>
 
         <div className="search-container">
-          <div className="search-toggle">
-            <button 
-              className={`search-mode-btn ${!advancedSearch ? 'active' : ''}`}
-              onClick={() => setAdvancedSearch(false)}
-            >
-              Basic Search
-            </button>
-            <button 
-              className={`search-mode-btn ${advancedSearch ? 'active' : ''}`}
-              onClick={() => setAdvancedSearch(true)}
-            >
-              Advanced Search
-            </button>
-          </div>
-          
-          {!advancedSearch ? (
-            <div className="basic-search">
-              <input
-                type="text"
-                placeholder="Search local files..."
-                value={filterQuery}
-                onChange={handleFilterChange}
+          <div className="advanced-search">
+            <div className="form-group">
+              <label>Title:</label>
+              <input 
+                type="text" 
+                name="title"
+                value={filters.title} 
+                onChange={handleAdvancedFilterChange}
+                placeholder="Track Title" 
               />
-              <div className="basic-search-actions">
-                <button onClick={() => clearSearchResults()}>Clear</button>
-                {filterQuery.length > 2 && (
-                  <>
-                    <button onClick={() => {
-                      // Switch to advanced search with the current query as title
-                      setAdvancedFilters({
-                        title: filterQuery,
-                        artist: '',
-                        album: ''
-                      });
-                      setAdvancedSearch(true);
-                    }}>
-                      Advanced Search
-                    </button>
-                    <button onClick={() => {
-                      // Launch Last.FM search with current query
-                      setShowLastFMSearch(true);
-                    }}>
-                      Search Last.FM
-                    </button>
-                    <button onClick={() => {
-                      // Copy to manual entry
-                      setManualTitle(filterQuery);
-                      setManualArtist('');
-                      setManualAlbum('');
-                      setManualEntryOpen(true);
-                    }}>
-                      Add Manually
-                    </button>
-                    <button onClick={() => {
-                      // Directly add as a manual entry
-                      addManualEntry(filterQuery, '', '', 'track');
-                    }}>
-                      Add as Track
-                    </button>
-                  </>
-                )}
-              </div>
             </div>
-          ) : (
-            <div className="advanced-search">
-              <div className="form-group">
-                <label>Title:</label>
-                <input 
-                  type="text" 
-                  name="title"
-                  value={advancedFilters.title} 
-                  onChange={handleAdvancedFilterChange}
-                  placeholder="Track Title" 
-                />
-              </div>
-              <div className="form-group">
-                <label>Artist:</label>
-                <input 
-                  type="text" 
-                  name="artist"
-                  value={advancedFilters.artist} 
-                  onChange={handleAdvancedFilterChange}
-                  placeholder="Artist Name" 
-                />
-              </div>
-              <div className="form-group">
-                <label>Album:</label>
-                <input 
-                  type="text" 
-                  name="album"
-                  value={advancedFilters.album} 
-                  onChange={handleAdvancedFilterChange}
-                  placeholder="Album Name" 
-                />
-              </div>
-              <div className="advanced-search-actions">
-                <button onClick={performAdvancedSearch}>
-                  Search Library
-                </button>
-                <button onClick={() => {
-                  // Launch Last.FM search with the current advanced filters
-                  setShowLastFMSearch(true);
-                }}>
-                  Search Last.FM
-                </button>
-                <button onClick={() => {
-                  // Directly add as a manual track
-                  addManualEntry(
-                    advancedFilters.title,
-                    advancedFilters.artist,
-                    advancedFilters.album,
-                    'track'
-                  );
-                }}>
-                  Add as Track
-                </button>
-                <button onClick={() => {
-                  // Directly add as a manual album
-                  addManualEntry(
-                    advancedFilters.title,
-                    advancedFilters.artist,
-                    null,
-                    'album'
-                  );
-                }}>
-                  Add as Album
-                </button>
-                <button onClick={() => {
-                  setAdvancedFilters({ title: '', artist: '', album: '' });
-                  clearSearchResults();
-                }}>
-                  Clear
-                </button>
-              </div>
+            <div className="form-group">
+              <label>Artist:</label>
+              <input 
+                type="text" 
+                name="artist"
+                value={filters.artist} 
+                onChange={handleAdvancedFilterChange}
+                placeholder="Artist Name" 
+              />
             </div>
-          )}
+            <div className="form-group">
+              <label>Album:</label>
+              <input 
+                type="text" 
+                name="album"
+                value={filters.album} 
+                onChange={handleAdvancedFilterChange}
+                placeholder="Album Name" 
+              />
+            </div>
+            <div className="advanced-search-actions">
+              <button onClick={performAdvancedSearch}>
+                Search Library
+              </button>
+              <button onClick={() => {
+                // Launch Last.FM search with the current advanced filters
+                setShowLastFMSearch(true);
+              }}>
+                Search Last.FM
+              </button>
+              <button onClick={() => {
+                // Directly add as a manual track
+                addManualEntry(
+                  filters.title,
+                  filters.artist,
+                  filters.album,
+                  'track'
+                );
+              }}>
+                Add as Track
+              </button>
+              <button onClick={() => {
+                // Directly add as a manual album
+                addManualEntry(
+                  filters.title,
+                  filters.artist,
+                  null,
+                  'album'
+                );
+              }}>
+                Add as Album
+              </button>
+              <button onClick={() => {
+                setFilters({ title: '', artist: '', album: '' });
+                clearSearchResults();
+              }}>
+                Clear
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedSearchResults.length > 0 ? 'visible' : 'hidden' }}>
@@ -690,9 +622,9 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
         {showLastFMSearch && (
           <LastFMSearch
             initialSearch={{
-              title: advancedFilters.title,
-              artist: advancedFilters.artist,
-              album: advancedFilters.album
+              title: filters.title,
+              artist: filters.artist,
+              album: filters.album
             }}
             onClose={() => setShowLastFMSearch(false)}
             onAddToPlaylist={(entries) => {
