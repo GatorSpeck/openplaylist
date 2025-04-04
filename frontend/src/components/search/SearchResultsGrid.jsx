@@ -16,6 +16,7 @@ import TrackDetailsModal from '../common/TrackDetailsModal';
 import { FixedSizeList as List } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
+import PlaylistEntry from '../../lib/PlaylistEntry';
 
 const secondsToDaysHoursMins = (seconds) => {
   const days = Math.floor(seconds / (3600 * 24));
@@ -60,7 +61,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
   const ITEMS_PER_PAGE = 50;
 
   const extractSearchResults = (response) => {
-    const results = response.data.map(s => mapToTrackModel({...s, music_file_id: s.id, entry_type: "music_file"}));
+    const results = response.data.map(s => new PlaylistEntry({...s, music_file_id: s.id, entry_type: "music_file"}));
     return results;
   }
 
@@ -195,6 +196,9 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
       ...prev,
       [name]: value
     }));
+    
+    // This will trigger the debounced search
+    debouncedAdvancedSearch();
   };
 
   // Update this function to handle advanced search
@@ -218,6 +222,17 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
       setIsLoading(false);
     }
   };
+
+  // Add a debounced version of the advanced search function
+  const debouncedAdvancedSearch = useCallback(
+    debounce(() => {
+      // Only search if we have enough input to be meaningful
+      if (filters.title.length > 1 || filters.artist.length > 1 || filters.album.length > 1) {
+        performAdvancedSearch();
+      }
+    }, 500), // 500ms debounce
+    [filters] // Re-create when filters change
+  );
 
   const searchFor = (query) => {
     fetchSongs(query);
@@ -390,8 +405,8 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
 
     useEffect(() => {
       const fn = async () => {
-        if (song.artist && song.album) {
-          const artwork = await lastFMRepository.fetchAlbumArt(song.artist, song.album);
+        if (song.getArtist() && song.getAlbum()) {
+          const artwork = await lastFMRepository.fetchAlbumArt(song.getArtist(), song.getAlbum());
           if (artwork) {
             song.image_url = artwork.image_url;
           }
@@ -399,7 +414,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
       }
       
       fn();
-    }, [song.artist, song.album]);
+    }, [song.getArtist(), song.getAlbum()]);
 
     const isSelected = selectedSearchResults.some(s => s.id === song.id);
 
@@ -425,14 +440,14 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
             {artwork}
           </div>
           <div className="grid-cell">
-            <div>{song.artist || song.album_artist}</div>
-            <div><i>{song.album}</i></div>
+            <div>{song.getArtist()}</div>
+            <div><i>{song.getAlbum()}</i></div>
           </div>
           <div 
             className="grid-cell clickable" 
             onContextMenu={(e) => handleContextMenu(e, song)}
           >
-            {song.missing ? <s>{song.title}</s> : song.title}
+            {song.missing ? <s>{song.getTitle()}</s> : song.getTitle()}
           </div>
         </div>
       </div>
@@ -555,9 +570,12 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
               />
             </div>
             <div className="advanced-search-actions">
-              <button onClick={performAdvancedSearch}>
-                Search Library
-              </button>
+              {isLoading && (
+                <div className="loading-indicator">
+                  <ClipLoader size={20} color="#4A90E2" />
+                  <span>Searching...</span>
+                </div>
+              )}
               <button onClick={() => {
                 // Launch Last.FM search with the current advanced filters
                 setShowLastFMSearch(true);
@@ -573,7 +591,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
                   'track'
                 );
               }}>
-                Add as Track
+                Add Requested Track
               </button>
               <button onClick={() => {
                 // Directly add as a manual album
@@ -584,7 +602,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
                   'album'
                 );
               }}>
-                Add as Album
+                Add Requested Album
               </button>
               <button onClick={() => {
                 setFilters({ title: '', artist: '', album: '' });
