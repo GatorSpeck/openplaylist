@@ -57,6 +57,14 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
   const [manualArtist, setManualArtist] = useState('');
   const [manualAlbum, setManualAlbum] = useState('');
 
+  // Add this state for advanced search toggle
+  const [advancedSearch, setAdvancedSearch] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState({
+    title: '',
+    artist: '',
+    album: ''
+  });
+
   const ITEMS_PER_PAGE = 50;
 
   const extractSearchResults = (response) => {
@@ -186,6 +194,37 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
     const query = e.target.value;
     setFilterQuery(query);
     debouncedFetchSongs(query);
+  };
+
+  // Add this function to handle advanced filter changes
+  const handleAdvancedFilterChange = (e) => {
+    const { name, value } = e.target;
+    setAdvancedFilters(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  // Update this function to handle advanced search
+  const performAdvancedSearch = async () => {
+    setIsLoading(true);
+    try {
+      const response = await axios.get(`/api/filter`, {
+        params: { 
+          title: advancedFilters.title || null,
+          artist: advancedFilters.artist || null,
+          album: advancedFilters.album || null,
+          limit: ITEMS_PER_PAGE
+        }
+      });
+      
+      setSearchResults(extractSearchResults(response));
+      setHasMore(false); // We don't have pagination for the filter endpoint
+    } catch (error) {
+      console.error('Error performing advanced search:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const searchFor = (query) => {
@@ -505,14 +544,75 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
           </button>
         </div>
 
-        <div>
-          <input
-            type="text"
-            placeholder="Search local files..."
-            value={filterQuery}
-            onChange={handleFilterChange}
-          />
-          <button onClick={() => clearSearchResults()}>Clear</button>
+        <div className="search-container">
+          <div className="search-toggle">
+            <button 
+              className={`search-mode-btn ${!advancedSearch ? 'active' : ''}`}
+              onClick={() => setAdvancedSearch(false)}
+            >
+              Basic Search
+            </button>
+            <button 
+              className={`search-mode-btn ${advancedSearch ? 'active' : ''}`}
+              onClick={() => setAdvancedSearch(true)}
+            >
+              Advanced Search
+            </button>
+          </div>
+          
+          {!advancedSearch ? (
+            <div className="basic-search">
+              <input
+                type="text"
+                placeholder="Search local files..."
+                value={filterQuery}
+                onChange={handleFilterChange}
+              />
+              <button onClick={() => clearSearchResults()}>Clear</button>
+            </div>
+          ) : (
+            <div className="advanced-search">
+              <div className="form-group">
+                <label>Title:</label>
+                <input 
+                  type="text" 
+                  name="title"
+                  value={advancedFilters.title} 
+                  onChange={handleAdvancedFilterChange}
+                  placeholder="Track Title" 
+                />
+              </div>
+              <div className="form-group">
+                <label>Artist:</label>
+                <input 
+                  type="text" 
+                  name="artist"
+                  value={advancedFilters.artist} 
+                  onChange={handleAdvancedFilterChange}
+                  placeholder="Artist Name" 
+                />
+              </div>
+              <div className="form-group">
+                <label>Album:</label>
+                <input 
+                  type="text" 
+                  name="album"
+                  value={advancedFilters.album} 
+                  onChange={handleAdvancedFilterChange}
+                  placeholder="Album Name" 
+                />
+              </div>
+              <div className="advanced-search-actions">
+                <button onClick={performAdvancedSearch}>Search</button>
+                <button onClick={() => {
+                  setAdvancedFilters({ title: '', artist: '', album: '' });
+                  clearSearchResults();
+                }}>
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="manual-entry-section">
