@@ -3,7 +3,7 @@ import { Droppable, Draggable, DragDropContext } from 'react-beautiful-dnd';
 import Snackbar from '../Snackbar';
 import mapToTrackModel from '../../lib/mapToTrackModel';
 import '../../styles/PlaylistGrid.css';
-import SearchResultsGrid from '../search/SearchResultsGrid';
+import SearchResultsGrid, {SearchFilter} from '../search/SearchResultsGrid';
 import ContextMenu from '../common/ContextMenu';
 import { FaUndo, FaRedo } from 'react-icons/fa';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -118,7 +118,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const [allPlaylistEntriesSelected, setAllTracksSelected] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, track: null });
-  const [searchFilter, setSearchFilter] = useState('');
+  const [searchFilter, setSearchFilter] = useState<SearchFilter>({"album": "", "artist": "", "title": ""});
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -494,8 +494,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     // The effect will trigger a re-fetch with the new sort parameters
   };
 
-  const searchFor = (query: String) => {
-    setSearchFilter(query);
+  const searchFor = (newFilter: SearchFilter) => {
+    setSearchFilter(newFilter);
     setSearchPanelOpen(true);
   }
 
@@ -734,11 +734,11 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       { label: 'Details', onClick: () => handleShowDetails(track) },
       canEdit ? { label: 'Edit Details', onClick: () => handleEditItem(track) } : null,
       { label: 'Add to Playlist...', onClick: () => handleAddToOtherPlaylist([track]) },
-      { label: 'Send to Search', onClick: () => searchFor(track.getTitle()) },
+      { label: 'Send to Search', onClick: () => searchFor({"album": "", "artist": "", "title": track.getTitle()}) },
       !isAlbum ? { label: 'Find Similar Tracks (Last.fm)', onClick: (e) => findSimilarTracks(e, track) } : null,
       !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: (e) => findSimilarTracksWithOpenAI(e, track) } : null,
-      { label: 'Search for Album', onClick: () => searchFor(track.getAlbum()) },
-      { label: 'Search for Artist', onClick: () => searchFor(track.getAlbumArtist()) },
+      { label: 'Search for Album', onClick: () => searchFor({"title": "", "album": track.getAlbum(), "artist": track.getArtist()}) },
+      { label: 'Search for Artist', onClick: () => searchFor({"title": "", "album": "", "artist": track.getAlbumArtist()}) },
       { label: 'Remove', onClick: () => removeSongsFromPlaylist([track.order]) },
       { label: 'Remove by Artist', onClick: () => onRemoveByArtist(track.getArtist()) },
       { label: 'Remove by Album', onClick: () => onRemoveByAlbum(track.getAlbum()) },
@@ -994,6 +994,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         visible={searchPanelOpen}
         playlistID={playlistID}
         setSnackbar={setSnackbar}
+        onPanelClose={() => setSearchPanelOpen(false)}
       />
 
       {contextMenu.visible && (
