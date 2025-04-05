@@ -25,13 +25,13 @@ import Modal from '../common/Modal';
 import MatchTrackModal from './MatchTrackModal';
 import MatchAlbumModal from './MatchAlbumModal';
 import EditItemModal from './EditItemModal';
-import PlaylistEntry from '../../lib/PlaylistEntry';
+import PlaylistEntry, {PlaylistEntryStub} from '../../lib/PlaylistEntry';
 import SelectPlaylistModal from './SelectPlaylistModal';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
     <button onClick={onRemove}>
-      Remove {selectedCount} Selected Tracks
+      Remove {selectedCount} Selected Entries
     </button>
     <button onClick={onClear}>
       Clear Selection
@@ -97,12 +97,16 @@ const Row = memo(({ data, index, style }) => {
   );
 });
 
-const PlaylistGrid = ({ playlistID }) => {
+interface PlaylistGridProps {
+  playlistID: number;
+}
+
+const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const [sortColumn, setSortColumn] = useState('order');
   const [sortDirection, setSortDirection] = useState('asc');
   const [filter, setFilter] = useState('');
   const [debouncedFilter, setDebouncedFilter] = useState('');
-  const [entries, setEntries] = useState([]);
+  const [entries, setEntries] = useState<PlaylistEntryStub[]>([]);
   const [name, setName] = useState('');
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -128,7 +132,7 @@ const PlaylistGrid = ({ playlistID }) => {
   const [similarTracks, setSimilarTracks] = useState(null);
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [selectedTrack, setSelectedTrack] = useState(null);
+  const [selectedTrack, setSelectedTrack] = useState<PlaylistEntry | null>(null);
   const [albumArtList, setAlbumArtList] = useState([]);
   const [playlistLoading, setPlaylistLoading] = useState(false);
   const [page, setPage] = useState(0);
@@ -144,12 +148,12 @@ const PlaylistGrid = ({ playlistID }) => {
 
   const [matchModalOpen, setMatchModalOpen] = useState(false);
   const [matchingTracks, setMatchingTracks] = useState([]);
-  const [trackToMatch, setTrackToMatch] = useState(null);
+  const [trackToMatch, setTrackToMatch] = useState<PlaylistEntry | null>(null);
 
   // Add these new state variables alongside your other states
   const [albumMatchModalOpen, setAlbumMatchModalOpen] = useState(false);
   const [albumMatchResults, setAlbumMatchResults] = useState([]);
-  const [albumToMatch, setAlbumToMatch] = useState(null);
+  const [albumToMatch, setAlbumToMatch] = useState<PlaylistEntry | null>(null);
 
   // Add after your other state declarations
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -199,10 +203,11 @@ const PlaylistGrid = ({ playlistID }) => {
         setTotalCount(countResponse.total || 0);
 
         // create placeholder entries
-        const placeholders = new Array(countResponse.total).fill(null).map((_, index) => ({
-          order: index,  // This is critical for sorting
-          details: {}
-        }));
+        const placeholders = new Array(countResponse.total).fill(null).map((_, index) => {
+          let entry = new PlaylistEntryStub();
+          entry.order = index;
+          return entry;
+        });
         setEntries(placeholders);
       }
       
@@ -233,7 +238,7 @@ const PlaylistGrid = ({ playlistID }) => {
       
       const response = await playlistRepository.getPlaylistEntries(playlistID, filterParams);
       const filteredEntries = response.entries;
-      const mappedEntries = filteredEntries.map(entry => mapToTrackModel(entry));
+      const mappedEntries = filteredEntries.map(entry => new PlaylistEntry(entry));
       
       // Create a sparse array that handles the jumped position properly
       if (targetPosition !== null) {
@@ -241,16 +246,15 @@ const PlaylistGrid = ({ playlistID }) => {
           // Create a new array with the correct total size
           const newEntries = new Array(totalCount).fill(null).map((_, index) => {
             // Start with minimal placeholder objects
-            return {
-              order: index,
-              details: {}
-            };
+            let entry = new PlaylistEntryStub();
+            entry.order = index;
+            return entry;
           });
           
           // Copy existing entries (non-placeholder) to the new array
           prevEntries.forEach((entry, i) => {
-            if (entry && entry.details?.title && i < newEntries.length) {
-              newEntries[i] = entry;
+            if ("getTitle" in entry) {
+              newEntries[i] = entry as PlaylistEntry;
             }
           });
           
@@ -307,14 +311,16 @@ const PlaylistGrid = ({ playlistID }) => {
     }
   };
 
-  const addTracksToPlaylist = async (tracks) => {
+  const addTracksToPlaylist = async (tracks: PlaylistEntry[]) => {
     const newOrder = entries.length ? entries[entries.length - 1].order + 1 : 0;
 
-    const tracksToAdd = (Array.isArray(tracks) ? tracks : [tracks]).map((track, idx) => ({
-      ...mapToTrackModel(track),
-      order: idx + newOrder, music_file_id: track.id, 
-      entry_type: track.entry_type, url: track.url, details: track
-    }));
+    const tracksToAdd = (Array.isArray(tracks) ? tracks : [tracks]).map((track, idx) => {
+      let thisTrack = track;
+      thisTrack.order = idx + newOrder;
+      thisTrack.music_file_id = track.id;
+      thisTrack.entry_type = track.entry_type || 'requested';
+      return thisTrack;
+    });
 
     pushToHistory(entries);
 
@@ -326,46 +332,55 @@ const PlaylistGrid = ({ playlistID }) => {
     setEntries(newEntries);
     setTotalCount(prevCount => prevCount + tracksToAdd.length);
 
-    playlistRepository.addTracks(playlistID, tracksToAdd);
+    playlistRepository.addTracks(playlistID, tracksToAdd, false);
         
     setSnackbar({
       open: true,
-      message: `Added ${tracksToAdd.length} tracks to ${name}`,
+      message: `Added ${tracksToAdd.length} entries to ${name}`,
       severity: 'success'
     });
   };
 
-  const handleRenamePlaylist = async (playlistID, newName) => {
+  const handleRenamePlaylist = async (playlistID: number, newName: String) => {
     setName(newName, async () => {
       await playlistRepository.rename(playlistID, newName);
     });
   };
 
-  const onRemoveByAlbum = async (album) => {
+  const onRemoveByAlbum = async (album: String) => {
     if (!album) return;
 
     // identify indexes of tracks to remove
-    const indexes = entries.map((entry, idx) => entry.album === album ? idx : null).filter(idx => idx !== null);
+    const indexes = entries.map((entry, idx) => entry.getAlbum() === album ? idx : null).filter(idx => idx !== null);
+
+    if (!window.confirm(`Are you sure you want to remove ${indexes.length} entries from the playlist?`)) {
+      return;
+    }
     
-    playlistRepository.removeTracks(playlistID, indexes.map(i => entries[i]));
+    playlistRepository.removeTracks(playlistID, indexes.map(i => entries[i]), false);
     setEntries(entries.filter((entry, idx) => !indexes.includes(idx)));
+    setTotalCount(prevCount => prevCount - indexes.length);
   }
 
-  const onRemoveByArtist = async (artist) => {
+  const onRemoveByArtist = async (artist: String) => {
     if (!artist) return;
 
-    const indexes = entries.map((entry, idx) => entry.artist === artist ? idx : null).filter(idx => idx !== null);
+    const indexes = entries.map((entry, idx) => ((entry.getAlbumArtist() === artist) || (entry.getArtist() === artist)) ? idx : null).filter(idx => idx !== null);
 
-    playlistRepository.removeTracks(playlistID, indexes.map(i => entries[i]));
+    if (!window.confirm(`Are you sure you want to remove ${indexes.length} entries from the playlist?`)) {
+      return;
+    }
+
+    playlistRepository.removeTracks(playlistID, indexes.map(i => entries[i]), false);
     setEntries(entries.filter((entry, idx) => !indexes.includes(idx)));
+    setTotalCount(prevCount => prevCount - indexes.length);
   }
 
-  const addSongsToPlaylist = async (songs) => {
-    const songsArray = Array.isArray(songs) ? songs : [songs];
-    await addTracksToPlaylist(songsArray);
+  const addSongsToPlaylist = async (songs: PlaylistEntry[]) => {
+    await addTracksToPlaylist(songs);
   };
 
-  const removeSongsFromPlaylist = async (indexes) => {
+  const removeSongsFromPlaylist = async (indexes: number[]) => {
     const length = indexes.length;
     if ((length > 1) && !window.confirm(`Are you sure you want to remove ${length} entries from the playlist?`)) {
       return;
@@ -377,19 +392,19 @@ const PlaylistGrid = ({ playlistID }) => {
 
     const newEntries = entries
       .filter((e) => !indexes.includes(e.id))
-      .map((entry, index) => ({ ...entry, order: index }));
+      .map((entry, index) => { let thisEntry = entry; thisEntry.order = index; return thisEntry; });
     
     setEntries(newEntries);
     setTotalCount(prevCount => prevCount - length);
 
-    playlistRepository.removeTracks(playlistID, entriesToRemove);
+    playlistRepository.removeTracks(playlistID, entriesToRemove, false);
   }
 
-  const exportPlaylist = async (id) => {
+  const exportPlaylist = async (id: number) => {
     playlistRepository.export(id, "m3u");
   };
 
-  const exportPlaylistToJson = async (id) => {
+  const exportPlaylistToJson = async (id: number) => {
     playlistRepository.export(id, "json");
   }
 
@@ -397,9 +412,11 @@ const PlaylistGrid = ({ playlistID }) => {
     try {
       await playlistRepository.syncToPlex(playlistID);
 
+      const playlistName = (await playlistRepository.getPlaylistDetails(playlistID)).name;
+
       setSnackbar({
         open: true,
-        message: `'${name}' synced to Plex`
+        message: `'${playlistName}' synced to Plex`
       })
     } catch (error) {
       console.error('Error exporting playlist:', error);
@@ -421,10 +438,11 @@ const PlaylistGrid = ({ playlistID }) => {
       const [movedTrack] = updatedTracks.splice(source.index, 1);
       updatedTracks.splice(destination.index, 0, movedTrack);
       
-      const updatedEntries = updatedTracks.map((track, index) => ({
-        ...track,
-        order: index,
-      }));
+      const updatedEntries = updatedTracks.map((track, index) => {
+        let updatedTrack = track;
+        track.order = index;
+        return updatedTrack;
+      });
 
       pushToHistory(entries);
 
@@ -434,7 +452,7 @@ const PlaylistGrid = ({ playlistID }) => {
     }
   };
 
-  const toggleTrackSelection = (index) => {
+  const toggleTrackSelection = (index: number) => {
     setSelectedEntries(prev => {
       const newSelection = prev.includes(index)
         ? prev.filter(i => i !== index)
@@ -466,7 +484,7 @@ const PlaylistGrid = ({ playlistID }) => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
 
-  const handleSort = (column) => {
+  const handleSort = (column: String) => {
     if (sortColumn === column) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
@@ -476,12 +494,12 @@ const PlaylistGrid = ({ playlistID }) => {
     // The effect will trigger a re-fetch with the new sort parameters
   };
 
-  const searchFor = (query) => {
+  const searchFor = (query: String) => {
     setSearchFilter(query);
     setSearchPanelOpen(true);
   }
 
-  const getSortIndicator = (column) => {
+  const getSortIndicator = (column: String) => {
     if (sortColumn !== column) return null;
     return sortDirection === 'asc' ? ' ↑' : ' ↓';
   };
@@ -502,7 +520,7 @@ const PlaylistGrid = ({ playlistID }) => {
     }
   }
 
-  const findSimilarTracksWithOpenAI = async (e, track) => {
+  const findSimilarTracksWithOpenAI = async (e, track: PlaylistEntry) => {
     setOpenAILoading(true);
 
     const similars = await openAIRepository.findSimilarTracks(track);
@@ -515,7 +533,7 @@ const PlaylistGrid = ({ playlistID }) => {
     setOpenAILoading(false);
   };
 
-  const findSimilarTracks = async (e, track) => {
+  const findSimilarTracks = async (e, track: PlaylistEntry) => {
     setLoading(true);
 
     const similars = await lastFMRepository.findSimilarTracks(track);
@@ -528,29 +546,22 @@ const PlaylistGrid = ({ playlistID }) => {
     setLoading(false);
   };
 
-  const addSimilarTracks = (tracks) => {
+  const addSimilarTracks = (tracks: PlaylistEntry[]) => {
     addSongsToPlaylist(tracks);
     setSimilarTracks(null);
   }
 
-  const handleShowDetails = (track) => {
+  const handleShowDetails = (track: PlaylistEntry) => {
     setSelectedTrack(track);
     setShowTrackDetails(true);
   }
 
-  const unMatchTrack = (track) => {
+  const unMatchTrack = (track: PlaylistEntry) => {
     // convert this music track to a RequestedTrack
-    const newTrack = {
-      order: track.order,
-      details: {
-        artist: track.details.artist,
-        title: track.details.title,
-      },
-      entry_type: 'requested'
-    };
+    let newTrack = track;
+    track.entry_type = "requested";
 
     // Update backend
-    console.log(track.id);
     playlistRepository.replaceTrack(playlistID, track.id, newTrack);
 
     // Update local state
@@ -561,7 +572,7 @@ const PlaylistGrid = ({ playlistID }) => {
     setEntries(newEntries);
   }
 
-  const matchTrack = async (track) => {
+  const matchTrack = async (track: PlaylistEntry) => {
     try {
       setPlaylistLoading(true);
 
@@ -574,7 +585,7 @@ const PlaylistGrid = ({ playlistID }) => {
       if (!potentialMatches || potentialMatches.length === 0) {
         setSnackbar({
           open: true,
-          message: `No matching tracks found for "${track.getTitle()}"`,
+          message: `No matching entries found for "${track.getTitle()}"`,
           severity: 'warning'
         });
       }
@@ -584,10 +595,10 @@ const PlaylistGrid = ({ playlistID }) => {
       setTrackToMatch(track);
       setMatchModalOpen(true);
     } catch (error) {
-      console.error('Error matching track:', error);
+      console.error('Error matching entry:', error);
       setSnackbar({
         open: true,
-        message: `Error matching track: ${error.message}`,
+        message: `Error matching entry: ${error.message}`,
         severity: 'error'
       });
     } finally {
@@ -595,7 +606,7 @@ const PlaylistGrid = ({ playlistID }) => {
     }
   };
 
-  const replaceTrackWithMatch = async (selectedMatch) => {
+  const replaceTrackWithMatch = async (selectedMatch: PlaylistEntry) => {
     try {
       if (!trackToMatch) return;
       
@@ -631,20 +642,20 @@ const PlaylistGrid = ({ playlistID }) => {
       
       setSnackbar({
         open: true,
-        message: `Track "${trackToMatch.details.title}" matched to "${selectedMatch.details.title}"`,
+        message: `Entry "${trackToMatch.getTitle()}" matched to "${selectedMatch.getTitle()}"`,
         severity: 'success'
       });
     } catch (error) {
-      console.error('Error replacing track:', error);
+      console.error('Error replacing entry:', error);
       setSnackbar({
         open: true,
-        message: `Error replacing track: ${error.message}`,
+        message: `Error replacing entry: ${error.message}`,
         severity: 'error'
       });
     }
   };
 
-  const matchAlbum = async (album) => {
+  const matchAlbum = async (album: PlaylistEntry) => {
     try {
       setPlaylistLoading(true);
       
@@ -662,7 +673,7 @@ const PlaylistGrid = ({ playlistID }) => {
     }
   };
   
-  const replaceAlbumWithMatch = async (selectedMatch) => {
+  const replaceAlbumWithMatch = async (selectedMatch: PlaylistEntry) => {
     try {
       if (!albumToMatch) return;
       
@@ -693,7 +704,7 @@ const PlaylistGrid = ({ playlistID }) => {
       
       setSnackbar({
         open: true,
-        message: `Album matched to "${selectedMatch.details.title}" by ${selectedMatch.details.artist}`,
+        message: `Album matched to "${selectedMatch.getTitle()}" by ${selectedMatch.getArtist()}`,
         severity: 'success'
       });
     } catch (error) {
@@ -706,12 +717,12 @@ const PlaylistGrid = ({ playlistID }) => {
     }
   };
 
-  const handleAddToOtherPlaylist = (tracks) => {
+  const handleAddToOtherPlaylist = (tracks: PlaylistEntry[]) => {
     setTracksToAddToOtherPlaylist(tracks);
     setSelectPlaylistModalVisible(true);
   }
 
-  const handleContextMenu = (e, track) => {
+  const handleContextMenu = (e, track: PlaylistEntry) => {
     e.preventDefault();
   
     const isAlbum = track.entry_type === 'requested_album' || track.entry_type === 'album';
@@ -729,8 +740,8 @@ const PlaylistGrid = ({ playlistID }) => {
       { label: 'Search for Album', onClick: () => searchFor(track.getAlbum()) },
       { label: 'Search for Artist', onClick: () => searchFor(track.getAlbumArtist()) },
       { label: 'Remove', onClick: () => removeSongsFromPlaylist([track.order]) },
-      { label: 'Remove by Artist', onClick: () => onRemoveByArtist(track.details.artist) },
-      { label: 'Remove by Album', onClick: () => onRemoveByAlbum(track.details.album) },
+      { label: 'Remove by Artist', onClick: () => onRemoveByArtist(track.getArtist()) },
+      { label: 'Remove by Album', onClick: () => onRemoveByAlbum(track.getAlbum()) },
       isRequestedTrack ? { label: 'Match to Music File', onClick: () => matchTrack(track) } : null,
       isMusicFile ? { label: 'Re-Match Track', onClick: () => matchTrack(track) } : null,
       isMusicFile ? { label: 'Unmatch Track', onClick: () => unMatchTrack(track) } : null,
@@ -813,39 +824,25 @@ const PlaylistGrid = ({ playlistID }) => {
     </div>
   );
 
-  const handleEditItem = (item) => {
+  const handleEditItem = (item: PlaylistEntry) => {
     setItemToEdit(item);
     setEditModalOpen(true);
   };
 
-  const saveEditedItem = async (editedItem) => {
+  const saveEditedItem = async (editedItem: PlaylistEntry) => {
     try {
       const isAlbum = editedItem.entry_type === 'requested_album' || editedItem.entry_type === 'album';
-
-      console.log(itemToEdit);
       
       // Create updated item with edited details
-      const updatedItem = {
-        ...itemToEdit,
-        id: itemToEdit.id,
-        title: editedItem.details.title,
-        artist: editedItem.details.artist,
-        album: isAlbum ? editedItem.title : editedItem.details.album,
-        details: {
-          ...itemToEdit.details,
-          title: editedItem.details.title,
-          artist: editedItem.details.artist,
-          album: isAlbum ? editedItem.details.title : editedItem.details.album,
-        }
-      };
+      let updatedItem = editedItem;
       
       // Update backend
-      await playlistRepository.replaceTrack(playlistID, itemToEdit.id, updatedItem);
+      await playlistRepository.replaceTrack(playlistID, updatedItem.id, updatedItem);
       
       // Update local state
       pushToHistory(entries);
       const newEntries = [...entries];
-      const itemIndex = entries.findIndex(entry => entry.order === itemToEdit.order);
+      const itemIndex = entries.findIndex(entry => entry.order === updatedItem.order);
       newEntries[itemIndex] = updatedItem;
       setEntries(newEntries);
       
@@ -1003,7 +1000,6 @@ const PlaylistGrid = ({ playlistID }) => {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          track={contextMenu.track}
           onClose={() => setContextMenu({ visible: false })}
           options={contextMenu.options}
         />
@@ -1088,7 +1084,6 @@ const PlaylistGrid = ({ playlistID }) => {
         <SelectPlaylistModal
           isOpen={selectPlaylistModalVisible}
           onClose={() => setSelectPlaylistModalVisible(false)}
-          onAddToPlaylist={addTracksToPlaylist}
           selectedEntries={tracksToAddToOtherPlaylist}
           setSnackbar={setSnackbar}
         />

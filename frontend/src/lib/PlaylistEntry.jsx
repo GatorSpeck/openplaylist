@@ -1,17 +1,24 @@
+export class PlaylistEntryStub {
+  constructor(entryData = {}) {
+    this.id = entryData.id || null;
+    this.order = entryData.order || 0;
+    this.entry_type = entryData.entry_type || 'music_file';
+  }
+}
+
 /**
  * PlaylistEntry class to model entries in a playlist
  * Handles different entry types: music_file, lastfm, requested, requested_album, album, nested_playlist
  */
-class PlaylistEntry {
+class PlaylistEntry extends PlaylistEntryStub {
   /**
    * Create a new PlaylistEntry instance
    * @param {Object} entryData - The raw entry data
    */
   constructor(entryData = {}) {
+    super(entryData);
+    
     // Common properties for all entry types
-    this.id = entryData.id || null;
-    this.order = entryData.order || 0;
-    this.entry_type = entryData.entry_type || 'music_file';
     this.date_added = entryData.date_added || null;
     
     // Type-specific IDs
@@ -39,7 +46,6 @@ class PlaylistEntry {
     this.details.missing = detailsToUse.missing || false;
     this.details.track_number = detailsToUse.track_number || null;
     this.details.disc_number = detailsToUse.disc_number || null;
-    this.details.url = entryData.url || detailsToUse.url || null;
     this.details.art_url = detailsToUse.art_url || null;
     this.details.last_fm_url = detailsToUse.last_fm_url || null;
     this.details.notes = detailsToUse.notes || null;

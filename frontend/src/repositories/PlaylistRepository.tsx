@@ -1,7 +1,17 @@
 import axios from 'axios';
+import PlaylistEntry from '../lib/PlaylistEntry';
+
+interface PlaylistFilter {
+    filter?: String,
+    sortCriteria?: String,
+    sortDirection?: String,
+    limit?: number,
+    offset?: number,
+    countOnly?: Boolean
+};
 
 export class PlaylistRepository {
-    async getPlaylistDetails(playlistID) {
+    async getPlaylistDetails(playlistID: number) {
         try {
             const data = (await axios.get(`/api/playlists/${playlistID}/details`)).data;
 
@@ -11,7 +21,7 @@ export class PlaylistRepository {
         }
     }
 
-    async getPlaylistEntries(playlistID, filter) {
+    async getPlaylistEntries(playlistID: number, filter: PlaylistFilter) {
         try {
             const response = await axios.get(`/api/playlists/${playlistID}/entries`, {
                 params: {
@@ -35,7 +45,7 @@ export class PlaylistRepository {
         }
     }
 
-    async deletePlaylist(id) {
+    async deletePlaylist(id: number) {
         try {
             await axios.delete(`/api/playlists/${id}`);
         } catch (error) {
@@ -43,14 +53,14 @@ export class PlaylistRepository {
         }
     }
 
-    async create(name) {
+    async create(name: String) {
         return await axios.post(`/api/playlists/`, {
             name: name,
             entries: []
         });
     }
 
-    async updateEntries(id, entries) {
+    async updateEntries(id: number, entries: PlaylistEntry[]) {
         try {
             return await axios.put(`/api/playlists/${id}`, {
                 entries: entries,
@@ -62,15 +72,15 @@ export class PlaylistRepository {
         }
     }
 
-    async rename(id, name) {
+    async rename(id: number, name: String) {
         await axios.post(`/api/playlists/rename/${id}`, { new_name: name, description: "" });
     }
 
-    async export(id, type) {
+    async export(id: number, type: String) {
         if (type == 'm3u') {}
         else if (type == "json") {}
         else {
-            window.alert('Invalid export type:', type);
+            window.alert(`Invalid export type: ${type}`);
             return;
         }
 
@@ -93,25 +103,25 @@ export class PlaylistRepository {
         }
     }
 
-    async syncToPlex(id) {
+    async syncToPlex(id: number) {
         await axios.get(`/api/playlists/${id}/synctoplex`);
     }
 
-    async clone(fromID, toName) {
-        const fromPlaylist = this.getPlaylistDetails(fromID);
+    async clone(fromID: number, toName: String) {
+        const fromPlaylist = await this.getPlaylistDetails(fromID);
 
         let newPlaylist = await(this.create(toName));
 
         return this.updateEntries(newPlaylist.data.id, fromPlaylist.entries);
     }
 
-    async dumpLibrary(id) {
+    async dumpLibrary(id: number) {
         await axios.get(`/api/testing/dumpLibrary/${id}`);
 
         return this.getPlaylistDetails(id);
     }
 
-    async addTracks(id, tracks, undo) {
+    async addTracks(id: number, tracks: PlaylistEntry[], undo: Boolean) {
         await axios.post(`/api/playlists/${id}/add`,
             tracks, {
                 params: {
@@ -121,12 +131,12 @@ export class PlaylistRepository {
         );
     }
 
-    async removeTracks(id, tracks, undo) {
+    async removeTracks(id: number, tracks: PlaylistEntry[], undo: Boolean) {
         await axios.post(`/api/playlists/${id}/remove`, 
             tracks, {params: {"undo": undo}});
     }
 
-    async reorderTracks(id, tracks, position, undo) {
+    async reorderTracks(id: number, tracks: PlaylistEntry[], position: number, undo: Boolean) {
         const positions = tracks.map(track => track.order);
         
         await axios.post(
@@ -140,7 +150,7 @@ export class PlaylistRepository {
         );
     }
 
-    async replaceTrack(id, existingTrackID, newTrack) {
+    async replaceTrack(id: number, existingTrackID: number, newTrack: PlaylistEntry) {
         console.log(`Replacing track: ${existingTrackID} with new track`);
         await axios.put(`/api/playlists/${id}/replace`, {
             existing_track_id: existingTrackID,
@@ -148,7 +158,7 @@ export class PlaylistRepository {
         });
     }
 
-    async getArtGrid(id) {
+    async getArtGrid(id: number) {
         try {
             const results = (await axios.get(`/api/playlists/${id}/artgrid`)).data;
             return results;
@@ -158,7 +168,7 @@ export class PlaylistRepository {
         }
     }
 
-    async getPlaylistsByTrack(trackID) {
+    async getPlaylistsByTrack(trackID: number) {
         try {
             const response = await axios.get(`/api/playlists/listbytrack/${trackID}`);
             return response.data;
@@ -167,9 +177,9 @@ export class PlaylistRepository {
         }
     }
     
-    async togglePin(id) {
+    async togglePin(id: number) {
         const playlists = await this.getPlaylists();
-        console.log(playlists);
+
         const pinned = !playlists.find(p => p.id === id).pinned;
 
         await axios.put(`/api/playlists/${id}/updatepin?pin=${pinned}`);
@@ -177,7 +187,7 @@ export class PlaylistRepository {
         return this.getPlaylists();
     }
 
-    async reorderPinnedPlaylist(id, position) {
+    async reorderPinnedPlaylist(id: number, position: number) {
         await axios.put(`/api/playlists/${id}/reorderpinned`, { position: position });
 
         return this.getPlaylists();
