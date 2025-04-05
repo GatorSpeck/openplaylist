@@ -39,6 +39,22 @@ class last_fm_repository:
         self.api_key = api_key
         self.requests_cache_session = requests_cache_session
         self.redis_session = redis_session
+    
+    def get_with_retries(self, uri):
+        # Retry logic can be implemented here
+        response = None
+        for i in range(2):
+            try:
+                response = self.requests_cache_session.get(uri)
+                if response.status_code == 200:
+                    return response
+            except Exception as e:
+                pass
+        
+        if response is not None:
+            return response
+        
+        raise HTTPException(status_code=500, detail="Failed to fetch data from Last.FM")
 
     def get_similar_tracks(self, artist, title):
         # URL encode parameters
@@ -46,7 +62,7 @@ class last_fm_repository:
         encoded_artist = urllib.parse.quote(artist)
 
         similar_url = f"http://ws.audioscrobbler.com/2.0/?method=track.getsimilar&artist={encoded_artist}&track={encoded_title}&api_key={self.api_key}&format=json&limit=10"
-        similar_response = self.requests_cache_session.get(similar_url)
+        similar_response = self.get_with_retries(similar_url)
 
         if similar_response.status_code != 200:
             raise HTTPException(
@@ -54,7 +70,7 @@ class last_fm_repository:
             )
 
         similar_data = similar_response.json()
-        logging.info(similar_data)
+        
         similar_tracks = similar_data.get("similartracks", {}).get("track", [])
 
         return [LastFMTrack(title=track.get("name", ""), artist=track.get("artist", {}).get("name", ""), url=track.get("url")) for track in similar_tracks]
@@ -66,7 +82,7 @@ class last_fm_repository:
 
         # Make request to Last.FM API
         url = f"http://ws.audioscrobbler.com/2.0/?method=track.search&track={encoded_title}&artist={encoded_artist}&api_key={self.api_key}&format=json&limit=10"
-        response = self.requests_cache_session.get(url)
+        response = self.get_with_retries(url)
 
         if response.status_code != 200:
             raise HTTPException(status_code=500, detail="Failed to fetch data from Last.FM")
@@ -90,7 +106,7 @@ class last_fm_repository:
         if encoded_title:
             url += f"&album={encoded_title}"
 
-        response = self.requests_cache_session.get(url)
+        response = self.get_with_retries(url)
 
         if response.status_code != 200:
             logging.warning(f"Failed to fetch data from Last.FM: {response.status_code} {response.text}")
@@ -134,7 +150,7 @@ class last_fm_repository:
 
         response = None
         try:
-            response = self.requests_cache_session.get(url)
+            response = self.get_with_retries(url)
         except Exception as e:
             logging.error(e)
             return {"image_url": None}
@@ -169,8 +185,8 @@ class last_fm_repository:
         
         logging.info(f"Fetching album info from Last.FM for {pair}")
         url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={encoded_artist}&album={encoded_title}&format=json&autocorrect=1"
-        response = self.requests_cache_session.get(url)
-        logging.info(response)
+        response = self.get_with_retries(url)
+        
         album_info = None
         if response.status_code == 200:
             album_info = response.json()

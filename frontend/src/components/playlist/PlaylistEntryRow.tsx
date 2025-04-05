@@ -2,15 +2,27 @@ import React, { forwardRef, useEffect, useState } from 'react';
 import EntryTypeBadge from '../EntryTypeBadge';
 import '../../styles/PlaylistGrid.css';
 import lastFMRepository from '../../repositories/LastFMRepository';
+import PlaylistEntry from '../../lib/PlaylistEntry';
 
-const PlaylistEntryRow = forwardRef(({ 
+interface PlaylistEntryRowProps {
+  entry: PlaylistEntry;
+  isChecked: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+  className?: string;
+  style?: React.CSSProperties;
+  isDragging?: boolean;
+  [key: string]: any;
+}
+
+const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({ 
   entry, 
   isChecked, 
   onClick, 
   onContextMenu,
   className,
   style,
-  isDragging, // Add this prop
+  isDragging,
   ...props 
 }, ref) => {
   const [imageUrl, setImageUrl] = useState(null);

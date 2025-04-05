@@ -1,15 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import LastFMRepository from '../../repositories/LastFMRepository';
 import '../../styles/LastFMSearch.css';
 
-const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
-  const [title, setTitle] = useState('');
-  const [artist, setArtist] = useState('');
+const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
+  const [searchParams, setSearchParams] = useState({
+    title: initialSearch.title || '',
+    artist: initialSearch.artist || '',
+    album: initialSearch.album || ''
+  });
+  
   const [searchType, setSearchType] = useState('track');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedResults, setSelectedResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Use effect to trigger search automatically if initialSearch has values
+  useEffect(() => {
+    if (initialSearch.title || initialSearch.artist || initialSearch.album) {
+      // Auto-search when component loads with initial values
+      handleSearch();
+    }
+  }, []);
 
   const handleSearch = async () => {
     setIsLoading(true);
@@ -19,9 +31,9 @@ const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
     try {
       let results = [];
       if (searchType === 'track') {
-        results = await LastFMRepository.searchTrack(title, artist);
+        results = await LastFMRepository.searchTrack(searchParams.title, searchParams.artist);
       } else {
-        results = await LastFMRepository.searchAlbum(title, artist);
+        results = await LastFMRepository.searchAlbum(searchParams.title, searchParams.artist);
       }
         
       if (!results || results.length === 0) {
@@ -94,14 +106,14 @@ const LastFMSearch = ({ onClose, onAddToPlaylist }) => {
           <input
             type="text"
             placeholder={searchType === 'track' ? 'Track Title' : 'Album Title'}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            value={searchParams.title}
+            onChange={(e) => setSearchParams({...searchParams, title: e.target.value})}
           />
           <input
             type="text"
             placeholder="Artist"
-            value={artist}
-            onChange={(e) => setArtist(e.target.value)}
+            value={searchParams.artist}
+            onChange={(e) => setSearchParams({...searchParams, artist: e.target.value})}
           />
           <button onClick={handleSearch} disabled={isLoading}>
             Search
