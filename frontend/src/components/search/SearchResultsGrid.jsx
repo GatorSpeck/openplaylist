@@ -458,6 +458,7 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
       return;
     }
     
+<<<<<<< Updated upstream:frontend/src/components/search/SearchResultsGrid.jsx
     const newEntry = {
       entry_type: entryType === 'track' ? 'requested' : 'requested_album',
       title: manualTitle,
@@ -465,6 +466,15 @@ const SearchResultsGrid = ({ filter, onAddSongs, visible, playlistID, setSnackba
       album: entryType === 'track' ? manualAlbum : null,
       tracks: entryType === 'album' ? [] : null
     };
+=======
+    const newEntry = new PlaylistEntry({
+      entry_type: type === 'track' ? 'requested' : 'requested_album',
+      title: title,
+      artist: artist,
+      album: type === 'track' ? album : title,
+      tracks: type === 'album' ? [] : null
+    });
+>>>>>>> Stashed changes:frontend/src/components/search/SearchResultsGrid.tsx
     
     onAddSongs([newEntry]);
     

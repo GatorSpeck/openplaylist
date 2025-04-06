@@ -1,11 +1,12 @@
 import Axios from 'axios';
 import { setupCache } from 'axios-cache-interceptor';
+import PlaylistEntry from '../lib/PlaylistEntry';
 
 const instance = Axios.create(); 
 const axios = setupCache(instance);
 
 export class LastFMRepository {
-    async findSimilarTracks(track) {
+    async findSimilarTracks(track: PlaylistEntry) {
         try {
             const response = await axios.get(`/api/lastfm/similar`, {
                 params: {
@@ -14,7 +15,11 @@ export class LastFMRepository {
                 }
             });
 
-            return response.data.map((track) => ({...track, entry_type: 'lastfm'}));
+            return response.data.map((track) => {
+                let result = new PlaylistEntry(track);
+                result.entry_type = 'lastfm';
+                return result;
+            });
         } catch (error) {
             console.error('Error fetching similar tracks:', error);
         }
@@ -31,7 +36,7 @@ export class LastFMRepository {
         }
     }
 
-    async fetchAlbumArt(artist, album) {
+    async fetchAlbumArt(artist: string, album: string) {
         if (!artist || !album) {
             return null;
         }
@@ -55,7 +60,7 @@ export class LastFMRepository {
         }
     }
 
-    async getAlbumInfo(title, artist) {
+    async getAlbumInfo(title: string, artist: string) {
         try {
             const response = await axios.get('/api/lastfm/album/info', {
                 params: { album: title, artist }
@@ -69,18 +74,22 @@ export class LastFMRepository {
         }
     }
 
-    async searchAlbum(title, artist) {
+    async searchAlbum(title: string, artist: string) {
         try {
             const response = await axios.get('/api/lastfm/album/search', {
                 params: { album: title, artist }
             });
-            return response.data.map((album) => ({...album, entry_type: 'requested_album'}));
+            return response.data.map((album) => {
+                let result = new PlaylistEntry(album);
+                result.entry_type = 'requested_album';
+                return result;
+            });
         } catch (error) {
             return [];
         }
     }
 
-    async searchTrack(title, artist) {
+    async searchTrack(title: string, artist: string) {
         try {
             const response = await axios.get('/api/lastfm', {
                 params: { title, artist }
@@ -91,7 +100,11 @@ export class LastFMRepository {
                 return null;
             }
 
-            return response.data.map((track) => ({...track, entry_type: 'lastfm'}));
+            return response.data.map((track) => {
+                let result = new PlaylistEntry(track);
+                result.entry_type = 'lastfm';
+                return result;
+            });
         } catch (error) {
             throw new Error('Failed to fetch track information');
         }
