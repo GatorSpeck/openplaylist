@@ -6,6 +6,35 @@ export class PlaylistEntryStub {
   }
 }
 
+export class EntryDetails {
+  constructor(details = {}) {
+    this.title = details.title || null;
+    this.artist = details.artist || null;
+    this.album = details.album || null;
+    this.album_artist = details.album_artist || null;
+    this.year = details.year || null;
+    this.length = details.length || 0;
+    this.genres = details.genres || [];
+    this.path = details.path || null;
+    this.publisher = details.publisher || null;
+    this.kind = details.kind || null;
+    this.missing = details.missing || false;
+    this.track_number = details.track_number || null;
+    this.disc_number = details.disc_number || null;
+    this.url = details.url || null; // TODO
+    this.art_url = details.art_url || null;
+    this.last_fm_url = details.last_fm_url || null;
+    this.notes = details.notes || null;
+    this.comments = details.comments || null;
+    this.size = details.size || null;
+    this.last_scanned = details.last_scanned || null;
+    this.first_scanned = details.first_scanned || null;
+
+    // For album types, handle tracks
+    this.tracks = details.tracks ? details.tracks : null;
+  }
+}
+
 /**
  * PlaylistEntry class to model entries in a playlist
  * Handles different entry types: music_file, lastfm, requested, requested_album, album, nested_playlist
@@ -31,33 +60,7 @@ class PlaylistEntry extends PlaylistEntryStub {
     
     // Track details - handles both direct properties and nested details object
     const detailsToUse = entryData.details || entryData;
-    this.details = {};
-
-    this.details.title = detailsToUse.title || null;
-    this.details.artist = detailsToUse.artist || null;
-    this.details.album = detailsToUse.album || null;
-    this.details.album_artist = detailsToUse.album_artist || null;
-    this.details.year = detailsToUse.year || null;
-    this.details.length = detailsToUse.length || 0;
-    this.details.genres = detailsToUse.genres || [];
-    this.details.path = detailsToUse.path || null;
-    this.details.publisher = detailsToUse.publisher || null;
-    this.details.kind = detailsToUse.kind || null;
-    this.details.missing = detailsToUse.missing || false;
-    this.details.track_number = detailsToUse.track_number || null;
-    this.details.disc_number = detailsToUse.disc_number || null;
-    this.details.art_url = detailsToUse.art_url || null;
-    this.details.last_fm_url = detailsToUse.last_fm_url || null;
-    this.details.notes = detailsToUse.notes || null;
-    this.details.comments = detailsToUse.comments || null;
-    this.details.size = detailsToUse.size || null;
-    this.details.last_scanned = detailsToUse.last_scanned || null;
-    this.details.first_scanned = detailsToUse.first_scanned || null;
-    
-    // For album types, handle tracks
-    if (detailsToUse.tracks) {
-      this.details.tracks = detailsToUse.tracks;
-    }
+    this.details = new EntryDetails(detailsToUse);
   }
 
   hasDetails() {
@@ -82,6 +85,10 @@ class PlaylistEntry extends PlaylistEntryStub {
 
   isAlbum() {
     return this.entry_type === "album" || this.entry_type === "requested_album";
+  }
+
+  getArtUrl() {
+    return this.details.art_url || null;
   }
 
   /**
