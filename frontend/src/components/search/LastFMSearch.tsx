@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import LastFMRepository from '../../repositories/LastFMRepository';
 import '../../styles/LastFMSearch.css';
+import PlaylistEntry from '../lib/PlaylistEntry';
 
 const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
   const [searchParams, setSearchParams] = useState({
@@ -10,8 +11,8 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
   });
   
   const [searchType, setSearchType] = useState('track');
-  const [searchResults, setSearchResults] = useState([]);
-  const [selectedResults, setSelectedResults] = useState([]);
+  const [searchResults, setSearchResults] = useState<PlaylistEntry[]>([]);
+  const [selectedResults, setSelectedResults] = useState<PlaylistEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -42,7 +43,7 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
         return;
       }
 
-      results = results.map((result, idx) => ({...result, id: idx}));
+      results = results.map((result: PlaylistEntry, idx) => {result.id = idx; return result;});
 
       setSearchResults(results);
     } catch (error) {
@@ -54,7 +55,7 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
     }
   };
 
-  const toggleResultSelection = (result) => {
+  const toggleResultSelection = (result: PlaylistEntry) => {
     if (selectedResults.some(item => item.id === result.id)) {
       setSelectedResults(selectedResults.filter(item => item.id !== result.id));
     } else {
@@ -139,11 +140,11 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
             </div>
             
             <div className="results-list">
-              {searchResults.map((result) => {
+              {searchResults.map((result: PlaylistEntry) => {
                 const isSelected = selectedResults.some(item => item.id === result.id);
                 return (
                   <div 
-                    key={result.id || `${result.artist}-${result.title}`}
+                    key={result.id || `${result.getArtist()}-${result.getTitle()}`}
                     className={`result-item ${isSelected ? 'selected' : ''}`}
                     onClick={() => toggleResultSelection(result)}
                   >
@@ -156,12 +157,12 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
                       />
                     </div>
                     <div className="result-art">
-                      {result.art_url && <img src={result.art_url} alt={result.title} />}
+                      {result.getArtUrl() && <img src={result.getArtUrl()} alt={result.getAlbum()} />}
                     </div>
                     <div className="result-info">
-                      <h4>{result.title}</h4>
-                      <p>Artist: {result.artist}</p>
-                      {result.album && <p>Album: {result.album}</p>}
+                      <h4>{result.getTitle()}</h4>
+                      <p>Artist: {result.getArtist()}</p>
+                      {result.getAlbum() && <p>Album: {result.getAlbum()}</p>}
                     </div>
                   </div>
                 );

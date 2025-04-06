@@ -517,7 +517,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
       entry_type: type === 'track' ? 'requested' : 'requested_album',
       title: title,
       artist: artist,
-      album: type === 'track' ? album : null,
+      album: type === 'track' ? album : title,
       tracks: type === 'album' ? [] : null
     });
     
