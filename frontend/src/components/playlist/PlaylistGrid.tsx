@@ -318,6 +318,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       let thisTrack = track;
       thisTrack.order = idx + newOrder;
       thisTrack.music_file_id = track.id;
+
+      // set ID to a random number if not set
+      thisTrack.id = track.id || Math.floor(Math.random() * (10000000 - 1000000) + 1000000);
+      
       thisTrack.entry_type = track.entry_type || 'requested';
       return thisTrack;
     });
