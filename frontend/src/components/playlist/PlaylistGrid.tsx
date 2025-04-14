@@ -79,18 +79,18 @@ const Row = memo(({ data, index, style }) => {
       {(provided, snapshot) => (
         <PlaylistEntryRow 
           ref={provided.innerRef}
-          {...provided.draggableProps}
-          {...provided.dragHandleProps}
+          {...provided.draggableProps} // Spread draggableProps on the main component
           style={{
             ...style,
             ...provided.draggableProps.style,
           }}
           className={`playlist-grid-row ${track.order % 2 === 0 ? 'even-row' : 'odd-row'} ${sortColumn !== 'order' ? 'drag-disabled' : ''}`}
           isDragging={snapshot.isDragging}
-          onClick={() => toggleTrackSelection(track.id)}
+          onToggle={() => toggleTrackSelection(track.id)}
           onContextMenu={(e) => handleContextMenu(e, track)}
           isChecked={selectedEntries.includes(track.id)}
           entry={track}
+          dragHandleProps={provided.dragHandleProps} // Pass dragHandleProps separately
         />
       )}
     </Draggable>
@@ -318,6 +318,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       let thisTrack = track;
       thisTrack.order = idx + newOrder;
       thisTrack.music_file_id = track.id;
+
+      // set ID to a random number if not set
+      thisTrack.id = track.id || Math.floor(Math.random() * (10000000 - 1000000) + 1000000);
+      
       thisTrack.entry_type = track.entry_type || 'requested';
       return thisTrack;
     });
@@ -931,12 +935,12 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
               <PlaylistEntryRow
                 ref={provided.innerRef}
                 {...provided.draggableProps}
-                {...provided.dragHandleProps}
+                className="playlist-grid-row"
                 isDragging={snapshot.isDragging}
                 entry={new PlaylistEntry(entries[rubric.source.index])}
                 isChecked={selectedEntries.includes(rubric.source.index)}
                 handleContextMenu={handleContextMenu}
-                className="playlist-grid-row"
+                dragHandleProps={provided.dragHandleProps}
               />
             )}
           >

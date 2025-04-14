@@ -135,9 +135,10 @@ class last_fm_repository:
             raise ValueError("LASTFM_API_KEY environment variable is not set")
         
         pair = AlbumAndArtist(album=album, artist=artist)
+        redis_tag = f"albumart:{pair}"
 
         if self.redis_session:
-            cached_url = self.redis_session.get(str(pair))
+            cached_url = self.redis_session.get(redis_tag)
             if cached_url is not None:
                 image_url = cached_url if cached_url != "" else None
                 return {"image_url": image_url}
@@ -163,7 +164,7 @@ class last_fm_repository:
                 image_url = urls[-2]["#text"] if len(urls) > 1 else urls[-1]["#text"]
                 
                 if self.redis_session:
-                    self.redis_session.set(str(pair), image_url)
+                    self.redis_session.set(redis_tag, image_url)
         
             return {"image_url": image_url}
         else:
@@ -174,10 +175,12 @@ class last_fm_repository:
             raise ValueError("LASTFM_API_KEY environment variable is not set")
         
         pair = AlbumAndArtist(album=album, artist=artist)
+        redis_tag = f"albuminfo:{pair}"
 
         if self.redis_session:
-            cached_info = self.redis_session.get(str(pair))
+            cached_info = self.redis_session.get(redis_tag)
             if cached_info is not None:
+                logging.error(cached_info)
                 return from_json(json.loads(cached_info))
         
         encoded_title = urllib.parse.quote(pair.album)
@@ -191,6 +194,6 @@ class last_fm_repository:
         if response.status_code == 200:
             album_info = response.json()
             if self.redis_session:
-                self.redis_session.set(str(pair), json.dumps(album_info))
+                self.redis_session.set(redis_tag, json.dumps(album_info))
         
         return from_json(album_info) if album_info else None
