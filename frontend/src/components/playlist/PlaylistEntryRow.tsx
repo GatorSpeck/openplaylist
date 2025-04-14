@@ -19,7 +19,7 @@ interface PlaylistEntryRowProps {
 const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({ 
   entry, 
   isChecked, 
-  onClick, 
+  onToggle, 
   onContextMenu,
   className,
   style,
@@ -56,12 +56,14 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
       ref={ref}
       className={`${className} ${isDragging ? 'dragging' : ''}`}
       style={style}
-      onClick={onClick}
       onContextMenu={onContextMenu}
       {...props}
     >
       {/* Apply dragHandleProps only to the first grid cell */}
-      <div className="grid-cell" {...dragHandleProps}>
+      <div 
+        className="grid-cell" {...dragHandleProps}
+        onClick={onToggle}
+      >
         {isChecked ? (
                 <span>✔</span>
         ) : (imageUrl ? (

@@ -86,7 +86,7 @@ const Row = memo(({ data, index, style }) => {
           }}
           className={`playlist-grid-row ${track.order % 2 === 0 ? 'even-row' : 'odd-row'} ${sortColumn !== 'order' ? 'drag-disabled' : ''}`}
           isDragging={snapshot.isDragging}
-          onClick={() => toggleTrackSelection(track.id)}
+          onToggle={() => toggleTrackSelection(track.id)}
           onContextMenu={(e) => handleContextMenu(e, track)}
           isChecked={selectedEntries.includes(track.id)}
           entry={track}
