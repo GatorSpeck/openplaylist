@@ -79,8 +79,7 @@ const Row = memo(({ data, index, style }) => {
       {(provided, snapshot) => (
         <PlaylistEntryRow 
           ref={provided.innerRef}
-          {...provided.draggableProps}
-          {...provided.dragHandleProps}
+          {...provided.draggableProps} // Spread draggableProps on the main component
           style={{
             ...style,
             ...provided.draggableProps.style,
@@ -91,6 +90,7 @@ const Row = memo(({ data, index, style }) => {
           onContextMenu={(e) => handleContextMenu(e, track)}
           isChecked={selectedEntries.includes(track.id)}
           entry={track}
+          dragHandleProps={provided.dragHandleProps} // Pass dragHandleProps separately
         />
       )}
     </Draggable>
@@ -935,12 +935,12 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
               <PlaylistEntryRow
                 ref={provided.innerRef}
                 {...provided.draggableProps}
-                {...provided.dragHandleProps}
+                className="playlist-grid-row"
                 isDragging={snapshot.isDragging}
                 entry={new PlaylistEntry(entries[rubric.source.index])}
                 isChecked={selectedEntries.includes(rubric.source.index)}
                 handleContextMenu={handleContextMenu}
-                className="playlist-grid-row"
+                dragHandleProps={provided.dragHandleProps}
               />
             )}
           >

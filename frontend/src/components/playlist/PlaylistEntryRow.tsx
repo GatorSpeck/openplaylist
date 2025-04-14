@@ -12,6 +12,7 @@ interface PlaylistEntryRowProps {
   className?: string;
   style?: React.CSSProperties;
   isDragging?: boolean;
+  dragHandleProps?: any; // Add this prop to receive drag handle props
   [key: string]: any;
 }
 
@@ -23,6 +24,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
   className,
   style,
   isDragging,
+  dragHandleProps, // Add this parameter
   ...props 
 }, ref) => {
   const [imageUrl, setImageUrl] = useState(null);
@@ -58,7 +60,8 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
       onContextMenu={onContextMenu}
       {...props}
     >
-      <div className="grid-cell">
+      {/* Apply dragHandleProps only to the first grid cell */}
+      <div className="grid-cell" {...dragHandleProps}>
         {isChecked ? (
                 <span>✔</span>
         ) : (imageUrl ? (
