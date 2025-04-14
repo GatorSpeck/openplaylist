@@ -503,29 +503,25 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   };
 
   // Create a new function to directly add manual entries
-  const addManualEntry = (title: string, artist: string, album: string, type: string = 'track') => {
-    if (!title || !artist) {
-      setSnackbar({
-        open: true,
-        message: 'Title and artist are required',
-        severity: 'error'
-      });
-      return;
-    }
+  const addManualEntry = (title: string, artist: string, album: string) => {
+    const artistToUse = artist ? artist : 'Unknown Artist';
+    const entryType = album ? 'requested_album' : 'requested';
     
     const newEntry = new PlaylistEntry({
-      entry_type: type === 'track' ? 'requested' : 'requested_album',
-      title: title,
-      artist: artist,
-      album: type === 'track' ? album : title,
-      tracks: type === 'album' ? [] : null
+      entry_type: entryType,
+      title: entryType === 'requested' ? title : album,
+      artist: artistToUse,
+      album: entryType === 'requested' ? album : null,
+      tracks: entryType === 'requested_album' ? [] : null
     });
     
     onAddSongs([newEntry]);
+
+    const titleToShow = entryType === 'requested' ? title : album;
     
     setSnackbar({
       open: true,
-      message: `Added requested ${type}: "${title}" by ${artist}`,
+      message: `Added requested entry: "${titleToShow}" by ${artistToUse}`,
       severity: 'success'
     });
   };
@@ -598,22 +594,10 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                 addManualEntry(
                   filters.title,
                   filters.artist,
-                  filters.album,
-                  'track'
+                  filters.album
                 );
               }}>
-                Add Requested Track
-              </button>
-              <button onClick={() => {
-                // Directly add as a manual album
-                addManualEntry(
-                  filters.title,
-                  filters.artist,
-                  filters.album,
-                  'album'
-                );
-              }}>
-                Add Requested Album
+                Add Requested Entry
               </button>
               <button onClick={() => {
                 setFilters({ title: '', artist: '', album: '' });
