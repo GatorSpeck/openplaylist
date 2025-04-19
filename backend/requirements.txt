@@ -46,3 +46,7 @@ python-multipart==0.0.20
 
 # technically not a req, but good to have in case user needs to manually apply migrations
 alembic==1.15.1
+
+# MariaDB deps
+pymysql==1.1.0
+cryptography==41.0.3  # Required for PyMySQL with TLS/SSL
