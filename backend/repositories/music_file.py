@@ -102,12 +102,17 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         path: Optional[str] = None,
         exact=False,
         limit: int = 50,
+        offset: int = 0,
+        include_missing: bool = False,
     ) -> list[MusicFile]:
         query = self.session.query(MusicFileDB)
 
         title = title.lower() if title else None
         artist = artist.lower() if artist else None
         album = album.lower() if album else None
+
+        if not include_missing:
+            query = query.filter(MusicFileDB.missing == False)
 
         if title:
             if exact:
@@ -130,7 +135,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         if path:
             query = query.filter(MusicFileDB.path == path)
 
-        results = query.limit(limit).all()
+        results = query.limit(limit).offset(offset).all()
 
         return [to_music_file(music_file) for music_file in results]
 
