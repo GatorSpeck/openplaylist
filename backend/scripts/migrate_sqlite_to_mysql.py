@@ -193,6 +193,48 @@ def migrate_data():
                                 logger.warning(f"Skipping problematic row in {table_name}: {inner_e}")
                                 target_session.rollback()
         
+        # Special handling for album relationships
+        if "albums" in target_metadata.tables and "album_entries" in target_metadata.tables:
+            logger.info("Verifying album relationships...")
+            
+            # Get album_id mappings (SQLite ID -> MySQL ID)
+            album_mappings = {}
+            album_rows = source_session.execute(
+                text("SELECT id FROM albums")
+            ).fetchall()
+            
+            for row in album_rows:
+                sqlite_id = row[0]
+                album_mappings[sqlite_id] = sqlite_id  # In most cases, IDs should match
+            
+            # Update album entries with correct album_id references
+            for rel_table in ["album_entries", "requested_album_entries"]:
+                if rel_table in target_metadata.tables:
+                    logger.info(f"Fixing album references in {rel_table}...")
+                    entries = target_session.execute(
+                        text(f"SELECT id, album_id FROM {rel_table}")
+                    ).fetchall()
+                    
+                    for entry_id, album_id in entries:
+                        if album_id and album_id not in album_mappings:
+                            # Try to find the corresponding album
+                            album = target_session.execute(
+                                text("SELECT id FROM albums WHERE id = :id"),
+                                {"id": album_id}
+                            ).fetchone()
+                            
+                            if album:
+                                # Album exists with the same ID, no change needed
+                                continue
+                            else:
+                                logger.warning(f"Orphaned album reference in {rel_table}: {entry_id} -> {album_id}")
+                                # Set to NULL if album doesn't exist
+                                target_session.execute(
+                                    text(f"UPDATE {rel_table} SET album_id = NULL WHERE id = :id"),
+                                    {"id": entry_id}
+                                )
+                                target_session.commit()
+        
         logger.info("Re-enabling foreign key checks")
         target_session.execute(text("SET FOREIGN_KEY_CHECKS=1"))
         target_session.commit()
