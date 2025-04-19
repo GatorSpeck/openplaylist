@@ -6,7 +6,7 @@ import '../../styles/PlaylistGrid.css';
 import SearchResultsGrid, {SearchFilter} from '../search/SearchResultsGrid';
 import ContextMenu from '../common/ContextMenu';
 import { FaUndo, FaRedo } from 'react-icons/fa';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import BaseModal from '../common/BaseModal';
 import playlistRepository from '../../repositories/PlaylistRepository';
 import InfiniteScroll from 'react-infinite-scroll-component';
@@ -102,8 +102,27 @@ interface PlaylistGridProps {
 }
 
 const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
-  const [sortColumn, setSortColumn] = useState('order');
-  const [sortDirection, setSortDirection] = useState('asc');
+  // Add search params hook at the top of your component
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  
+  // Get sort parameters from URL or use defaults
+  const getSortColumnFromParam = (param: string | null): string => {
+    const validColumns = ['order', 'title', 'artist', 'album'];
+    return param && validColumns.includes(param) ? param : 'order';
+  };
+
+  const getSortDirectionFromParam = (param: string | null): string => {
+    return param === 'desc' ? 'desc' : 'asc';
+  };
+
+  const initialSortColumn = getSortColumnFromParam(searchParams.get('sort'));
+  const initialSortDirection = getSortDirectionFromParam(searchParams.get('dir'));
+
+  // Update your state initialization to use URL params
+  const [sortColumn, setSortColumn] = useState(initialSortColumn);
+  const [sortDirection, setSortDirection] = useState(initialSortDirection);
+  
   const [filter, setFilter] = useState('');
   const [debouncedFilter, setDebouncedFilter] = useState('');
   const [entries, setEntries] = useState<PlaylistEntryStub[]>([]);
@@ -489,13 +508,22 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   };
 
   const handleSort = (column: String) => {
+    let newDirection = sortDirection;
+    
     if (sortColumn === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+      setSortDirection(newDirection);
     } else {
-      setSortColumn(column);
+      setSortColumn(column.toString());
+      newDirection = 'asc';
       setSortDirection('asc');
     }
-    // The effect will trigger a re-fetch with the new sort parameters
+    
+    // Update URL query parameters while preserving other params
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('sort', column.toString());
+    newParams.set('dir', newDirection);
+    setSearchParams(newParams, { replace: true }); // Replace instead of push to avoid extra history entries
   };
 
   const searchFor = (newFilter: SearchFilter) => {
@@ -507,8 +535,6 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     if (sortColumn !== column) return null;
     return sortDirection === 'asc' ? ' ↑' : ' ↓';
   };
-
-  const navigate = useNavigate();
 
   // TODO: should happen up through parent component
   const onDeletePlaylist = async () => {

@@ -76,20 +76,19 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     return results;
   }
 
-  const fetchSongs = async (query = '', pageNum = 1) => {
-    if (query.length < 3) {
-      return;
-    }
+  const fetchSongs = async (pageNum = 1) => {
     setIsLoading(true);
     try {
-      const response = await axios.get(`/api/search`, {
+      const response = await axios.get(`/api/filter`, {
         params: { 
-          query: encodeURIComponent(query),
+          title: filters.title || null,
+          artist: filters.artist || null,
+          album: filters.album || null,
           offset: (pageNum - 1) * ITEMS_PER_PAGE,
           limit: ITEMS_PER_PAGE
         }
       });
-
+      
       const results = extractSearchResults(response);
       
       if (pageNum === 1) {
@@ -188,7 +187,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   // Add this function to handle advanced filter changes
   const handleAdvancedFilterChange = (e) => {
     const { name, value } = e.target;
-    console.log(filters);
+    
     setFilters(prev => ({
       ...prev,
       [name]: value
@@ -196,26 +195,9 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     // No need to call debounced function here - the effect will handle it
   };
 
-  // Update this function to handle advanced search
+  // Update this function to use pagination
   const performAdvancedSearch = async () => {
-    setIsLoading(true);
-    try {
-      const response = await axios.get(`/api/filter`, {
-        params: { 
-          title: filters.title || null,
-          artist: filters.artist || null,
-          album: filters.album || null,
-          limit: ITEMS_PER_PAGE
-        }
-      });
-      
-      setSearchResults(extractSearchResults(response));
-      setHasMore(false); // We don't have pagination for the filter endpoint
-    } catch (error) {
-      console.error('Error performing advanced search:', error);
-    } finally {
-      setIsLoading(false);
-    }
+    return fetchSongs(1);
   };
 
   // 1. Create a reference to store the debounced function
@@ -472,9 +454,10 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           <InfiniteLoader
             isItemLoaded={index => index < searchResults.length}
             itemCount={hasMore ? searchResults.length + 1 : searchResults.length}
-            loadMoreItems={() => {
+            loadMoreItems={(startIndex, stopIndex) => {
               if (!isLoading && hasMore) {
-                return fetchSongs(filters.title, page + 1);
+                console.log(`Loading more items from ${startIndex} to ${stopIndex}`);
+                return fetchSongs(page + 1);
               }
               return Promise.resolve();
             }}
