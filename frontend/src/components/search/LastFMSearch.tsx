@@ -7,10 +7,10 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
   const [searchParams, setSearchParams] = useState({
     title: initialSearch.title || '',
     artist: initialSearch.artist || '',
-    album: initialSearch.album || ''
+    album: initialSearch.album || '',
   });
   
-  const [searchType, setSearchType] = useState('track');
+  const [searchType, setSearchType] = useState(initialSearch.type || 'track');
   const [searchResults, setSearchResults] = useState<PlaylistEntry[]>([]);
   const [selectedResults, setSelectedResults] = useState<PlaylistEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -34,7 +34,7 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
       if (searchType === 'track') {
         results = await LastFMRepository.searchTrack(searchParams.title, searchParams.artist);
       } else {
-        results = await LastFMRepository.searchAlbum(searchParams.title, searchParams.artist);
+        results = await LastFMRepository.searchAlbum(searchParams.album, searchParams.artist);
       }
         
       if (!results || results.length === 0) {
@@ -79,6 +79,8 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
     }
   };
 
+  const titleToShow = searchType === 'track' ? searchParams.title : searchParams.album;
+
   return (
     <div className="lastfm-modal">
       <div className="lastfm-modal-content">
@@ -107,7 +109,7 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
           <input
             type="text"
             placeholder={searchType === 'track' ? 'Track Title' : 'Album Title'}
-            value={searchParams.title}
+            value={titleToShow}
             onChange={(e) => setSearchParams({...searchParams, title: e.target.value})}
           />
           <input

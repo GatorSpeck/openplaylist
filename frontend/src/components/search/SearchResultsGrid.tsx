@@ -620,7 +620,8 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
             initialSearch={{
               title: filters.title,
               artist: filters.artist,
-              album: filters.album
+              album: filters.album,
+              type: filters.title ? 'track' : 'album'
             }}
             onClose={() => setShowLastFMSearch(false)}
             onAddToPlaylist={(entries) => {
