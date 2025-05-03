@@ -50,7 +50,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const [searchResults, setSearchResults] = useState([]);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [showTrackDetails, setShowTrackDetails] = useState(false);
-  const [similarTracks, setSimilarTracks] = useState(null);
+  const [similarTracks, setSimilarTracks] = useState<PlaylistEntry[]>([]);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const panelRef = useRef(null);
   const [libraryStats, setLibraryStats] = useState({
@@ -128,7 +128,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     const localFiles = await libraryRepository.findLocalFiles(similars);
 
     // prefer local files
-    setSimilarTracks(localFiles);
+    setSimilarTracks(localFiles.map(t => new PlaylistEntry(t)));
 
     setPosition({ x: e.clientX, y: e.clientY });
     setOpenAILoading(false);
@@ -141,7 +141,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     const localFiles = await libraryRepository.findLocalFiles(similars);
 
     // prefer local files
-    setSimilarTracks(localFiles);
+    setSimilarTracks(localFiles.map(t => new PlaylistEntry(t)));
 
     setPosition({ xj: e.clientX, y: e.clientY });
     setIsLoading(false);
@@ -641,12 +641,12 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           />
         )}
 
-        {similarTracks && (
+        {similarTracks.length && (
           <SimilarTracksPopup
             x={position.x}
             y={position.y}
             tracks={similarTracks}
-            onClose={() => setSimilarTracks(null)}
+            onClose={() => setSimilarTracks([])}
             onAddTracks={(tracks) => onAddSongs(tracks)}
           />
         )}

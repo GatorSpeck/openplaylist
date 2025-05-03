@@ -148,7 +148,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [openAILoading, setOpenAILoading] = useState(false);
-  const [similarTracks, setSimilarTracks] = useState(null);
+  const [similarTracks, setSimilarTracks] = useState<PlaylistEntry[]>([]);
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [selectedTrack, setSelectedTrack] = useState<PlaylistEntry | null>(null);
@@ -557,7 +557,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     const localFiles = await libraryRepository.findLocalFiles(similars);
 
     // prefer local files
-    setSimilarTracks(localFiles);
+    setSimilarTracks(localFiles.map(track => new PlaylistEntry(track)));
 
     setPosition({ x: e.clientX, y: e.clientY });
     setOpenAILoading(false);
@@ -570,7 +570,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     const localFiles = await libraryRepository.findLocalFiles(similars);
 
     // prefer local files
-    setSimilarTracks(localFiles);
+    setSimilarTracks(localFiles.map(track => new PlaylistEntry(track)));
 
     setPosition({ x: e.clientX, y: e.clientY });
     setLoading(false);
@@ -578,7 +578,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   const addSimilarTracks = (tracks: PlaylistEntry[]) => {
     addSongsToPlaylist(tracks);
-    setSimilarTracks(null);
+    setSimilarTracks([]);
   }
 
   const handleShowDetails = (track: PlaylistEntry) => {
@@ -1036,12 +1036,12 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         />
       )}
 
-      {similarTracks && (
+      {similarTracks.length && (
         <SimilarTracksPopup
           x={position.x}
           y={position.y}
           tracks={similarTracks}
-          onClose={() => setSimilarTracks(null)}
+          onClose={() => setSimilarTracks([])}
           onAddTracks={(tracks) => addSimilarTracks(tracks)}
         />
       )}

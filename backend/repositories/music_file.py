@@ -200,6 +200,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         results = []
 
         for t in tracks:
+            logging.debug(f"Searching for {t.title} by {t.artist}")
             existing_files = self.filter(title=t.title, artist=t.artist, exact=True)
             if existing_files:
                 results.append(existing_files[0])
