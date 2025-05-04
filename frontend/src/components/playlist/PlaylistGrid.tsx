@@ -27,6 +27,7 @@ import MatchAlbumModal from './MatchAlbumModal';
 import EditItemModal from './EditItemModal';
 import PlaylistEntry, {PlaylistEntryStub} from '../../lib/PlaylistEntry';
 import SelectPlaylistModal from './SelectPlaylistModal';
+import { setCookie, getCookie } from '../../lib/cookieUtils';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -111,23 +112,71 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   
+  // Add this new state to track parameter initialization
+  const [paramsInitialized, setParamsInitialized] = useState(false);
+
   // Get sort parameters from URL or use defaults
   const getSortColumnFromParam = (param: string | null): string => {
     const validColumns = ['order', 'title', 'artist', 'album'];
-    return param && validColumns.includes(param) ? param : 'order';
+    
+    // First check URL params
+    if (param && validColumns.includes(param)) {
+      return param;
+    }
+    
+    // Then fall back to cookies
+    const cookieValue = getCookie(`playlist_${playlistID}_sortColumn`);
+    if (cookieValue && validColumns.includes(cookieValue)) {
+      return cookieValue;
+    }
+    
+    // Default if neither exists
+    return 'order';
   };
 
   const getSortDirectionFromParam = (param: string | null): string => {
-    return param === 'desc' ? 'desc' : 'asc';
+    // First check URL params
+    if (param === 'asc' || param === 'desc') {
+      return param;
+    }
+    
+    // Then fall back to cookies
+    const cookieValue = getCookie(`playlist_${playlistID}_sortDirection`);
+    if (cookieValue === 'asc' || cookieValue === 'desc') {
+      return cookieValue;
+    }
+    
+    // Default if neither exists
+    return 'asc';
   };
 
-  const initialSortColumn = getSortColumnFromParam(searchParams.get('sort'));
-  const initialSortDirection = getSortDirectionFromParam(searchParams.get('dir'));
+  const getInitialFilter = (): string => {
+    // First check URL params
+    const filterParam = searchParams.get('filter');
+    if (filterParam) {
+      return filterParam;
+    }
+  };
 
-  // Update your state initialization to use URL params
-  const [sortColumn, setSortColumn] = useState(initialSortColumn);
-  const [sortDirection, setSortDirection] = useState(initialSortDirection);
-  
+  // Replace your current parameter initialization with this useEffect
+  useEffect(() => {
+    // Process URL params and cookies only once at component initialization
+    const initialSortColumn = getSortColumnFromParam(searchParams.get('sort'));
+    const initialSortDirection = getSortDirectionFromParam(searchParams.get('dir'));
+    const initialFilter = getInitialFilter();
+    
+    // Set the state values all at once
+    setSortColumn(initialSortColumn);
+    setSortDirection(initialSortDirection);
+    setFilter(initialFilter);
+    
+    // Mark parameters as initialized
+    setParamsInitialized(true);
+  }, [playlistID]); // Only run when playlistID changes
+
+  // Update your state initialization to use cookies and URL params
+  const [sortColumn, setSortColumn] = useState('');
+  const [sortDirection, setSortDirection] = useState('');
   const [filter, setFilter] = useState('');
   const [debouncedFilter, setDebouncedFilter] = useState('');
   const [entries, setEntries] = useState<PlaylistEntryStub[]>([]);
@@ -194,11 +243,15 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     return () => clearTimeout(timer);
   }, [filter]);
 
+  // Replace your current useEffect for loading data with this one
   useEffect(() => {
-    setPage(0); // Reset page on filter/sort changes
-    fetchPlaylistArtGrid();
-    fetchPlaylistDetails(true);
-  }, [playlistID, debouncedFilter, sortColumn, sortDirection]);
+    // Only fetch data after params are initialized
+    if (paramsInitialized) {
+      setPage(0); // Reset page on filter/sort changes
+      fetchPlaylistArtGrid();
+      fetchPlaylistDetails(true);
+    }
+  }, [playlistID, debouncedFilter, sortColumn, sortDirection, paramsInitialized]);
 
   const fetchPlaylistArtGrid = async () => {
     try {
@@ -523,6 +576,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       newDirection = 'asc';
       setSortDirection('asc');
     }
+    
+    // Save to cookies
+    setCookie(`playlist_${playlistID}_sortColumn`, column.toString());
+    setCookie(`playlist_${playlistID}_sortDirection`, newDirection);
     
     // Update URL query parameters while preserving other params
     const newParams = new URLSearchParams(searchParams);
@@ -916,13 +973,19 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             type="text"
             placeholder="Filter playlist..."
             value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+            onChange={(e) => {
+              setFilter(e.target.value);
+              // Direct cookie update isn't needed here as we handle it in useEffect with the debounced value
+            }}
             className="filter-input"
           />
+
           {filter && (
             <button 
               className="clear-filter"
-              onClick={() => setFilter('')}
+              onClick={() => {
+                setFilter('');
+              }}
             >
               Clear
             </button>
