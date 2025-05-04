@@ -488,7 +488,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   // Create a new function to directly add manual entries
   const addManualEntry = (title: string, artist: string, album: string) => {
     const artistToUse = artist ? artist : 'Unknown Artist';
-    const entryType = album ? 'requested_album' : 'requested';
+    const entryType = (album && !title) ? 'requested_album' : 'requested';
     
     const newEntry = new PlaylistEntry({
       entry_type: entryType,
@@ -641,7 +641,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           />
         )}
 
-        {similarTracks.length && (
+        {!!similarTracks.length && (
           <SimilarTracksPopup
             x={position.x}
             y={position.y}

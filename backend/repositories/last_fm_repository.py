@@ -138,10 +138,14 @@ class last_fm_repository:
         redis_tag = f"albumart:{pair}"
 
         if self.redis_session:
-            cached_url = self.redis_session.get(redis_tag)
-            if cached_url is not None:
-                image_url = cached_url if cached_url != "" else None
-                return {"image_url": image_url}
+            try:
+                cached_url = self.redis_session.get(redis_tag)
+                if cached_url is not None:
+                    image_url = cached_url if cached_url != "" else None
+                    return {"image_url": image_url}
+            except Exception as e:
+                logging.error(e)
+                pass
         
         encoded_title = urllib.parse.quote(pair.album)
         encoded_artist = urllib.parse.quote(pair.artist)
@@ -164,7 +168,11 @@ class last_fm_repository:
                 image_url = urls[-2]["#text"] if len(urls) > 1 else urls[-1]["#text"]
                 
                 if self.redis_session:
-                    self.redis_session.set(redis_tag, image_url)
+                    try:
+                        self.redis_session.set(redis_tag, image_url)
+                    except Exception as e:
+                        logging.error(e)
+                        pass
         
             return {"image_url": image_url}
         else:
@@ -178,10 +186,14 @@ class last_fm_repository:
         redis_tag = f"albuminfo:{pair}"
 
         if self.redis_session:
-            cached_info = self.redis_session.get(redis_tag)
-            if cached_info is not None:
-                logging.error(cached_info)
-                return from_json(json.loads(cached_info))
+            try:
+                cached_info = self.redis_session.get(redis_tag)
+                if cached_info is not None:
+                    logging.error(cached_info)
+                    return from_json(json.loads(cached_info))
+            except Exception as e:
+                logging.error(e)
+                pass
         
         encoded_title = urllib.parse.quote(pair.album)
         encoded_artist = urllib.parse.quote(pair.artist)
@@ -194,6 +206,10 @@ class last_fm_repository:
         if response.status_code == 200:
             album_info = response.json()
             if self.redis_session:
-                self.redis_session.set(redis_tag, json.dumps(album_info))
+                try:
+                    self.redis_session.set(redis_tag, json.dumps(album_info))
+                except Exception as e:
+                    logging.error(e)
+                    pass
         
         return from_json(album_info) if album_info else None

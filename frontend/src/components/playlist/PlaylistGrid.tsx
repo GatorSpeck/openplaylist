@@ -46,8 +46,13 @@ const Row = memo(({ data, index, style }) => {
     handleContextMenu, 
     selectedEntries,
     sortColumn,
-    provided 
+    provided,
+    totalCount
   } = data;
+
+  if (index >= totalCount) {
+    return null;
+  }
 
   const track = ((index >= entries.length) || !entries[index]) ? null : new PlaylistEntry(entries[index]);
 
@@ -176,7 +181,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   // Add after your other state declarations
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [itemToEdit, setItemToEdit] = useState(null);
+  const [itemToEdit, setItemToEdit] = useState<PlaylistEntry | null>(null);
 
   // Apply debouncing to the filter
   useEffect(() => {
@@ -734,7 +739,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       
       setSnackbar({
         open: true,
-        message: `Album matched to "${selectedMatch.getTitle()}" by ${selectedMatch.getArtist()}`,
+        message: `Album matched to "${selectedMatch.getAlbum()}" by ${selectedMatch.getArtist()}`,
         severity: 'success'
       });
     } catch (error) {
@@ -861,7 +866,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   const saveEditedItem = async (editedItem: PlaylistEntry) => {
     try {
-      const isAlbum = editedItem.entry_type === 'requested_album' || editedItem.entry_type === 'album';
+      const isAlbum = editedItem.getEntryType() === 'requested_album' || editedItem.getEntryType() === 'album';
       
       // Create updated item with edited details
       let updatedItem = editedItem;
@@ -872,7 +877,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       // Update local state
       pushToHistory(entries);
       const newEntries = [...entries];
-      const itemIndex = entries.findIndex(entry => entry.order === updatedItem.order);
+      const itemIndex = entries.findIndex((entry: PlaylistEntryStub) => entry.order === updatedItem.order);
       newEntries[itemIndex] = updatedItem;
       setEntries(newEntries);
       
@@ -989,7 +994,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                         selectedEntries,
                         sortColumn,
                         handleContextMenu: handleContextMenu,
-                        isDraggingOver: snapshot.isDraggingOver
+                        isDraggingOver: snapshot.isDraggingOver,
+                        totalCount: totalCount
                       }}
                       overscanCount={20} // Increased overscan for jumping around
                       onItemsRendered={({ visibleStartIndex, visibleStopIndex }) => {
@@ -1036,7 +1042,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         />
       )}
 
-      {similarTracks.length && (
+      {!!(similarTracks.length) && (
         <SimilarTracksPopup
           x={position.x}
           y={position.y}

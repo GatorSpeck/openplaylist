@@ -1,24 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
 import '../../styles/EditItemModal.css';
+import PlaylistEntry from '../../lib/PlaylistEntry';
 
-const EditItemModal = ({ isOpen, onClose, item, onSave }) => {
-  const [editedItem, setEditedItem] = useState({ title: '', artist: '', album: '' });
-  const isAlbum = item?.entry_type === 'requested_album' || item?.entry_type === 'album';
+interface EditItemModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  item: PlaylistEntry | null;
+  onSave: (editedItem: PlaylistEntry) => void;
+}
 
-  useEffect(() => {
-    if (item) {
-      setEditedItem({
-        title: item.title || '',
-        artist: item.artist || '',
-        album: item.album || ''
-      });
-    }
-  }, [item]);
+const EditItemModal: React.FC<EditItemModalProps> = ({ isOpen, onClose, item, onSave }) => {
+  if (!item) return null;
+
+  const [editedItem, setEditedItem] = useState<PlaylistEntry>(item);
+
+  const isAlbum = editedItem.getEntryType() === 'requested_album' || editedItem.getEntryType() === 'album';
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setEditedItem(prev => ({ ...prev, [name]: value }));
+    setEditedItem((prev: PlaylistEntry) => {
+      let next = new PlaylistEntry(prev);
+      next.details[name] = value;
+      return next;
+    });
   };
 
   const handleSubmit = (e) => {
@@ -35,7 +40,7 @@ const EditItemModal = ({ isOpen, onClose, item, onSave }) => {
             id="title"
             name="title"
             type="text"
-            value={editedItem.title}
+            value={editedItem.getTitle() || ''}
             onChange={handleChange}
             required
           />
@@ -47,7 +52,7 @@ const EditItemModal = ({ isOpen, onClose, item, onSave }) => {
             id="artist"
             name="artist"
             type="text"
-            value={editedItem.artist}
+            value={editedItem.getArtist() || ''}
             onChange={handleChange}
             required
           />
@@ -60,7 +65,7 @@ const EditItemModal = ({ isOpen, onClose, item, onSave }) => {
               id="album"
               name="album"
               type="text"
-              value={editedItem.album}
+              value={editedItem.getAlbum() || ''}
               onChange={handleChange}
             />
           </div>

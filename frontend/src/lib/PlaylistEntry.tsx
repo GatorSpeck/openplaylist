@@ -41,6 +41,21 @@ export class EntryDetails {
  */
 class PlaylistEntry extends PlaylistEntryStub {
   /**
+   * @typedef {Object} PlaylistEntry
+   * @property {number} id - The ID of the entry
+   * @property {number} order - The order of the entry in the playlist
+   * @property {string} entry_type - The type of the entry (e.g., music_file, lastfm, requested, requested_album, album, nested_playlist)
+   * @property {string} date_added - The date the entry was added to the playlist
+   * @property {number} music_file_id - The ID of the music file (if applicable)
+   * @property {number} lastfm_track_id - The ID of the Last.FM track (if applicable)
+   * @property {number} requested_track_id - The ID of the requested track (if applicable)
+   * @property {number} requested_album_id - The ID of the requested album (if applicable)
+   * @property {number} album_id - The ID of the album (if applicable)
+   * @property {number} playlist_id - The ID of the playlist (if applicable)
+   * @property {EntryDetails} details - The details of the entry (e.g., title, artist, album, etc.)
+   */
+
+  /**
    * Create a new PlaylistEntry instance
    * @param {Object} entryData - The raw entry data
    */
@@ -63,6 +78,10 @@ class PlaylistEntry extends PlaylistEntryStub {
     this.details = new EntryDetails(detailsToUse);
   }
 
+  getEntryType() {
+    return this.entry_type;
+  }
+
   hasDetails() {
     return this.details !== null;
   }
@@ -76,7 +95,7 @@ class PlaylistEntry extends PlaylistEntryStub {
   }
 
   getTitle() {
-    return !this.isAlbum() ? this.details.title : this.details.album;
+    return this.details.title;
   }
 
   getAlbum() {

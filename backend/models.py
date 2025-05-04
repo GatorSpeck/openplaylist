@@ -126,7 +126,7 @@ class MusicFileDB(BaseNode, TrackDetailsMixin):
 class LastFMTrackDB(BaseNode, TrackDetailsMixin):
     __tablename__ = "lastfm_tracks"
     id = Column(Integer, ForeignKey("base_elements.id"), primary_key=True)
-    url = Column(String(1024), unique=True, index=True)
+    url = Column(String(1024), index=True)
     genres = relationship(
         "TrackGenreDB",
         primaryjoin="and_(TrackGenreDB.lastfm_track_id==LastFMTrackDB.id, TrackGenreDB.parent_type=='lastfm')",
