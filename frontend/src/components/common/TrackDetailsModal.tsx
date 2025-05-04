@@ -3,8 +3,14 @@ import '../../styles/TrackDetailsModal.css';
 import { formatDate, formatDuration, formatSize } from '../../lib/misc';
 import { use } from 'react';
 import playlistRepository from '../../repositories/PlaylistRepository';
+import PlaylistEntry from '../lib/PlaylistEntry';
 
-const TrackDetailsModal = ({ entry, onClose }) => {
+interface TrackDetailsModalProps {
+  entry: PlaylistEntry; // Replace with the actual type of your entry
+  onClose: () => void;
+}
+
+const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({ entry, onClose }) => {
   const [playlists, setPlaylists] = useState([]);
   if (!entry) return null;
 

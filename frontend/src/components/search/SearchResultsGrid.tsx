@@ -44,10 +44,10 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const [selectedSearchResults, setSelectedSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [allSearchResultsSelected, setAllSongsSelected] = useState(false);
-  const [selectedTrack, setSelectedTrack] = useState(null);
+  const [selectedTrack, setSelectedTrack] = useState<PlaylistEntry | null>(null);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, track: null });
   const [showLastFMSearch, setShowLastFMSearch] = useState(false);
-  const [searchResults, setSearchResults] = useState([]);
+  const [searchResults, setSearchResults] = useState<PlaylistEntry[]>([]);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [similarTracks, setSimilarTracks] = useState<PlaylistEntry[]>([]);
@@ -242,12 +242,12 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     // TODO: adding songs should remove them from the search results
   }
 
-  const handleShowDetails = (track) => {
+  const handleShowDetails = (track: PlaylistEntry) => {
     setSelectedTrack(track);
     setShowTrackDetails(true);
   }
 
-  const scanMusic = async (full) => {
+  const scanMusic = async (full: boolean) => {
     setIsScanning(true);
     try {
       // Start the scan
@@ -320,7 +320,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     }
   };
 
-  const handleContextMenu = (e, track) => {
+  const handleContextMenu = (e, track: PlaylistEntry) => {
     e.preventDefault();
 
     // Get the parent container's position
@@ -651,9 +651,9 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           />
         )}
 
-        {showTrackDetails && (
+        {showTrackDetails && selectedTrack && (
           <TrackDetailsModal
-            track={selectedTrack}
+            entry={selectedTrack}
             onClose={() => setShowTrackDetails(false)}
           />
         )}
