@@ -109,13 +109,17 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
           <input
             type="text"
             placeholder={searchType === 'track' ? 'Track Title' : 'Album Title'}
-            value={titleToShow}
-            onChange={(e) => setSearchParams({...searchParams, title: e.target.value})}
+            value={titleToShow || ''}
+            onChange={(e) => setSearchParams({
+              ...searchParams,
+              title: searchType === 'track' ? e.target.value : null,
+              album: searchType === 'album' ? e.target.value : null,
+            })}
           />
           <input
             type="text"
             placeholder="Artist"
-            value={searchParams.artist}
+            value={searchParams.artist || ''}
             onChange={(e) => setSearchParams({...searchParams, artist: e.target.value})}
           />
           <button onClick={handleSearch} disabled={isLoading}>
