@@ -83,7 +83,9 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
 
         # Order by relevance score
         results = (
-            query.order_by(text("relevance DESC")).limit(query_package.limit).offset(query_package.offset).all()
+            query.order_by(text("relevance DESC"))
+                .order_by(MusicFileDB.artist, MusicFileDB.album, MusicFileDB.title)
+                .limit(query_package.limit).offset(query_package.offset).all()
         )
 
         logging.info(
@@ -135,7 +137,11 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         if path:
             query = query.filter(MusicFileDB.path == path)
 
-        results = query.limit(limit).offset(offset).all()
+        results = (
+            query
+                .order_by(MusicFileDB.artist, MusicFileDB.album, MusicFileDB.title)
+                .limit(limit).offset(offset).all()
+        )
 
         return [to_music_file(music_file) for music_file in results]
 
