@@ -264,16 +264,38 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     }
   };
 
-  // Add this useEffect to refetch albums when artist changes
+  // 1. Create a reference for the album filtering debounce function
+  const debouncedAlbumFetchRef = useRef<ReturnType<typeof debounce>>();
+
+  // 2. Replace the existing useEffect that watches filters.artist with this debounced version
   useEffect(() => {
-    if (filters.artist && filters.artist.length > 0) {
-      // Fetch albums for this specific artist
-      fetchAlbumList(filters.artist);
-    } else {
-      // If no artist is selected, fetch all albums (or potentially none)
-      fetchAlbumList();
+    // Clean up previous debounce if exists
+    if (debouncedAlbumFetchRef.current) {
+      debouncedAlbumFetchRef.current.cancel();
     }
-  }, [filters.artist]);
+    
+    // Create new debounced function for album fetching
+    debouncedAlbumFetchRef.current = debounce(async () => {
+      // Only fetch albums if we have an artist with some length
+      if (filters.artist && filters.artist.length > 1) {
+        // Fetch albums for this specific artist
+        fetchAlbumList(filters.artist);
+      } else if (!filters.artist || filters.artist.length === 0) {
+        // Clear album list or fetch all albums when artist is cleared
+        fetchAlbumList();
+      }
+    }, 300); // Use a shorter delay for better responsiveness in the dropdown
+    
+    // Trigger the album fetch when artist changes (debounced)
+    debouncedAlbumFetchRef.current();
+    
+    // Cleanup on unmount or when filters.artist changes again
+    return () => {
+      if (debouncedAlbumFetchRef.current) {
+        debouncedAlbumFetchRef.current.cancel();
+      }
+    };
+  }, [filters.artist]); // Re-run when artist filter changes
 
   // Update the initial useEffect to only fetch artists initially
   useEffect(() => {
@@ -294,7 +316,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   // Add this function to filter albums based on input
   const getFilteredAlbums = () => {
     const albumQuery = filters.album;
-    if (albumQuery.length === 0) return [];
+    if (filters.artist.length === 0 && albumQuery.length === 0) return [];
     
     return albumList
       .filter(album => album.toLowerCase().includes(filters.album.toLowerCase()))
@@ -482,6 +504,19 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     fetchLibraryStats();
   }
   , []);
+
+  // 3. Add a cleanup effect for component unmount
+  useEffect(() => {
+    return () => {
+      // Clean up all debounce functions on unmount
+      if (debouncedSearchRef.current) {
+        debouncedSearchRef.current.cancel();
+      }
+      if (debouncedAlbumFetchRef.current) {
+        debouncedAlbumFetchRef.current.cancel();
+      }
+    };
+  }, []);
 
   const Row = memo(({ index, style }) => {
     const song = searchResults[index];
@@ -683,7 +718,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                   placeholder="Album Name" 
                 />
 
-                {showAlbumDropdown && !!(filters.album.length) && (
+                {showAlbumDropdown && !!(filters.artist.length || filters.album.length) && (
                   <div className="album-dropdown">
                     {getFilteredAlbums().map((album, index) => (
                       <div 
