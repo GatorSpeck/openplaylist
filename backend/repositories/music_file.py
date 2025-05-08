@@ -224,6 +224,23 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             results.append({"exists": found, "title": track.title, "artist": track.artist})
 
         return results
+    
+    def get_artist_list(self):
+        query = self.session.query(MusicFileDB.artist).filter(MusicFileDB.artist != None).distinct()
+        results = query.all()
+        return [r[0] for r in results]
+    
+    def get_album_list(self, artist: Optional[str] = None):
+        query = self.session.query(MusicFileDB.album).filter(MusicFileDB.album != None)
+
+        if artist:
+            artist = f"%{artist}%"
+            query = query.filter(or_(MusicFileDB.artist.ilike(artist), MusicFileDB.album_artist.ilike(artist)))
+        
+        query = query.distinct()
+
+        results = query.all()
+        return [r[0] for r in results]
 
     def dump_library_to_playlist(self, playlist: Playlist, repo: PlaylistRepository) -> Playlist:
         try:

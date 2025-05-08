@@ -524,6 +524,12 @@ async def get_music_files(
 ):
     return repo.get_all()
 
+@app.get("/api/artistlist")
+async def get_artist_list(
+    repo: MusicFileRepository = Depends(get_music_file_repository),
+):
+    return repo.get_artist_list()
+
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 @router.get("/settings/paths")

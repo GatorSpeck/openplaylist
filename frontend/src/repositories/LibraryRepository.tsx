@@ -1,5 +1,10 @@
-import axios from 'axios';
+import Axios from 'axios';
 import PlaylistEntry from '../lib/PlaylistEntry';
+
+import { setupCache } from 'axios-cache-interceptor';
+
+const axios = Axios.create(); 
+const axiosCached = setupCache(axios);
 
 export class LibraryRepository {
     async searchLibrary(query) {
@@ -52,6 +57,24 @@ export class LibraryRepository {
             return response.data;
         } catch (error) {
             console.error('Error fetching filter results:', error);
+        }
+    }
+
+    async getArtistList() {
+        try {
+            const response = await axiosCached.get(`/api/artistlist`);
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching artist list:', error);
+        }
+    }
+
+    async getAlbumList() {
+        try {
+            const response = await axiosCached.get(`/api/albumlist`);
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching album list:', error);
         }
     }
 };

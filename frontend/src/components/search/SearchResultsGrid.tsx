@@ -69,6 +69,11 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   // Keep this part but rename it from "advancedFilters" to just "filters"
   const [filters, setFilters] = useState<SearchFilter>(filter);
 
+  // support artist pick-list
+  const [artistList, setArtistList] = useState<string[]>([]);
+  const [showArtistDropdown, setShowArtistDropdown] = useState(false);
+  const artistInputRef = useRef(null);
+
   const ITEMS_PER_PAGE = 50;
 
   const extractSearchResults = (response) => {
@@ -234,6 +239,31 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     setFilters(filter);
   }, [filter]);
 
+  // Add this function to fetch artists
+  const fetchArtistList = async () => {
+    try {
+      const response = await libraryRepository.getArtistList();
+      setArtistList(response || []);
+    } catch (error) {
+      console.error('Error fetching artist list:', error);
+    }
+  };
+
+  // Add this useEffect hook to load artists when component mounts
+  useEffect(() => {
+    fetchArtistList();
+  }, []);
+
+  // Add this function to filter artists based on input
+  const getFilteredArtists = () => {
+    const artistQuery = filters.artist;
+    if (artistQuery.length === 0) return [];
+    
+    return artistList
+      .filter(artist => artist.toLowerCase().includes(filters.artist.toLowerCase()))
+      .slice(0, 50); // Limit to 50 results max
+  };
+
   const addSongs = (tracks:  PlaylistEntry[]) => {
     onAddSongs(tracks);
     clearSelectedSongs();
@@ -330,7 +360,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    const isAlbum = track.entry_type === 'requested_album' || track.entry_type === 'album';
+    const isAlbum = track.getEntryType() === 'requested_album' || track.getEntryType() === 'album';
 
     const options = [
       { label: 'Details', onClick: () => handleShowDetails(track) },
@@ -370,7 +400,19 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     return () => {
       document.removeEventListener('click', handleClickOutside);
     };
-  }, [])
+  }, []);
+
+  // Add this effect to close the artist dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (artistInputRef.current && !artistInputRef.current.contains(event.target)) {
+        setShowArtistDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -541,13 +583,41 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
             </div>
             <div className="form-group">
               <label>Artist:</label>
-              <input 
-                type="text" 
-                name="artist"
-                value={filters.artist} 
-                onChange={handleAdvancedFilterChange}
-                placeholder="Artist Name" 
-              />
+              <div className="artist-input-container">
+                <input 
+                  ref={artistInputRef}
+                  type="text" 
+                  name="artist"
+                  value={filters.artist} 
+                  onChange={(e) => {
+                    setFilters({...filters, artist: e.target.value});
+                  }}
+                  onFocus={() => setShowArtistDropdown(true)}
+                  placeholder="Artist Name" 
+                />
+
+                {showArtistDropdown && !!(filters.artist.length) && (
+                  <div className="artist-dropdown">
+                    {getFilteredArtists().map((artist, index) => (
+                      <div 
+                        key={index}
+                        className="artist-option"
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          setFilters(prevFilters => ({...prevFilters, artist}));  // Use functional update pattern
+                          setShowArtistDropdown(false);
+                        }}
+                      >
+                        {artist}
+                      </div>
+                    ))}
+                    {!!(filters.artist.length) && (getFilteredArtists().length === 0) && (
+                      <div className="artist-option no-results">No matching artists</div>
+                    )}
+                  </div>
+                )}
+
+              </div>
             </div>
             <div className="form-group">
               <label>Album:</label>
