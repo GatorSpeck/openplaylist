@@ -69,9 +69,13 @@ export class LibraryRepository {
         }
     }
 
-    async getAlbumList() {
+    async getAlbumList(artist?: string) {
         try {
-            const response = await axiosCached.get(`/api/albumlist`);
+            const response = await axiosCached.get(`/api/albumlist`, {
+                params: {
+                    artist: artist
+                }
+            });
             return response.data;
         } catch (error) {
             console.error('Error fetching album list:', error);

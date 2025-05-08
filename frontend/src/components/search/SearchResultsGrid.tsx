@@ -254,20 +254,31 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     }
   };
 
-  // Add this function to fetch albums
-  const fetchAlbumList = async () => {
+  // Modify the fetchAlbumList function to accept an artist parameter
+  const fetchAlbumList = async (artist?: string) => {
     try {
-      const response = await libraryRepository.getAlbumList();
+      const response = await libraryRepository.getAlbumList(artist);
       setAlbumList(response || []);
     } catch (error) {
       console.error('Error fetching album list:', error);
     }
   };
 
-  // Add this useEffect hook to load artists and albums when component mounts
+  // Add this useEffect to refetch albums when artist changes
+  useEffect(() => {
+    if (filters.artist && filters.artist.length > 0) {
+      // Fetch albums for this specific artist
+      fetchAlbumList(filters.artist);
+    } else {
+      // If no artist is selected, fetch all albums (or potentially none)
+      fetchAlbumList();
+    }
+  }, [filters.artist]);
+
+  // Update the initial useEffect to only fetch artists initially
   useEffect(() => {
     fetchArtistList();
-    fetchAlbumList();
+    // Don't fetch albums here anymore since we'll do it when artist changes
   }, []);
 
   // Add this function to filter artists based on input
