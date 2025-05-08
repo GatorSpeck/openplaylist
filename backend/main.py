@@ -408,10 +408,11 @@ def filter_music_files(
     album: Optional[str] = None,
     genre: Optional[str] = None,
     limit: int = 50,
+    offset: int = 0,
     repo: MusicFileRepository = Depends(get_music_file_repository),
 ):
     return repo.filter(
-        title=title, artist=artist, album=album, genre=genre, limit=limit
+        title=title, artist=artist, album=album, genre=genre, offset=offset, limit=limit
     )
 
 
@@ -522,6 +523,19 @@ async def get_music_files(
     repo: MusicFileRepository = Depends(get_music_file_repository),
 ):
     return repo.get_all()
+
+@app.get("/api/artistlist")
+async def get_artist_list(
+    repo: MusicFileRepository = Depends(get_music_file_repository),
+):
+    return repo.get_artist_list()
+
+@app.get("/api/albumlist")
+async def get_album_list(
+    artist: str | None = None,
+    repo: MusicFileRepository = Depends(get_music_file_repository),
+):
+    return repo.get_album_list(artist)
 
 CONFIG_FILE = CONFIG_DIR / "config.json"
 

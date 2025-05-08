@@ -10,7 +10,7 @@
 
 .playlist-grid-header-row,
 .playlist-grid-row {
-  grid-template-columns: 50px 2fr 2fr;
+  grid-template-columns: 0.1fr 2fr 2fr;
   display: grid;
   gap: 8px;
   margin: 0px;
@@ -75,6 +75,10 @@
   background: #f0f0f0;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   color: black;
+}
+
+.playlist-grid-header-row.grid-cell {
+  text-overflow: clip;
 }
 
 .grid-cell {

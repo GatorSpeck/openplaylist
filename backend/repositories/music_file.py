@@ -83,7 +83,9 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
 
         # Order by relevance score
         results = (
-            query.order_by(text("relevance DESC")).limit(query_package.limit).offset(query_package.offset).all()
+            query.order_by(text("relevance DESC"))
+                .order_by(MusicFileDB.artist, MusicFileDB.album, MusicFileDB.title)
+                .limit(query_package.limit).offset(query_package.offset).all()
         )
 
         logging.info(
@@ -102,12 +104,17 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         path: Optional[str] = None,
         exact=False,
         limit: int = 50,
+        offset: int = 0,
+        include_missing: bool = False,
     ) -> list[MusicFile]:
         query = self.session.query(MusicFileDB)
 
         title = title.lower() if title else None
         artist = artist.lower() if artist else None
         album = album.lower() if album else None
+
+        if not include_missing:
+            query = query.filter(MusicFileDB.missing == False)
 
         if title:
             if exact:
@@ -130,7 +137,11 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         if path:
             query = query.filter(MusicFileDB.path == path)
 
-        results = query.limit(limit).all()
+        results = (
+            query
+                .order_by(MusicFileDB.artist, MusicFileDB.album, MusicFileDB.title)
+                .limit(limit).offset(offset).all()
+        )
 
         return [to_music_file(music_file) for music_file in results]
 
@@ -195,6 +206,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         results = []
 
         for t in tracks:
+            logging.debug(f"Searching for {t.title} by {t.artist}")
             existing_files = self.filter(title=t.title, artist=t.artist, exact=True)
             if existing_files:
                 results.append(existing_files[0])
@@ -218,6 +230,23 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             results.append({"exists": found, "title": track.title, "artist": track.artist})
 
         return results
+    
+    def get_artist_list(self):
+        query = self.session.query(MusicFileDB.artist).filter(MusicFileDB.artist != None).distinct()
+        results = query.all()
+        return [r[0] for r in results]
+    
+    def get_album_list(self, artist: Optional[str] = None):
+        query = self.session.query(MusicFileDB.album).filter(MusicFileDB.album != None)
+
+        if artist:
+            artist = f"%{artist}%"
+            query = query.filter(or_(MusicFileDB.artist.ilike(artist), MusicFileDB.album_artist.ilike(artist)))
+        
+        query = query.distinct()
+
+        results = query.all()
+        return [r[0] for r in results]
 
     def dump_library_to_playlist(self, playlist: Playlist, repo: PlaylistRepository) -> Playlist:
         try:

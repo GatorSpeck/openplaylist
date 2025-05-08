@@ -16,6 +16,7 @@ In addition to local music, your playlists can be augmented with search results 
 - Support for missing local files and un-matching/re-matching them later
 - Support for large playlists, with tens of thousands of entries
   - Server-side sorting and filtering with lazy loading based on viewable playlist entries
+- Support for MariaDB
 
 ## Screenshots
 ### Basic Interface
@@ -46,7 +47,17 @@ DATA_DIR=./data  # dir to store the SQLite DB (needs read/write access)
 TZ="America/Chicago"  # not strictly required, but highly recommended
 ALLOW_ORIGINS=localhost  # for CORS
 
-# Optional settings
+## MariaDB configuration (recommended, defaults to sqlite otherwise)
+# MARIADB_ROOT_PASSWORD=replaceme
+# MARIADB_USER=replaceme
+# MARIADB_PASSWORD=replaceme
+# DB_TYPE=mysql
+# DB_HOST=openplaylist_db
+# DB_PORT=3306
+# DB_NAME=openplaylist
+
+## Other optional settings
+
 ## Plex configuration for playlist syncing
 # PLEX_ENDPOINT=https://your.plex.server
 # PLEX_TOKEN=foo
@@ -76,50 +87,12 @@ ALLOW_ORIGINS=localhost  # for CORS
 # SPOTIFY_CLIENT_SECRET=foo
 ```
 
-- Run with `docker-compose up --build -d`
-```
-services:
-  openplaylist:
-    image: ghcr.io/gatorspeck/openplaylist:${OPENPLAYLIST_TAG}
-    container_name: openplaylist
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "${PORT}:80"
-    volumes:
-      # - /path/to/your/music:/music:ro
-      - ${DATA_DIR}:/data:rw
-      - ${CONFIG_PATH}:/config:rw
-      # - ${PLEX_M3U_DROP_SOURCE}:/playlist:rw
-    restart: unless-stopped
-    environment:
-      # required
-      # - ALLOW_ORIGINS=${ALLOW_ORIGINS}
-      # - TZ=${TZ}
+- Run with `docker-compose up -d`
 
-      # optional
-      # - LASTFM_API_KEY=${LASTFM_API_KEY}
-      # - LASTFM_SHARED_SECRET=${LASTFM_SHARED_SECRET}
-      # - PLEX_ENDPOINT=${PLEX_ENDPOINT}
-      # - PLEX_TOKEN=${PLEX_TOKEN}
-      # - PLEX_LIBRARY=${PLEX_LIBRARY}
-      # - PLEX_MAP_SOURCE=${PLEX_MAP_SOURCE}
-      # - PLEX_MAP_TARGET=${PLEX_MAP_TARGET}
-      # - PLEX_M3U_DROP_SOURCE=${PLEX_M3U_DROP_SOURCE}
-      # - PLEX_M3U_DROP_TARGET=${PLEX_M3U_DROP_TARGET}
-      # - OPENAI_API_KEY=${OPENAI_API_KEY}
-      # - REDIS_HOST=${REDIS_HOST}
-      # - REDIS_PORT=${REDIS_PORT}
-      # - LOG_LEVEL=INFO
-      # - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
-      # - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
-    healthcheck:
-      test: ["CMD", "/app/healthcheck.sh"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-```
+## SQLite support
+If you prefer to run using SQLite, simply omit the MariaDB section of your .env file, as well as the `openplaylist_db` section of your compose.yml.
+
+Note that this not recommended for large libraries and playlists. There is a migration tool included in `backend/scripts` that can help migrate an existing SQLite DB to a new MariaDB instance.
 
 ## Applying Migrations
 If there is a breaking DB change, migrations can be run manually (for now) -

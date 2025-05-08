@@ -1,4 +1,10 @@
-import axios from 'axios';
+import Axios from 'axios';
+import PlaylistEntry from '../lib/PlaylistEntry';
+
+import { setupCache } from 'axios-cache-interceptor';
+
+const axios = Axios.create(); 
+const axiosCached = setupCache(axios);
 
 export class LibraryRepository {
     async searchLibrary(query) {
@@ -29,14 +35,16 @@ export class LibraryRepository {
         }
     }
 
-    async findLocalFiles(tracks) {
+    async findLocalFiles(tracks: PlaylistEntry[]) {
         try {
-            const response = await axios.post(`/api/library/findlocals`, tracks);
+            const details = tracks.map(track => track.details);
+            const response = await axios.post(`/api/library/findlocals`, details);
             const localFiles = response.data.map(tracks => ({...tracks, entry_type: "music_file"}));
 
             return tracks.map((track, idx) => localFiles[idx].path ? localFiles[idx] : track);
         } catch (error) {
             console.error('Error fetching local files:', error);
+            return [];
         }
     }
 
@@ -49,6 +57,28 @@ export class LibraryRepository {
             return response.data;
         } catch (error) {
             console.error('Error fetching filter results:', error);
+        }
+    }
+
+    async getArtistList() {
+        try {
+            const response = await axiosCached.get(`/api/artistlist`);
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching artist list:', error);
+        }
+    }
+
+    async getAlbumList(artist?: string) {
+        try {
+            const response = await axiosCached.get(`/api/albumlist`, {
+                params: {
+                    artist: artist
+                }
+            });
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching album list:', error);
         }
     }
 };

@@ -747,12 +747,26 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             return None
         
         return Playlist(id=playlist.id, name=playlist.name, entries=[])
+    
+    def _update_entity_details(self, orm_model, pydantic_model):
+        """Update ORM model fields from a Pydantic model"""
+        for key, value in pydantic_model.dict().items():
+            if hasattr(orm_model, key):
+                setattr(orm_model, key, value)
+        return orm_model
 
     def replace_track(self, playlist_id, existing_entry_id, new_entry: PlaylistEntryBase):
         # Get the existing entry
         existing_entry = self.session.get(PlaylistEntryDB, existing_entry_id)
         if existing_entry is None:
             return None
+        
+        # Check if the new entry is of the same type
+        if existing_entry.entry_type == new_entry.entry_type:
+            # If the entry types are the same, we can just update the existing entry
+            self._update_entity_details(existing_entry.details, new_entry.details)
+            self.session.commit()
+            return new_entry
                 
         # register requested track if applicable
         if new_entry.entry_type == "requested":

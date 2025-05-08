@@ -18,24 +18,24 @@ class TrackDetailsMixin:
 
     @declared_attr
     def title(cls) -> Mapped[Optional[str]]:
-        return mapped_column(String, index=True, nullable=True)
+        return mapped_column(String(1024), index=True, nullable=True)
 
     @declared_attr
     def artist(cls) -> Mapped[Optional[str]]:
-        return mapped_column(String, index=True, nullable=True)
+        return mapped_column(String(1024), index=True, nullable=True)
 
     @declared_attr
     def album_artist(cls) -> Mapped[Optional[str]]:
-        return mapped_column(String, index=True, nullable=True)
+        return mapped_column(String(1024), index=True, nullable=True)
 
     @declared_attr
     def album(cls) -> Mapped[Optional[str]]:
-        return mapped_column(String, index=True, nullable=True)
+        return mapped_column(String(1024), index=True, nullable=True)
 
     @declared_attr
     def year(cls) -> Mapped[Optional[str]]:
         """Track metadata year field as string"""
-        return mapped_column(String, index=True, nullable=True)
+        return mapped_column(String(32), index=True, nullable=True)
     
     @declared_attr
     def exact_release_date(cls) -> Mapped[Optional[DateTime]]:
@@ -55,7 +55,7 @@ class TrackDetailsMixin:
     @declared_attr
     def publisher(cls) -> Mapped[Optional[str]]:
         """Record label"""
-        return mapped_column(String, index=True, nullable=True)
+        return mapped_column(String(255), index=True, nullable=True)
     
     @declared_attr
     def rating(cls) -> Mapped[Optional[int]]:
@@ -65,12 +65,12 @@ class TrackDetailsMixin:
     @declared_attr
     def notes(cls) -> Mapped[Optional[str]]:
         """User notes"""
-        return mapped_column(Text, nullable=True)
+        return mapped_column(Text(1024), nullable=True)
     
     @declared_attr
     def comments(cls) -> Mapped[Optional[str]]:
         """Comments on track file"""
-        return mapped_column(Text, nullable=True)
+        return mapped_column(Text(1024), nullable=True)
 
     @declared_attr
     def disc_number(cls) -> Mapped[Optional[int]]:
@@ -102,14 +102,14 @@ class TrackGenreDB(Base):
     requested_track_id = Column(
         Integer, ForeignKey("requested_tracks.id"), nullable=True
     )
-    genre = Column(String, index=True)
+    genre = Column(String(50), index=True)
 
 
 class MusicFileDB(BaseNode, TrackDetailsMixin):
     __tablename__ = "music_files"
     id = Column(Integer, ForeignKey("base_elements.id"), primary_key=True)
-    path = Column(String, index=True)
-    kind = Column(String, index=True)
+    path = Column(String(1024), index=True)
+    kind = Column(String(32), index=True)
     first_scanned = Column(DateTime)
     last_scanned = Column(DateTime, index=True)
     size = Column(Integer)  # size in bytes
@@ -126,7 +126,7 @@ class MusicFileDB(BaseNode, TrackDetailsMixin):
 class LastFMTrackDB(BaseNode, TrackDetailsMixin):
     __tablename__ = "lastfm_tracks"
     id = Column(Integer, ForeignKey("base_elements.id"), primary_key=True)
-    url = Column(String, unique=True, index=True)
+    url = Column(String(1024), index=True)
     genres = relationship(
         "TrackGenreDB",
         primaryjoin="and_(TrackGenreDB.lastfm_track_id==LastFMTrackDB.id, TrackGenreDB.parent_type=='lastfm')",
@@ -146,17 +146,17 @@ class NestedPlaylistDB(BaseNode):
 class AlbumDB(BaseNode):
     __tablename__ = "albums"
     id = Column(Integer, ForeignKey("base_elements.id"), primary_key=True)
-    title = Column(String, index=True)
-    artist = Column(String, index=True)
-    year = Column(String, index=True)
+    title = Column(String(1024), index=True)
+    artist = Column(String(1024), index=True)
+    year = Column(String(32), index=True)
     tracks: Mapped[List[AlbumTrackDB]] = relationship(
         order_by="AlbumTrackDB.order",
         collection_class=ordering_list("order"),
         foreign_keys="AlbumTrackDB.album_id",
     )
-    art_url = Column(String, nullable=True)
-    publisher = Column(String, index=True)
-    last_fm_url = Column(String, nullable=True)  # last.fm url
+    art_url = Column(String(1024), nullable=True)
+    publisher = Column(String(255), index=True)
+    last_fm_url = Column(String(1024), nullable=True)  # last.fm url
 
     __mapper_args__ = {"polymorphic_identity": "album"}
 
@@ -190,7 +190,7 @@ class RequestedTrackDB(BaseNode, TrackDetailsMixin):
 class PlaylistDB(Base):
     __tablename__ = "playlists"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True)
+    name = Column(String(1024), unique=True, index=True)
     updated_at = Column(DateTime, index=True, onupdate=func.now())
     pinned = Column(Boolean, default=False)
     pinned_order = Column(Integer, index=True)

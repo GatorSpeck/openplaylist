@@ -6,7 +6,7 @@ import '../../styles/PlaylistGrid.css';
 import SearchResultsGrid, {SearchFilter} from '../search/SearchResultsGrid';
 import ContextMenu from '../common/ContextMenu';
 import { FaUndo, FaRedo } from 'react-icons/fa';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import BaseModal from '../common/BaseModal';
 import playlistRepository from '../../repositories/PlaylistRepository';
 import InfiniteScroll from 'react-infinite-scroll-component';
@@ -27,6 +27,7 @@ import MatchAlbumModal from './MatchAlbumModal';
 import EditItemModal from './EditItemModal';
 import PlaylistEntry, {PlaylistEntryStub} from '../../lib/PlaylistEntry';
 import SelectPlaylistModal from './SelectPlaylistModal';
+import { setCookie, getCookie } from '../../lib/cookieUtils';
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -46,8 +47,13 @@ const Row = memo(({ data, index, style }) => {
     handleContextMenu, 
     selectedEntries,
     sortColumn,
-    provided 
+    provided,
+    totalCount
   } = data;
+
+  if (index >= totalCount) {
+    return null;
+  }
 
   const track = ((index >= entries.length) || !entries[index]) ? null : new PlaylistEntry(entries[index]);
 
@@ -102,8 +108,75 @@ interface PlaylistGridProps {
 }
 
 const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
-  const [sortColumn, setSortColumn] = useState('order');
-  const [sortDirection, setSortDirection] = useState('asc');
+  // Add search params hook at the top of your component
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  
+  // Add this new state to track parameter initialization
+  const [paramsInitialized, setParamsInitialized] = useState(false);
+
+  // Get sort parameters from URL or use defaults
+  const getSortColumnFromParam = (param: string | null): string => {
+    const validColumns = ['order', 'title', 'artist', 'album'];
+    
+    // First check URL params
+    if (param && validColumns.includes(param)) {
+      return param;
+    }
+    
+    // Then fall back to cookies
+    const cookieValue = getCookie(`playlist_${playlistID}_sortColumn`);
+    if (cookieValue && validColumns.includes(cookieValue)) {
+      return cookieValue;
+    }
+    
+    // Default if neither exists
+    return 'order';
+  };
+
+  const getSortDirectionFromParam = (param: string | null): string => {
+    // First check URL params
+    if (param === 'asc' || param === 'desc') {
+      return param;
+    }
+    
+    // Then fall back to cookies
+    const cookieValue = getCookie(`playlist_${playlistID}_sortDirection`);
+    if (cookieValue === 'asc' || cookieValue === 'desc') {
+      return cookieValue;
+    }
+    
+    // Default if neither exists
+    return 'asc';
+  };
+
+  const getInitialFilter = (): string => {
+    // First check URL params
+    const filterParam = searchParams.get('filter');
+    if (filterParam) {
+      return filterParam;
+    }
+  };
+
+  // Replace your current parameter initialization with this useEffect
+  useEffect(() => {
+    // Process URL params and cookies only once at component initialization
+    const initialSortColumn = getSortColumnFromParam(searchParams.get('sort'));
+    const initialSortDirection = getSortDirectionFromParam(searchParams.get('dir'));
+    const initialFilter = getInitialFilter();
+    
+    // Set the state values all at once
+    setSortColumn(initialSortColumn);
+    setSortDirection(initialSortDirection);
+    setFilter(initialFilter);
+    
+    // Mark parameters as initialized
+    setParamsInitialized(true);
+  }, [playlistID]); // Only run when playlistID changes
+
+  // Update your state initialization to use cookies and URL params
+  const [sortColumn, setSortColumn] = useState('');
+  const [sortDirection, setSortDirection] = useState('');
   const [filter, setFilter] = useState('');
   const [debouncedFilter, setDebouncedFilter] = useState('');
   const [entries, setEntries] = useState<PlaylistEntryStub[]>([]);
@@ -129,7 +202,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [openAILoading, setOpenAILoading] = useState(false);
-  const [similarTracks, setSimilarTracks] = useState(null);
+  const [similarTracks, setSimilarTracks] = useState<PlaylistEntry[]>([]);
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [selectedTrack, setSelectedTrack] = useState<PlaylistEntry | null>(null);
@@ -157,7 +230,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   // Add after your other state declarations
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [itemToEdit, setItemToEdit] = useState(null);
+  const [itemToEdit, setItemToEdit] = useState<PlaylistEntry | null>(null);
 
   // Apply debouncing to the filter
   useEffect(() => {
@@ -170,11 +243,15 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     return () => clearTimeout(timer);
   }, [filter]);
 
+  // Replace your current useEffect for loading data with this one
   useEffect(() => {
-    setPage(0); // Reset page on filter/sort changes
-    fetchPlaylistArtGrid();
-    fetchPlaylistDetails(true);
-  }, [playlistID, debouncedFilter, sortColumn, sortDirection]);
+    // Only fetch data after params are initialized
+    if (paramsInitialized) {
+      setPage(0); // Reset page on filter/sort changes
+      fetchPlaylistArtGrid();
+      fetchPlaylistDetails(true);
+    }
+  }, [playlistID, debouncedFilter, sortColumn, sortDirection, paramsInitialized]);
 
   const fetchPlaylistArtGrid = async () => {
     try {
@@ -489,13 +566,26 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   };
 
   const handleSort = (column: String) => {
+    let newDirection = sortDirection;
+    
     if (sortColumn === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+      setSortDirection(newDirection);
     } else {
-      setSortColumn(column);
+      setSortColumn(column.toString());
+      newDirection = 'asc';
       setSortDirection('asc');
     }
-    // The effect will trigger a re-fetch with the new sort parameters
+    
+    // Save to cookies
+    setCookie(`playlist_${playlistID}_sortColumn`, column.toString());
+    setCookie(`playlist_${playlistID}_sortDirection`, newDirection);
+    
+    // Update URL query parameters while preserving other params
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('sort', column.toString());
+    newParams.set('dir', newDirection);
+    setSearchParams(newParams, { replace: true }); // Replace instead of push to avoid extra history entries
   };
 
   const searchFor = (newFilter: SearchFilter) => {
@@ -507,8 +597,6 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     if (sortColumn !== column) return null;
     return sortDirection === 'asc' ? ' ↑' : ' ↓';
   };
-
-  const navigate = useNavigate();
 
   // TODO: should happen up through parent component
   const onDeletePlaylist = async () => {
@@ -531,7 +619,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     const localFiles = await libraryRepository.findLocalFiles(similars);
 
     // prefer local files
-    setSimilarTracks(localFiles);
+    setSimilarTracks(localFiles.map(track => new PlaylistEntry(track)));
 
     setPosition({ x: e.clientX, y: e.clientY });
     setOpenAILoading(false);
@@ -544,7 +632,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     const localFiles = await libraryRepository.findLocalFiles(similars);
 
     // prefer local files
-    setSimilarTracks(localFiles);
+    setSimilarTracks(localFiles.map(track => new PlaylistEntry(track)));
 
     setPosition({ x: e.clientX, y: e.clientY });
     setLoading(false);
@@ -552,7 +640,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   const addSimilarTracks = (tracks: PlaylistEntry[]) => {
     addSongsToPlaylist(tracks);
-    setSimilarTracks(null);
+    setSimilarTracks([]);
   }
 
   const handleShowDetails = (track: PlaylistEntry) => {
@@ -708,7 +796,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       
       setSnackbar({
         open: true,
-        message: `Album matched to "${selectedMatch.getTitle()}" by ${selectedMatch.getArtist()}`,
+        message: `Album matched to "${selectedMatch.getAlbum()}" by ${selectedMatch.getArtist()}`,
         severity: 'success'
       });
     } catch (error) {
@@ -738,7 +826,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       { label: 'Details', onClick: () => handleShowDetails(track) },
       canEdit ? { label: 'Edit Details', onClick: () => handleEditItem(track) } : null,
       { label: 'Add to Playlist...', onClick: () => handleAddToOtherPlaylist([track]) },
-      { label: 'Send to Search', onClick: () => searchFor({"album": "", "artist": "", "title": track.getTitle()}) },
+      { label: 'Send to Search', onClick: () => searchFor({"album": track.getAlbum(), "artist": track.getArtist(), "title": track.getTitle()}) },
       !isAlbum ? { label: 'Find Similar Tracks (Last.fm)', onClick: (e) => findSimilarTracks(e, track) } : null,
       !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: (e) => findSimilarTracksWithOpenAI(e, track) } : null,
       { label: 'Search for Album', onClick: () => searchFor({"title": "", "album": track.getAlbum(), "artist": track.getArtist()}) },
@@ -835,7 +923,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   const saveEditedItem = async (editedItem: PlaylistEntry) => {
     try {
-      const isAlbum = editedItem.entry_type === 'requested_album' || editedItem.entry_type === 'album';
+      const isAlbum = editedItem.getEntryType() === 'requested_album' || editedItem.getEntryType() === 'album';
       
       // Create updated item with edited details
       let updatedItem = editedItem;
@@ -846,7 +934,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       // Update local state
       pushToHistory(entries);
       const newEntries = [...entries];
-      const itemIndex = entries.findIndex(entry => entry.order === updatedItem.order);
+      const itemIndex = entries.findIndex((entry: PlaylistEntryStub) => entry.order === updatedItem.order);
       newEntries[itemIndex] = updatedItem;
       setEntries(newEntries);
       
@@ -885,13 +973,19 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             type="text"
             placeholder="Filter playlist..."
             value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+            onChange={(e) => {
+              setFilter(e.target.value);
+              // Direct cookie update isn't needed here as we handle it in useEffect with the debounced value
+            }}
             className="filter-input"
           />
+
           {filter && (
             <button 
               className="clear-filter"
-              onClick={() => setFilter('')}
+              onClick={() => {
+                setFilter('');
+              }}
             >
               Clear
             </button>
@@ -963,7 +1057,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                         selectedEntries,
                         sortColumn,
                         handleContextMenu: handleContextMenu,
-                        isDraggingOver: snapshot.isDraggingOver
+                        isDraggingOver: snapshot.isDraggingOver,
+                        totalCount: totalCount
                       }}
                       overscanCount={20} // Increased overscan for jumping around
                       onItemsRendered={({ visibleStartIndex, visibleStopIndex }) => {
@@ -1010,12 +1105,12 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         />
       )}
 
-      {similarTracks && (
+      {!!(similarTracks.length) && (
         <SimilarTracksPopup
           x={position.x}
           y={position.y}
           tracks={similarTracks}
-          onClose={() => setSimilarTracks(null)}
+          onClose={() => setSimilarTracks([])}
           onAddTracks={(tracks) => addSimilarTracks(tracks)}
         />
       )}

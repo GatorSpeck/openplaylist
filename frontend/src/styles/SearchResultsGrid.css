@@ -193,3 +193,69 @@
 .basic-search-actions button:hover {
   background-color: #e0e0e0;
 }
+
+.artist-input-container {
+  position: relative;
+  width: 100%;
+}
+
+.artist-dropdown {
+  position: absolute;
+  width: 100%;
+  max-height: 300px;
+  overflow-y: auto;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  top: 100%;
+  left: 0;
+}
+
+.artist-option {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.artist-option:hover {
+  background-color: #f5f5f5;
+}
+
+.artist-option.no-results {
+  color: #999;
+  font-style: italic;
+  cursor: default;
+}
+
+.album-input-container {
+  position: relative;
+  width: 100%;
+}
+
+.album-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #ccc;
+  z-index: 10;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.album-option {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.album-option:hover {
+  background-color: #f0f0f0;
+}
+
+.album-option.no-results {
+  font-style: italic;
+  color: #999;
+}

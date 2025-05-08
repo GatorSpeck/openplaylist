@@ -2,8 +2,17 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { FaExternalLinkAlt } from "react-icons/fa";
 import LibraryMusicIcon from '@mui/icons-material/LibraryMusic';
+import PlaylistEntry from '../lib/PlaylistEntry';
 
-export const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
+interface SimilarTracksPopupProps {
+    x: number;
+    y: number;
+    tracks: PlaylistEntry[];
+    onClose: () => void;
+    onAddTracks: (tracks: PlaylistEntry[]) => void;
+}
+
+export const SimilarTracksPopup: React.FC<SimilarTracksPopupProps> = ({ x, y, tracks, onClose, onAddTracks }) => {
     const [selectedTracks, setSelectedTracks] = useState(new Set());
     const [position, setPosition] = useState({ x, y });
 
@@ -93,7 +102,7 @@ export const SimilarTracksPopup = ({ x, y, tracks, onClose, onAddTracks }) => {
                 style={{ marginRight: '0.5rem' }}
                 readOnly
                 />
-                <span>{track.artist} - {track.title}{track.entry_type === "music_file" ? (<span>&nbsp;<LibraryMusicIcon /></span>) : null}</span>
+                <span>{track.getArtist()} - {track.getTitle()}{track.entry_type === "music_file" ? (<span>&nbsp;<LibraryMusicIcon /></span>) : null}</span>
                 {track.url && (
                     <span>
                         &nbsp;

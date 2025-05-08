@@ -44,13 +44,13 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const [selectedSearchResults, setSelectedSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [allSearchResultsSelected, setAllSongsSelected] = useState(false);
-  const [selectedTrack, setSelectedTrack] = useState(null);
+  const [selectedTrack, setSelectedTrack] = useState<PlaylistEntry | null>(null);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, track: null });
   const [showLastFMSearch, setShowLastFMSearch] = useState(false);
-  const [searchResults, setSearchResults] = useState([]);
+  const [searchResults, setSearchResults] = useState<PlaylistEntry[]>([]);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [showTrackDetails, setShowTrackDetails] = useState(false);
-  const [similarTracks, setSimilarTracks] = useState(null);
+  const [similarTracks, setSimilarTracks] = useState<PlaylistEntry[]>([]);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const panelRef = useRef(null);
   const [libraryStats, setLibraryStats] = useState({
@@ -69,6 +69,16 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   // Keep this part but rename it from "advancedFilters" to just "filters"
   const [filters, setFilters] = useState<SearchFilter>(filter);
 
+  // support artist pick-list
+  const [artistList, setArtistList] = useState<string[]>([]);
+  const [showArtistDropdown, setShowArtistDropdown] = useState(false);
+  const artistInputRef = useRef(null);
+
+  // Add these new state variables
+  const [albumList, setAlbumList] = useState<string[]>([]);
+  const [showAlbumDropdown, setShowAlbumDropdown] = useState(false);
+  const albumInputRef = useRef(null);
+
   const ITEMS_PER_PAGE = 50;
 
   const extractSearchResults = (response) => {
@@ -76,20 +86,19 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     return results;
   }
 
-  const fetchSongs = async (query = '', pageNum = 1) => {
-    if (query.length < 3) {
-      return;
-    }
+  const fetchSongs = async (pageNum = 1) => {
     setIsLoading(true);
     try {
-      const response = await axios.get(`/api/search`, {
+      const response = await axios.get(`/api/filter`, {
         params: { 
-          query: encodeURIComponent(query),
+          title: filters.title || null,
+          artist: filters.artist || null,
+          album: filters.album || null,
           offset: (pageNum - 1) * ITEMS_PER_PAGE,
           limit: ITEMS_PER_PAGE
         }
       });
-
+      
       const results = extractSearchResults(response);
       
       if (pageNum === 1) {
@@ -129,7 +138,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     const localFiles = await libraryRepository.findLocalFiles(similars);
 
     // prefer local files
-    setSimilarTracks(localFiles);
+    setSimilarTracks(localFiles.map(t => new PlaylistEntry(t)));
 
     setPosition({ x: e.clientX, y: e.clientY });
     setOpenAILoading(false);
@@ -142,7 +151,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     const localFiles = await libraryRepository.findLocalFiles(similars);
 
     // prefer local files
-    setSimilarTracks(localFiles);
+    setSimilarTracks(localFiles.map(t => new PlaylistEntry(t)));
 
     setPosition({ xj: e.clientX, y: e.clientY });
     setIsLoading(false);
@@ -188,7 +197,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   // Add this function to handle advanced filter changes
   const handleAdvancedFilterChange = (e) => {
     const { name, value } = e.target;
-    console.log(filters);
+    
     setFilters(prev => ({
       ...prev,
       [name]: value
@@ -196,26 +205,9 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     // No need to call debounced function here - the effect will handle it
   };
 
-  // Update this function to handle advanced search
+  // Update this function to use pagination
   const performAdvancedSearch = async () => {
-    setIsLoading(true);
-    try {
-      const response = await axios.get(`/api/filter`, {
-        params: { 
-          title: filters.title || null,
-          artist: filters.artist || null,
-          album: filters.album || null,
-          limit: ITEMS_PER_PAGE
-        }
-      });
-      
-      setSearchResults(extractSearchResults(response));
-      setHasMore(false); // We don't have pagination for the filter endpoint
-    } catch (error) {
-      console.error('Error performing advanced search:', error);
-    } finally {
-      setIsLoading(false);
-    }
+    return fetchSongs(1);
   };
 
   // 1. Create a reference to store the debounced function
@@ -252,6 +244,85 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     setFilters(filter);
   }, [filter]);
 
+  // Add this function to fetch artists
+  const fetchArtistList = async () => {
+    try {
+      const response = await libraryRepository.getArtistList();
+      setArtistList(response || []);
+    } catch (error) {
+      console.error('Error fetching artist list:', error);
+    }
+  };
+
+  // Modify the fetchAlbumList function to accept an artist parameter
+  const fetchAlbumList = async (artist?: string) => {
+    try {
+      const response = await libraryRepository.getAlbumList(artist);
+      setAlbumList(response || []);
+    } catch (error) {
+      console.error('Error fetching album list:', error);
+    }
+  };
+
+  // 1. Create a reference for the album filtering debounce function
+  const debouncedAlbumFetchRef = useRef<ReturnType<typeof debounce>>();
+
+  // 2. Replace the existing useEffect that watches filters.artist with this debounced version
+  useEffect(() => {
+    // Clean up previous debounce if exists
+    if (debouncedAlbumFetchRef.current) {
+      debouncedAlbumFetchRef.current.cancel();
+    }
+    
+    // Create new debounced function for album fetching
+    debouncedAlbumFetchRef.current = debounce(async () => {
+      // Only fetch albums if we have an artist with some length
+      if (filters.artist && filters.artist.length > 1) {
+        // Fetch albums for this specific artist
+        fetchAlbumList(filters.artist);
+      } else if (!filters.artist || filters.artist.length === 0) {
+        // Clear album list or fetch all albums when artist is cleared
+        fetchAlbumList();
+      }
+    }, 300); // Use a shorter delay for better responsiveness in the dropdown
+    
+    // Trigger the album fetch when artist changes (debounced)
+    debouncedAlbumFetchRef.current();
+    
+    // Cleanup on unmount or when filters.artist changes again
+    return () => {
+      if (debouncedAlbumFetchRef.current) {
+        debouncedAlbumFetchRef.current.cancel();
+      }
+    };
+  }, [filters.artist]); // Re-run when artist filter changes
+
+  // Update the initial useEffect to only fetch artists initially
+  useEffect(() => {
+    fetchArtistList();
+    // Don't fetch albums here anymore since we'll do it when artist changes
+  }, []);
+
+  // Add this function to filter artists based on input
+  const getFilteredArtists = () => {
+    const artistQuery = filters.artist;
+    if (artistQuery.length === 0) return [];
+    
+    return artistList
+      .filter(artist => artist.toLowerCase().includes(filters.artist.toLowerCase()))
+      .slice(0, 50); // Limit to 50 results max
+  };
+
+  // Add this function to filter albums based on input
+  const getFilteredAlbums = () => {
+    const albumQuery = filters.album;
+    if (filters.artist.length === 0 && albumQuery.length === 0) return [];
+    
+    return albumList
+      .filter(album => album.toLowerCase().includes(filters.album.toLowerCase()))
+      .slice(0, 50); // Limit to 50 results max
+  };
+
   const addSongs = (tracks:  PlaylistEntry[]) => {
     onAddSongs(tracks);
     clearSelectedSongs();
@@ -260,12 +331,12 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     // TODO: adding songs should remove them from the search results
   }
 
-  const handleShowDetails = (track) => {
+  const handleShowDetails = (track: PlaylistEntry) => {
     setSelectedTrack(track);
     setShowTrackDetails(true);
   }
 
-  const scanMusic = async (full) => {
+  const scanMusic = async (full: boolean) => {
     setIsScanning(true);
     try {
       // Start the scan
@@ -338,7 +409,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     }
   };
 
-  const handleContextMenu = (e, track) => {
+  const handleContextMenu = (e, track: PlaylistEntry) => {
     e.preventDefault();
 
     // Get the parent container's position
@@ -348,7 +419,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    const isAlbum = track.entry_type === 'requested_album' || track.entry_type === 'album';
+    const isAlbum = track.getEntryType() === 'requested_album' || track.getEntryType() === 'album';
 
     const options = [
       { label: 'Details', onClick: () => handleShowDetails(track) },
@@ -388,7 +459,31 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     return () => {
       document.removeEventListener('click', handleClickOutside);
     };
-  }, [])
+  }, []);
+
+  // Add this effect to close the artist dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (artistInputRef.current && !artistInputRef.current.contains(event.target)) {
+        setShowArtistDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Add this effect to close the album dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (albumInputRef.current && !albumInputRef.current.contains(event.target)) {
+        setShowAlbumDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -409,6 +504,19 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     fetchLibraryStats();
   }
   , []);
+
+  // 3. Add a cleanup effect for component unmount
+  useEffect(() => {
+    return () => {
+      // Clean up all debounce functions on unmount
+      if (debouncedSearchRef.current) {
+        debouncedSearchRef.current.cancel();
+      }
+      if (debouncedAlbumFetchRef.current) {
+        debouncedAlbumFetchRef.current.cancel();
+      }
+    };
+  }, []);
 
   const Row = memo(({ index, style }) => {
     const song = searchResults[index];
@@ -472,9 +580,10 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           <InfiniteLoader
             isItemLoaded={index => index < searchResults.length}
             itemCount={hasMore ? searchResults.length + 1 : searchResults.length}
-            loadMoreItems={() => {
+            loadMoreItems={(startIndex, stopIndex) => {
               if (!isLoading && hasMore) {
-                return fetchSongs(filters.title, page + 1);
+                console.log(`Loading more items from ${startIndex} to ${stopIndex}`);
+                return fetchSongs(page + 1);
               }
               return Promise.resolve();
             }}
@@ -505,7 +614,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   // Create a new function to directly add manual entries
   const addManualEntry = (title: string, artist: string, album: string) => {
     const artistToUse = artist ? artist : 'Unknown Artist';
-    const entryType = album ? 'requested_album' : 'requested';
+    const entryType = (album && !title) ? 'requested_album' : 'requested';
     
     const newEntry = new PlaylistEntry({
       entry_type: entryType,
@@ -524,7 +633,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
       message: `Added requested entry: "${titleToShow}" by ${artistToUse}`,
       severity: 'success'
     });
-  };
+  }
 
   return (
     <>
@@ -558,23 +667,79 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
             </div>
             <div className="form-group">
               <label>Artist:</label>
-              <input 
-                type="text" 
-                name="artist"
-                value={filters.artist} 
-                onChange={handleAdvancedFilterChange}
-                placeholder="Artist Name" 
-              />
+              <div className="artist-input-container">
+                <input 
+                  ref={artistInputRef}
+                  type="text" 
+                  name="artist"
+                  value={filters.artist} 
+                  onChange={(e) => {
+                    setFilters({...filters, artist: e.target.value});
+                  }}
+                  onFocus={() => setShowArtistDropdown(true)}
+                  placeholder="Artist Name" 
+                />
+
+                {showArtistDropdown && !!(filters.artist.length) && (
+                  <div className="artist-dropdown">
+                    {getFilteredArtists().map((artist, index) => (
+                      <div 
+                        key={index}
+                        className="artist-option"
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          setFilters(prevFilters => ({...prevFilters, artist}));  // Use functional update pattern
+                          setShowArtistDropdown(false);
+                        }}
+                      >
+                        {artist}
+                      </div>
+                    ))}
+                    {!!(filters.artist.length) && (getFilteredArtists().length === 0) && (
+                      <div className="artist-option no-results">No matching artists</div>
+                    )}
+                  </div>
+                )}
+
+              </div>
             </div>
             <div className="form-group">
               <label>Album:</label>
-              <input 
-                type="text" 
-                name="album"
-                value={filters.album} 
-                onChange={handleAdvancedFilterChange}
-                placeholder="Album Name" 
-              />
+              <div className="album-input-container">
+                <input 
+                  ref={albumInputRef}
+                  type="text" 
+                  name="album"
+                  value={filters.album} 
+                  onChange={(e) => {
+                    setFilters({...filters, album: e.target.value});
+                  }}
+                  onFocus={() => setShowAlbumDropdown(true)}
+                  placeholder="Album Name" 
+                />
+
+                {showAlbumDropdown && !!(filters.artist.length || filters.album.length) && (
+                  <div className="album-dropdown">
+                    {getFilteredAlbums().map((album, index) => (
+                      <div 
+                        key={index}
+                        className="album-option"
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          console.log(`Selected album: ${album}`);
+                          setFilters(prevFilters => ({...prevFilters, album}));
+                          setShowAlbumDropdown(false);
+                        }}
+                      >
+                        {album}
+                      </div>
+                    ))}
+                    {!!(filters.album.length) && (getFilteredAlbums().length === 0) && (
+                      <div className="album-option no-results">No matching albums</div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="advanced-search-actions">
               {isLoading && (
@@ -637,7 +802,8 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
             initialSearch={{
               title: filters.title,
               artist: filters.artist,
-              album: filters.album
+              album: filters.album,
+              type: filters.title ? 'track' : 'album'
             }}
             onClose={() => setShowLastFMSearch(false)}
             onAddToPlaylist={(entries) => {
@@ -657,19 +823,19 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           />
         )}
 
-        {similarTracks && (
+        {!!similarTracks.length && (
           <SimilarTracksPopup
             x={position.x}
             y={position.y}
             tracks={similarTracks}
-            onClose={() => setSimilarTracks(null)}
+            onClose={() => setSimilarTracks([])}
             onAddTracks={(tracks) => onAddSongs(tracks)}
           />
         )}
 
-        {showTrackDetails && (
+        {showTrackDetails && selectedTrack && (
           <TrackDetailsModal
-            track={selectedTrack}
+            entry={selectedTrack}
             onClose={() => setShowTrackDetails(false)}
           />
         )}
