@@ -227,3 +227,35 @@
   font-style: italic;
   cursor: default;
 }
+
+.album-input-container {
+  position: relative;
+  width: 100%;
+}
+
+.album-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #ccc;
+  z-index: 10;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.album-option {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.album-option:hover {
+  background-color: #f0f0f0;
+}
+
+.album-option.no-results {
+  font-style: italic;
+  color: #999;
+}

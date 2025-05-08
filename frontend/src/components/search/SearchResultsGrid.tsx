@@ -74,6 +74,11 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const [showArtistDropdown, setShowArtistDropdown] = useState(false);
   const artistInputRef = useRef(null);
 
+  // Add these new state variables
+  const [albumList, setAlbumList] = useState<string[]>([]);
+  const [showAlbumDropdown, setShowAlbumDropdown] = useState(false);
+  const albumInputRef = useRef(null);
+
   const ITEMS_PER_PAGE = 50;
 
   const extractSearchResults = (response) => {
@@ -249,9 +254,20 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     }
   };
 
-  // Add this useEffect hook to load artists when component mounts
+  // Add this function to fetch albums
+  const fetchAlbumList = async () => {
+    try {
+      const response = await libraryRepository.getAlbumList();
+      setAlbumList(response || []);
+    } catch (error) {
+      console.error('Error fetching album list:', error);
+    }
+  };
+
+  // Add this useEffect hook to load artists and albums when component mounts
   useEffect(() => {
     fetchArtistList();
+    fetchAlbumList();
   }, []);
 
   // Add this function to filter artists based on input
@@ -261,6 +277,16 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     
     return artistList
       .filter(artist => artist.toLowerCase().includes(filters.artist.toLowerCase()))
+      .slice(0, 50); // Limit to 50 results max
+  };
+
+  // Add this function to filter albums based on input
+  const getFilteredAlbums = () => {
+    const albumQuery = filters.album;
+    if (albumQuery.length === 0) return [];
+    
+    return albumList
+      .filter(album => album.toLowerCase().includes(filters.album.toLowerCase()))
       .slice(0, 50); // Limit to 50 results max
   };
 
@@ -414,6 +440,18 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Add this effect to close the album dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (albumInputRef.current && !albumInputRef.current.contains(event.target)) {
+        setShowAlbumDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   useEffect(() => {
     if (visible) {
       setIsPanelOpen(true);
@@ -549,7 +587,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
       message: `Added requested entry: "${titleToShow}" by ${artistToUse}`,
       severity: 'success'
     });
-  };
+  }
 
   return (
     <>
@@ -621,13 +659,41 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
             </div>
             <div className="form-group">
               <label>Album:</label>
-              <input 
-                type="text" 
-                name="album"
-                value={filters.album} 
-                onChange={handleAdvancedFilterChange}
-                placeholder="Album Name" 
-              />
+              <div className="album-input-container">
+                <input 
+                  ref={albumInputRef}
+                  type="text" 
+                  name="album"
+                  value={filters.album} 
+                  onChange={(e) => {
+                    setFilters({...filters, album: e.target.value});
+                  }}
+                  onFocus={() => setShowAlbumDropdown(true)}
+                  placeholder="Album Name" 
+                />
+
+                {showAlbumDropdown && !!(filters.album.length) && (
+                  <div className="album-dropdown">
+                    {getFilteredAlbums().map((album, index) => (
+                      <div 
+                        key={index}
+                        className="album-option"
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          console.log(`Selected album: ${album}`);
+                          setFilters(prevFilters => ({...prevFilters, album}));
+                          setShowAlbumDropdown(false);
+                        }}
+                      >
+                        {album}
+                      </div>
+                    ))}
+                    {!!(filters.album.length) && (getFilteredAlbums().length === 0) && (
+                      <div className="album-option no-results">No matching albums</div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="advanced-search-actions">
               {isLoading && (
