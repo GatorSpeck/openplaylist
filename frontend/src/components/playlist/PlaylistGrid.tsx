@@ -498,7 +498,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       setSnackbar({
         open: true,
         message: `'${playlistName}' synced to Plex`
-      })
+      });
+
+      // refresh view
+      fetchPlaylistDetails(true);
     } catch (error) {
       console.error('Error exporting playlist:', error);
     }

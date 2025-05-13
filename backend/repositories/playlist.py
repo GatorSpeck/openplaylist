@@ -32,7 +32,7 @@ from typing import List, Optional
 import warnings
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel
 from enum import IntEnum
 
@@ -365,7 +365,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             
             this_playlist.entries.extend(playlist_entries)
         
-        this_playlist.updated_at = func.now()
+        this_playlist.updated_at = datetime.now()
                 
         self.session.commit()
     
@@ -391,7 +391,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 self.session.delete(entry)
         
         playlist = self.session.get(PlaylistDB, playlist_id)
-        playlist.updated_at = func.now()
+        playlist.updated_at = datetime.now()
 
         self.session.commit()
         logger.info(f"Removed {count} entries from playlist {playlist_id}")
@@ -531,6 +531,55 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         
         # Commit outside of no_autoflush block
         self.session.commit()
+    
+    def add_music_file(self, playlist_id: int, item):
+        # look up music file by path
+        music_file = (
+            self.session.query(MusicFileDB)
+            .filter(MusicFileDB.title == item.title)
+            .filter(MusicFileDB.artist == item.artist)
+            .filter(MusicFileDB.album == item.album)
+            .first()
+        )
+
+        if music_file is None:
+            logging.error(f"Music file not found")
+            return None
+        
+        # Create a new MusicFileEntryDB object
+        music_file_entry = MusicFileEntry(
+            music_file_id=music_file.id,
+            entry_type="music_file"
+        )
+
+        # Add to session and commit
+        self.add_entries(playlist_id, [music_file_entry])
+
+    def remove_music_file(self, playlist_id: int, item):
+        music_file = (
+            self.session.query(MusicFileDB)
+            .filter(MusicFileDB.title == item.title)
+            .filter(MusicFileDB.artist == item.artist)
+            .filter(MusicFileDB.album == item.album)
+            .first()
+        )
+
+        if music_file is None:
+            logging.error(f"Music file not found")
+            return None
+        
+        entry = (
+            self.session.query(MusicFileEntryDB)
+            .filter(MusicFileEntryDB.playlist_id == playlist_id)
+            .filter(MusicFileEntryDB.music_file_id == music_file.id)
+            .first()
+        )
+
+        if entry:
+            self.session.delete(entry)
+            self.session.commit()
+        else:
+            logging.warning(f"Entry not found in playlist {playlist_id}")
 
     def insert_entry(self, playlist_id: int, entry: PlaylistEntryBase, new_index: int = -1):
         logging.info(f"Adding entry {entry} to playlist {playlist_id} at index {new_index}")
@@ -635,7 +684,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         for e in entries_to_remove:
             self.session.delete(e)
         
-        playlist.updated_at = func.now()
+        playlist.updated_at = datetime.now()
 
         self.session.commit()
     
@@ -795,7 +844,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         new_entry_db.order = original_order
 
         this_playlist = self.session.get(PlaylistDB, playlist_id)
-        this_playlist.updated_at = func.now()
+        this_playlist.updated_at = datetime.now()
         
         self.session.commit()
 

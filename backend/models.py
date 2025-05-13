@@ -9,6 +9,7 @@ from sqlalchemy.orm import (
 )
 from typing import List, Optional
 from sqlalchemy.ext.orderinglist import ordering_list
+from datetime import datetime, timezone
 
 Base = declarative_base()
 
@@ -191,7 +192,7 @@ class PlaylistDB(Base):
     __tablename__ = "playlists"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(1024), unique=True, index=True)
-    updated_at = Column(DateTime, index=True, onupdate=func.now())
+    updated_at = Column(DateTime(), index=True, default=func.now(), onupdate=func.now())
     pinned = Column(Boolean, default=False)
     pinned_order = Column(Integer, index=True)
 
