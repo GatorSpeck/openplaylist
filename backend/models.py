@@ -133,6 +133,7 @@ class LastFMTrackDB(BaseNode, TrackDetailsMixin):
         primaryjoin="and_(TrackGenreDB.lastfm_track_id==LastFMTrackDB.id, TrackGenreDB.parent_type=='lastfm')",
         cascade="all, delete-orphan",
     )
+    mbid = Column(String(50), nullable=True)  # MusicBrainz ID
 
     __mapper_args__ = {"polymorphic_identity": "lastfm_track"}
 
@@ -158,6 +159,7 @@ class AlbumDB(BaseNode):
     art_url = Column(String(1024), nullable=True)
     publisher = Column(String(255), index=True)
     last_fm_url = Column(String(1024), nullable=True)  # last.fm url
+    mbid = Column(String(50), nullable=True)  # MusicBrainz ID
 
     __mapper_args__ = {"polymorphic_identity": "album"}
 

@@ -454,7 +454,7 @@ def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
     repo = last_fm_repository(api_key, requests_cache_session)
-    return repo.search_track(artist, title)
+    return repo.search_track(title=title, artist=artist)
 
 # get similar tracks using last.fm API
 @router.get("/lastfm/similar", response_model=List[LastFMTrack])

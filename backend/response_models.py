@@ -198,6 +198,7 @@ class Album(MusicEntity):
     tracks: List[AlbumTrack] = []
     art_url: Optional[str] = None
     last_fm_url: Optional[str] = None
+    mbid: Optional[str] = None
 
     @classmethod
     def from_orm(cls, obj: AlbumDB):
@@ -209,7 +210,8 @@ class Album(MusicEntity):
             publisher=obj.publisher,
             tracks=[AlbumTrack.from_orm(t) for t in obj.tracks],
             art_url=obj.art_url,
-            last_fm_url=obj.last_fm_url
+            last_fm_url=obj.last_fm_url,
+            mbid=obj.mbid
         )
     
     def to_db(self) -> AlbumDB:
@@ -220,7 +222,8 @@ class Album(MusicEntity):
             publisher=self.publisher,
             tracks=[t.to_db() for t in self.tracks],
             art_url=self.art_url,
-            last_fm_url=self.last_fm_url
+            last_fm_url=self.last_fm_url,
+            mbid=self.mbid,
         )
 
     def to_json(self) -> dict:
@@ -228,6 +231,10 @@ class Album(MusicEntity):
             "title": self.title,
             "artist": self.artist,
             "year": self.year,
+            "last_fm_url": self.last_fm_url,
+            "art_url": self.art_url,
+            "publisher": self.publisher,
+            "mbid": self.mbid,
             "tracks": [t.to_json() for t in self.tracks],
         }
 
@@ -567,6 +574,12 @@ class AlbumAndArtist(BaseModel):
 
     def __hash__(self):
         return hash((self.album, self.artist))
+
+class Artist(BaseModel):
+    name: str
+    url: Optional[str] = None
+    mbid: Optional[str] = None
+    albums: List[Album] = []
 
 class PlaylistEntriesResponse(BaseModel):
     entries: List[PlaylistEntry]
