@@ -294,7 +294,7 @@ class RequestedAlbumEntryDB(PlaylistEntryDB):
 class PlaylistSnapshot(Base):
     __tablename__ = "playlist_snapshots"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
+    name = Column(String(50), index=True)
     contents = Column(JSON)
     last_updated = Column(DateTime, index=True)
     
