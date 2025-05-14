@@ -23,13 +23,14 @@ from database import Database
 from models import *
 import urllib
 from response_models import *
-from dependencies import get_music_file_repository, get_playlist_repository
+from dependencies import get_music_file_repository, get_playlist_repository, get_plex_repository
 from repositories.music_file import MusicFileRepository
 from repositories.playlist import PlaylistRepository
 from repositories.open_ai_repository import open_ai_repository
 from repositories.last_fm_repository import last_fm_repository
 from repositories.requests_cache_session import requests_cache_session
 from repositories.spotify_repository import get_spotify_repo
+from repositories.plex_repository import plex_repository
 from redis import Redis
 import json
 from pydantic import BaseModel
@@ -593,6 +594,23 @@ def import_spotify_playlist(
     playlist_repo.create(new_playlist)
 
     return playlist
+
+@router.post("/plex/import")
+def import_plex_playlist(
+    params: PlexImportParams,
+    plex_repo: plex_repository = Depends(get_plex_repository),
+    playlist_repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    new_playlist = Playlist(name=params.playlist_name, description=None, entries=[])
+    new_playlist = playlist_repo.create(new_playlist)
+
+    logging.info("Creating Plex playlist snapshot")
+    playlist = plex_repo.get_playlist_snapshot(params.remote_playlist_name)
+
+    logging.info("Populating new playlist")
+    playlist_repo.add_music_file(new_playlist.id, playlist.items)
+    
+    return new_playlist
 
 class Directory(BaseModel):
     name: str

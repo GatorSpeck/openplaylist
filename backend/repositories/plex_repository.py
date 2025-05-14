@@ -3,7 +3,6 @@ import dotenv
 dotenv.load_dotenv(override=True)
 from fastapi.exceptions import HTTPException
 import logging
-import pathlib
 from plexapi.server import PlexServer
 from plexapi.playlist import Playlist as PlexPlaylist
 from pydantic import BaseModel
@@ -11,12 +10,12 @@ from datetime import datetime
 from typing import List, Optional
 from models import PlaylistSnapshot as PlaylistSnapshotModel, PlaylistDB
 import difflib
+from tqdm import tqdm
 
 class PlaylistItem(BaseModel):
     artist: str
     album: Optional[str] = None
     title: str
-    path: Optional[str] = None
 
     def to_string(self):
         return f"{self.artist} - {self.album} - {self.title}"
@@ -108,8 +107,7 @@ class plex_repository:
             i = PlaylistItem(
                 artist=item.get("artist"),
                 album=item.get("album"),
-                title=item.get("title"),
-                path=item.get("path")
+                title=item.get("title")
             )
 
             result.add_item(i)
@@ -132,8 +130,7 @@ class plex_repository:
             new_item = PlaylistItem(
                 artist=e.details.artist,
                 album=e.details.album,
-                title=e.details.title,
-                path=e.details.path
+                title=e.details.title
             )
 
             result.add_item(new_item)
@@ -166,6 +163,7 @@ class plex_repository:
     
     def get_playlist_snapshot(self, playlist_name) -> PlaylistSnapshot:
         try:
+            logging.info(f"Fetching playlist {playlist_name} from Plex")
             playlist = self.server.playlist(playlist_name)
 
             # TODO: assume same as Plex server's TZ
@@ -177,12 +175,12 @@ class plex_repository:
                 items=[]
             )
 
-            for item in playlist.items():
+            for item in tqdm(playlist.items(), desc="Fetching Plex playlist entries"):
+                album = item.album()
                 i = PlaylistItem(
                     artist=item.artist().title,
-                    album=item.album().title if item.album() else None,
-                    title=item.title,
-                    path=item.locations[0]
+                    album=album.title if album else None,
+                    title=item.title
                 )
 
                 result.add_item(i)
@@ -252,7 +250,7 @@ class plex_repository:
             logging.info("No local changes detected")
 
         # now apply any changes from the remote snapshot to the local
-        if new_remote_snapshot and (new_remote_snapshot.last_updated > old_remote_snapshot.last_updated):
+        if new_remote_snapshot and old_remote_snapshot and (new_remote_snapshot.last_updated > old_remote_snapshot.last_updated):
             logging.info("Remote changes detected")
             # if the remote snapshot is newer, we need to update the local
             adds = []

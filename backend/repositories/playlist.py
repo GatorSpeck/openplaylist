@@ -533,27 +533,36 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         self.session.commit()
     
     def add_music_file(self, playlist_id: int, item):
-        # look up music file by path
-        music_file = (
-            self.session.query(MusicFileDB)
-            .filter(MusicFileDB.title == item.title)
-            .filter(MusicFileDB.artist == item.artist)
-            .filter(MusicFileDB.album == item.album)
-            .first()
-        )
+        if not isinstance(item, list):
+            item = [item]
 
-        if music_file is None:
-            logging.error(f"Music file not found")
-            return None
+        music_files = []
+        for i in item:
+            # look up music file by path
+            music_file = (
+                self.session.query(MusicFileDB)
+                .filter(MusicFileDB.title == i.title)
+                .filter(or_(MusicFileDB.artist == i.artist, MusicFileDB.album_artist == i.artist))
+                .filter(MusicFileDB.album == i.album)
+                .first()
+            )
+
+            if music_file is None:
+                logging.warning(f"Music file {i.artist} - {i.album} - {i.title} not found")
+                continue
+            
+            # Create a new MusicFileEntryDB object
+            music_file_entry = MusicFileEntry(
+                music_file_id=music_file.id,
+                entry_type="music_file"
+            )
+
+            music_files.append(music_file_entry)
         
-        # Create a new MusicFileEntryDB object
-        music_file_entry = MusicFileEntry(
-            music_file_id=music_file.id,
-            entry_type="music_file"
-        )
+        logging.info(f"Matched {len(music_files)} music files to add to playlist {playlist_id}")
 
         # Add to session and commit
-        self.add_entries(playlist_id, [music_file_entry])
+        self.add_entries(playlist_id, music_files)
 
     def remove_music_file(self, playlist_id: int, item):
         music_file = (

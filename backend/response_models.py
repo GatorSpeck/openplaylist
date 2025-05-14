@@ -580,6 +580,10 @@ class SpotifyImportParams(BaseModel):
     playlist_id: str
     playlist_name: str
 
+class PlexImportParams(BaseModel):
+    playlist_name: str
+    remote_playlist_name: str
+
 class SpotifyTrack(BaseModel):
     id: str
     title: str
