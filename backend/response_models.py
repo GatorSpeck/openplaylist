@@ -700,3 +700,15 @@ class SpotifyPlaylist(BaseModel):
     description: Optional[str] = None
     tracks: List[SpotifyTrack] = []
     last_updated: Optional[datetime] = None
+
+class SearchResultMixin(BaseModel):
+    score: int
+
+class AlbumSearchResult(SearchResultMixin, Album):
+    pass
+
+class ArtistSearchResult(SearchResultMixin, Artist):
+    pass
+
+class TrackSearchResult(SearchResultMixin, MusicFile):
+    pass

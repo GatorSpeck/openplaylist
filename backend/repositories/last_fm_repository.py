@@ -2,7 +2,7 @@ import urllib
 import urllib.parse
 from fastapi.exceptions import HTTPException
 import logging
-from response_models import LastFMTrack, Album, AlbumTrack, AlbumAndArtist, Artist
+from response_models import LastFMTrack, Album, AlbumTrack, AlbumAndArtist, Artist, AlbumSearchResult
 import os
 import warnings
 import json
@@ -134,6 +134,59 @@ class last_fm_repository:
 
         return results[:limit]
     
+    def search_album_fallback(self, artist: Optional[str] = None, title: Optional[str] = None, limit: int = 10, page: int = 1) -> List[AlbumSearchResult]:
+        if not artist and not title:
+            raise HTTPException(status_code=400, detail="Either artist or title must be provided")
+        
+        # URL encode parameters
+        encoded_title = urllib.parse.quote(title) if title else None
+        encoded_artist = urllib.parse.quote(artist) if artist else None
+
+        # Make request to Last.FM API
+        url = f"http://ws.audioscrobbler.com/2.0/?method=album.search&api_key={self.api_key}&format=json&limit={limit}&album={encoded_title}&autocorrect=1"
+        logging.info(url)
+
+        response = self.get_with_retries(url)
+
+        if response.status_code != 200:
+            logging.warning(f"Failed to fetch data from Last.FM: {response.status_code} {response.text}")
+            raise HTTPException(status_code=500, detail="Failed to fetch data from Last.FM")
+
+        data = response.json()
+        albums = data.get("results", {}).get("albummatches", {}).get("album", [])
+
+        results = []
+
+        for match in albums:
+            score = 0
+            match_name = match.get("name")
+            match_artist = match.get("artist")
+            if match_name.lower() == title.lower() and match_artist.lower() == artist.lower():
+                score = 10
+            elif match_name.lower().startswith(title.lower()) and match_artist.lower() == artist.lower():
+                score = 5
+            elif match_artist.lower() == artist.lower():
+                score = 2
+            elif title.lower() in match_name.lower():
+                score = 1
+            
+            if score == 0:
+                continue
+            
+            match = AlbumSearchResult(
+                title=match.get("name"),
+                artist=match.get("artist"),
+                art_url=match.get("image")[-1].get("#text"),
+                last_fm_url=match.get("url"),
+                score=score
+            )
+
+            results.append(match)
+
+        results.sort(key=lambda x: x.score, reverse=True)
+
+        return results
+    
     def search_album(self, artist: Optional[str] = None, title: Optional[str] = None, limit: int = 10, page: int = 1) -> List[Album]:
         if not artist and not title:
             raise HTTPException(status_code=400, detail="Either artist or title must be provided")
@@ -177,6 +230,13 @@ class last_fm_repository:
                     break
             
             results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+            if not (results and results[0].get("score", 0) >= 5):
+                # try searching for album without artist
+                albums = self.search_album_fallback(artist=artist.name, title=title, limit=limit)
+
+                # insert results at beginning
+                results = [a.to_json() for a in albums] + results
 
             return [Album(
                 title=album.get("title"),
