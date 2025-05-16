@@ -218,7 +218,11 @@ class PlaylistEntryDB(Base):
     playlist: Mapped["PlaylistDB"] = relationship("PlaylistDB", back_populates="entries")
     
     details_id = Column(Integer, ForeignKey("base_elements.id"), nullable=True)
-    details = relationship("BaseNode", foreign_keys=[details_id])
+    details = relationship(
+        "BaseNode", 
+        foreign_keys=[details_id],
+        cascade="save-update, merge, expunge"  # Make sure it doesn't include "delete"
+    )
 
     __mapper_args__ = {"polymorphic_on": entry_type, "polymorphic_identity": "entry"}
 
@@ -236,7 +240,12 @@ class MusicFileEntryDB(PlaylistEntryDB):
     id = Column(Integer, ForeignKey("playlist_entries.id", ondelete="CASCADE"), primary_key=True)
     
     music_file_id = Column(Integer, ForeignKey("music_files.id", ondelete="SET NULL"))
-    details = relationship("MusicFileDB", foreign_keys=[music_file_id], passive_deletes=True)
+    details = relationship(
+        "MusicFileDB", 
+        foreign_keys=[music_file_id], 
+        passive_deletes=True,
+        cascade="save-update, merge, expunge"
+    )
 
     __mapper_args__ = {"polymorphic_identity": "music_file"}
 
@@ -279,7 +288,12 @@ class AlbumEntryDB(PlaylistEntryDB):
     id = Column(Integer, ForeignKey("playlist_entries.id", ondelete="CASCADE"), primary_key=True)
 
     album_id = Column(Integer, ForeignKey("albums.id", ondelete="SET NULL"))
-    details = relationship("AlbumDB", foreign_keys=[album_id], passive_deletes=True)
+    details = relationship(
+        "AlbumDB", 
+        foreign_keys=[album_id], 
+        passive_deletes=True,
+        cascade="save-update, merge, expunge"
+    )
 
     __mapper_args__ = {"polymorphic_identity": "album"}
 
@@ -289,7 +303,12 @@ class RequestedAlbumEntryDB(PlaylistEntryDB):
     id = Column(Integer, ForeignKey("playlist_entries.id", ondelete="CASCADE"), primary_key=True)
 
     album_id = Column(Integer, ForeignKey("albums.id", ondelete="SET NULL"))
-    details = relationship("AlbumDB", foreign_keys=[album_id], passive_deletes=True)
+    details = relationship(
+        "AlbumDB",
+        foreign_keys=[album_id],
+        passive_deletes=True,
+        cascade="save-update, merge, expunge"
+    )
 
     __mapper_args__ = {"polymorphic_identity": "requested_album"}
 
@@ -299,4 +318,3 @@ class PlaylistSnapshot(Base):
     name = Column(String(50), index=True)
     contents = Column(JSON)
     last_updated = Column(DateTime, index=True)
-    

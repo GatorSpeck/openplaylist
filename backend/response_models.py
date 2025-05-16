@@ -20,6 +20,7 @@ from models import (
     RequestedAlbumEntryDB
 )
 from abc import ABC, abstractmethod
+import logging
 
 
 class TrackDetails(BaseModel):
@@ -172,6 +173,7 @@ class AlbumTrack(MusicEntity):
     id: Optional[int] = None
     order: int
     linked_track: Optional[Union[MusicFile, RequestedTrack, "LastFMTrack"]] = None
+    album_id: Optional[int] = None
     
     @classmethod
     def from_orm(cls, obj: AlbumTrackDB):
@@ -182,7 +184,7 @@ class AlbumTrack(MusicEntity):
                 this_track = MusicFile.from_orm(obj.linked_track)
             elif obj.linked_track.entry_type == "requested_track":
                 this_track = RequestedTrack.from_orm(obj.linked_track)
-            elif obj.linked_track.entry_type == "lastfm_track":
+            elif obj.linked_track.entry_type.startswith("lastfm"):
                 this_track = LastFMTrack.from_orm(obj.linked_track)
             else:
                 # default to requested
@@ -191,7 +193,8 @@ class AlbumTrack(MusicEntity):
         return cls(
             id=obj.id,
             order=obj.order,
-            linked_track=this_track
+            linked_track=this_track,
+            album_id=obj.album_id
         )
     
     @classmethod
@@ -205,7 +208,7 @@ class AlbumTrack(MusicEntity):
                 this_track = MusicFile.from_json(obj["linked_track"])
             elif obj["linked_track"].get("entry_type") == "requested_track":
                 this_track = RequestedTrack.from_json(obj["linked_track"])
-            elif obj["linked_track"].get("entry_type") == "lastfm_track":
+            elif obj["linked_track"].get("entry_type").startswith("lastfm"):
                 this_track = LastFMTrack.from_json(obj["linked_track"])
             else:
                 # default to requested
@@ -214,28 +217,34 @@ class AlbumTrack(MusicEntity):
         return cls(
             id=obj.get("id"),
             order=obj.get("order"),
-            linked_track=this_track
+            linked_track=this_track,
+            album_id=obj.get("album_id")
         )
 
-    def to_json(self) -> Optional[dict]:
-        if self.linked_track is None:
-            return None
-        return self.linked_track.to_json()
+    def to_json(self) -> dict:
+        return {
+            "album_id": self.album_id,
+            "order": self.order,
+            "id": self.id,
+            "linked_track": self.linked_track.to_json() if self.linked_track else None,
+        }
 
     def to_db(self) -> AlbumTrackDB:
         return AlbumTrackDB(
             id=self.id,
             order=self.order,
+            album_id=self.album_id,
             linked_track=self.linked_track.to_db() if self.linked_track else None
         )
 
 
 class Album(MusicEntity):
+    id: Optional[int] =  None
     title: str
     artist: str
     year: Optional[str] = None
     publisher: Optional[str] = None
-    tracks: List[AlbumTrack] = []
+    tracks: Optional[List[AlbumTrack]] = None
     art_url: Optional[str] = None
     last_fm_url: Optional[str] = None
     mbid: Optional[str] = None
@@ -248,7 +257,7 @@ class Album(MusicEntity):
             artist=obj.artist,
             year=obj.year,
             publisher=obj.publisher,
-            tracks=[AlbumTrack.from_orm(t) for t in obj.tracks],
+            tracks=[AlbumTrack.from_orm(t) for t in obj.tracks] if obj.tracks else None,
             art_url=obj.art_url,
             last_fm_url=obj.last_fm_url,
             mbid=obj.mbid
@@ -256,11 +265,12 @@ class Album(MusicEntity):
     
     def to_db(self) -> AlbumDB:
         return AlbumDB(
+            id=self.id,
             title=self.title,
             artist=self.artist,
             year=self.year,
             publisher=self.publisher,
-            tracks=[t.to_db() for t in self.tracks],
+            tracks=[t.to_db() for t in self.tracks] if self.tracks else list(),
             art_url=self.art_url,
             last_fm_url=self.last_fm_url,
             mbid=self.mbid,
@@ -268,6 +278,7 @@ class Album(MusicEntity):
 
     def to_json(self) -> dict:
         return {
+            "id": self.id,
             "title": self.title,
             "artist": self.artist,
             "year": self.year,
@@ -275,7 +286,7 @@ class Album(MusicEntity):
             "art_url": self.art_url,
             "publisher": self.publisher,
             "mbid": self.mbid,
-            "tracks": [t.to_json() for t in self.tracks],
+            "tracks": [t.to_json() for t in self.tracks] if self.tracks else None,
         }
 
 class PlaylistBase(BaseModel):
@@ -285,16 +296,18 @@ class PlaylistBase(BaseModel):
     pinned: Optional[bool] = False
     pinned_order: Optional[int] = None
 
-class PlaylistEntryBase(BaseModel, ABC):
+class PlaylistEntryStub(BaseModel):
     id: Optional[int] = None
-    image_url: Optional[str] = None
+    db_order: Optional[int] = None
     order: Optional[int] = None
     date_added: Optional[datetime] = None
+
+class PlaylistEntryBase(PlaylistEntryStub, ABC):
+    image_url: Optional[str] = None
 
     @abstractmethod
     def to_playlist(self, playlist_id):
         raise NotImplementedError
-
 
 class MusicFileEntry(PlaylistEntryBase):
     entry_type: Literal["music_file"]
@@ -362,7 +375,7 @@ class NestedPlaylistEntry(PlaylistEntryBase):
 class LastFMTrack(MusicEntity, TrackDetails):
     url: str
     music_file_id: Optional[int] = None  # linked music file if available
-    entry_type: Literal["lastfm"] = "lastfm"
+    entry_type: Literal["lastfm_track"] = "lastfm_track"
 
     @classmethod
     def from_json(cls, obj: dict):
@@ -557,7 +570,7 @@ class RequestedAlbumEntry(PlaylistEntryBase):
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             album_id=self.requested_album_id,
-            date_added = self.date_added or datetime.now()
+            date_added = self.date_added or datetime.now(),
         )
 
     @classmethod
@@ -568,6 +581,7 @@ class RequestedAlbumEntry(PlaylistEntryBase):
             order=obj.order,
             date_added=obj.date_added,
             details=Album(
+                id=obj.details.id,
                 title=obj.details.title,
                 artist=obj.details.artist,
                 year=obj.details.year,
@@ -581,12 +595,12 @@ class RequestedAlbumEntry(PlaylistEntryBase):
     def to_db(self) -> RequestedAlbumEntryDB:
         return RequestedAlbumEntryDB(
             album_id=self.requested_album_id,
-            details = self.details.to_db() if self.details else None
         )
     
     def to_json(self) -> dict:
         return {
             "entry_type": "requested_album",
+            "requested_album_id": self.requested_album_id,
             "id": self.id,
             "order": self.order,
             "date_added": self.date_added,

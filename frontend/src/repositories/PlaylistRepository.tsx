@@ -1,5 +1,5 @@
 import axios from 'axios';
-import PlaylistEntry from '../lib/PlaylistEntry';
+import PlaylistEntry, { PlaylistEntryStub } from '../lib/PlaylistEntry';
 
 interface PlaylistFilter {
     filter?: String,
@@ -136,7 +136,7 @@ export class PlaylistRepository {
             tracks, {params: {"undo": undo}});
     }
 
-    async reorderTracks(id: number, tracks: PlaylistEntry[], position: number, undo: Boolean) {
+    async reorderTracks(id: number, tracks: PlaylistEntryStub[], position: number, undo: Boolean) {
         const positions = tracks.map(track => track.order);
         
         await axios.post(

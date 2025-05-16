@@ -61,6 +61,8 @@ def playlist_orm_to_response(playlist: PlaylistEntryDB, order: Optional[int] = N
         result = RequestedAlbumEntry.from_orm(playlist, details=details)
     else:
         raise ValueError(f"Unknown entry type: {playlist.entry_type}")
+
+    result.db_order = result.order
     
     if order is not None:
         result.order = order
@@ -293,12 +295,24 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             album_tracks_to_add = []
             
             for idx, entry in album_entries:
+                # Check if the album already exists
+                existing_album = self.session.query(AlbumDB).filter(
+                    AlbumDB.artist == entry.details.artist,
+                    AlbumDB.title == entry.details.title
+                ).first()
+
+                if existing_album:
+                    # If it exists, use its ID
+                    entries[idx].requested_album_id = existing_album.id
+                    continue
+
                 album = AlbumDB(
                     artist=entry.details.artist,
                     title=entry.details.title,
                     art_url=entry.details.art_url,
                     last_fm_url=entry.details.last_fm_url,
                 )
+                
                 # Add album to session to get its ID
                 self.session.add(album)
                 self.session.flush()
@@ -506,8 +520,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                     entries_to_move.append(playlist_entries[new_index + i])
             
             # Convert to response models
-            converted_entries = [playlist_orm_to_response(e, details=False) for e in entries_to_move]
-            
+            converted_entries = [playlist_orm_to_response(e, details=True) for e in entries_to_move]
+
             # Delete entries from their current positions
             for entry in entries_to_move:
                 self.session.delete(entry)
@@ -594,7 +608,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         else:
             logging.warning(f"Entry not found in playlist {playlist_id}")
 
-    def insert_entry(self, playlist_id: int, entry: PlaylistEntryBase, new_index: int = -1):
+    def insert_entry(self, playlist_id: int, entry, new_index: int = -1):
         logging.info(f"Adding entry {entry} to playlist {playlist_id} at index {new_index}")
         def get_insert_location():
             query = (
@@ -634,10 +648,14 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             self.rebalance_playlist(playlist_id)
             new_loc = get_insert_location()
         
+        self.create_entry_dependencies([entry])
+    
         new_entry_db = entry.to_playlist(playlist_id)
         new_entry_db.order = new_loc
         logging.info(f"New entry order: {new_entry_db.order}")
         self.session.add(new_entry_db)  # Add to session
+        
+        return new_entry_db
 
     def reorder_entries(self, playlist_id: int, indices_to_reorder: List[int], new_index: int):
         logging.info(f"reordering {indices_to_reorder} to {new_index}")
@@ -662,21 +680,27 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             entries_to_move = [playlist_entries[i] for i in sorted(indices_to_reorder, reverse=True)]
             
             # Convert to response models
-            converted_entries = [playlist_orm_to_response(e, details=False) for e in entries_to_move]
+            converted_entries = [playlist_orm_to_response(e, details=True) for e in entries_to_move]
+
+            # Before deletion
+            album_ids = [getattr(entry, 'album_id', None) for entry in entries_to_move]
+            album_records = self.session.query(AlbumDB).filter(AlbumDB.id.in_(album_ids)).all()
+            logging.info(f"Albums before deletion: {album_ids}, Found records: {[a.id for a in album_records]}")
             
             # Delete original entries from database
-            logging.info("deleting moved entries")
             for entry in entries_to_move:
                 self.session.delete(entry)
             
             # Flush to ensure deletions take effect
             self.session.flush()
+
+            album_records_after = self.session.query(AlbumDB).filter(AlbumDB.id.in_(album_ids)).all()
+            logging.info(f"Albums after deletion: {[a.id for a in album_records_after]}")
             
             # Now remove from the in-memory list
             for i in sorted(indices_to_reorder, reverse=True):
                 playlist_entries.pop(i)
             
-            logging.info("re-inserting moved entries")
             # Insert entries at new position
             for e in converted_entries:
                 playlist_entries = self.insert_entry(playlist_id, e, new_index=new_index)
@@ -729,6 +753,10 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             .outerjoin(requested_track_details, poly_entity.RequestedTrackEntryDB.details)
             .outerjoin(lastfm_details, poly_entity.LastFMEntryDB.details)
             .outerjoin(requested_album_details, poly_entity.RequestedAlbumEntryDB.details)
+            .options(
+                # Add this line to load RequestedAlbumEntryDB details
+                selectinload(poly_entity.RequestedAlbumEntryDB.details)
+            )
         )
 
         # Apply text filter if provided
@@ -752,9 +780,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             )
         
         # Apply sorting
-        if filter.sortCriteria == PlaylistSortCriteria.ORDER:
-            sort_column = poly_entity.order
-        elif filter.sortCriteria == PlaylistSortCriteria.TITLE:
+        if filter.sortCriteria == PlaylistSortCriteria.TITLE:
             sort_column = case(
                 (poly_entity.entry_type == "music_file", music_file_details.title),
                 (poly_entity.entry_type == "requested", requested_track_details.title),
@@ -775,13 +801,17 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 (poly_entity.entry_type == "music_file", music_file_details.album),
                 else_=None
             )
+        else:
+            # default to order
+            sort_column = poly_entity.order
         
         # Handle sort direction
-        if sort_column is not None:
-            if filter.sortDirection == PlaylistSortDirection.ASC:
-                query = query.order_by(sort_column.asc())
-            elif filter.sortDirection == PlaylistSortDirection.DESC:
-                query = query.order_by(sort_column.desc())
+        if filter.sortDirection == PlaylistSortDirection.ASC:
+            query = query.order_by(sort_column.asc())
+        elif filter.sortDirection == PlaylistSortDirection.DESC:
+            query = query.order_by(sort_column.desc())
+        else:
+            query = query.order_by(sort_column.asc())
         
         if count_only:
             count = query.count()
@@ -812,20 +842,25 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
     
     def _update_entity_details(self, orm_model, pydantic_model):
         """Update ORM model fields from a Pydantic model"""
-        for key, value in pydantic_model.dict().items():
+        logging.info(pydantic_model.to_json())
+        for key, value in pydantic_model.details.dict().items():
             if key == "id":
                 continue
             if key == "tracks":
                 # handle nested tracks
                 tracks_to_add = []
                 for t in value:
+                    t["album_id"] = orm_model.details.id
+                    logging.info(orm_model.details.id)
                     linked_track = AlbumTrack.from_json(t).to_db()
                     tracks_to_add.append(linked_track)
 
-                setattr(orm_model, key, tracks_to_add)
+                setattr(orm_model.details, key, tracks_to_add)
                 continue
-            if hasattr(orm_model, key):
-                setattr(orm_model, key, value)
+            if hasattr(orm_model.details, key):
+                setattr(orm_model.details, key, value)
+        
+        logging.info(Album.from_orm(orm_model.details).to_json())
 
         return orm_model
 
@@ -837,11 +872,12 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         
         # Check if the new entry is of the same type
         if existing_entry.entry_type == new_entry.entry_type:
-            if existing_entry.entry_type == "requested_album":
-                logging.info(RequestedAlbumEntry.from_orm(existing_entry, details=True).to_json())
-                logging.info(RequestedAlbumEntry.from_orm(new_entry, details=True).to_json())
             # If the entry types are the same, we can just update the existing entry
-            self._update_entity_details(existing_entry.details, new_entry.details)
+            if existing_entry.entry_type == "requested_album":
+                existing_entry.details = new_entry.details.to_db()
+            else:
+                self._update_entity_details(existing_entry, new_entry)
+
             self.session.commit()
             return new_entry
                 

@@ -110,6 +110,14 @@ class PlaylistEntry extends PlaylistEntryStub {
     return this.details.art_url || null;
   }
 
+  getTracks() {
+    if (!this.isAlbum()) {
+      return [];
+    }
+    
+    return this.details?.tracks || [];
+  }
+
   /**
    * Check if this entry is a music file
    * @returns {boolean}

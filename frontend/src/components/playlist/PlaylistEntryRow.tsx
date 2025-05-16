@@ -45,9 +45,21 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
     fetchAlbumArt();
   }, [entry]);
 
+  let tracksDisplay = null;
+  if (entry.isAlbum()) {
+    if (entry.getTracks().length > 0) {
+      if (isExpanded) {
+        tracksDisplay = entry.getTracks().map(track => track.linked_track.title).join(', ');
+      }
+      else {
+        tracksDisplay = `(${entry.getTracks().length} tracks)`;
+      }
+    }
+  }
+
   const contents = entry.isAlbum() ? (
     <div onClick={() => setIsExpanded(!isExpanded)}>
-      {isExpanded ? entry.details?.tracks.map(track => track.linked_track.title).join(', ') : `(${entry.details?.tracks.length} tracks)`}
+      {tracksDisplay}
     </div>
   ) : entry.getTitle();
 

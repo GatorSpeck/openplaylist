@@ -14,7 +14,7 @@ const MatchAlbumModal = ({ isOpen, onClose, track, onMatchSelect, setSnackbar })
       setLoading(true);
 
       let promises = [
-        lastFMRepository.searchAlbum(searchQuery),
+        lastFMRepository.searchAlbum(track.getAlbum(), track.getAlbumArtist()),
       ];
 
       if (includeTrack) {

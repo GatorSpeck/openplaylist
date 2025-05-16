@@ -156,16 +156,34 @@ class last_fm_repository:
             results = []
 
             for artist in last_fm_artists:
-                albums = self.get_artist_albums(artist_name=artist.name, artist_mbid=artist.mbid, limit=10, page=page)
+                albums = self.get_artist_albums(artist_name=artist.name, artist_mbid=artist.mbid, limit=25, page=page)
 
-                for album in albums:
-                    if title.lower() in album.title.lower():
-                        results.append(album)
+                album_matches = [a.to_json() for a in albums]
+
+                for album in album_matches:
+                    album_title = album.get("title")
+                    if album_title.lower() == title.lower():
+                        album["score"] = 10
+                    elif album_title.lower().startswith(title.lower()):
+                        album["score"] = 5
+                    elif title.lower() in album_title.lower():
+                        album["score"] = 2
+                    else:
+                        album["score"] = 0
+
+                    results.append(album)
                 
                 if results:
                     break
             
-            return results[:limit]
+            results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+            return [Album(
+                title=album.get("title"),
+                artist=album.get("artist"),
+                art_url=album.get("art_url"),
+                last_fm_url=album.get("last_fm_url"),
+            ) for album in results][:limit]
         
         # else, we just have the title to work with
 
@@ -270,12 +288,29 @@ class last_fm_repository:
 
         artists = data.get("results", {}).get("artistmatches", {}).get("artist", [])
 
+        results = []
+
+        for match in artists:
+            match_name = match.get("name")
+            if match_name.lower() == artist.lower():
+                match["score"] = 10
+            elif match_name.lower().startswith(artist.lower()):
+                match["score"] = 5
+            elif artist.lower() in match_name.lower():
+                match["score"] = 2
+            else:
+                match["score"] = 0
+            
+            results.append(match)
+        
+        results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
         return [Artist(
-            name=artist.get("name"),
-            url=artist.get("url"),
-            mbid=artist.get("mbid"),
+            name=match.get("name"),
+            url=match.get("url"),
+            mbid=match.get("mbid"),
             albums=[]
-        ) for artist in artists]
+        ) for match in results]
     
     def get_artist_albums(self, artist_name: Optional[str], artist_mbid: Optional[str], limit: int=10, page: int=1) -> List[Album]:
         if not artist_mbid and not artist_name:

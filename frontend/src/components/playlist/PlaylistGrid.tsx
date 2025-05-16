@@ -519,6 +519,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     // If dragging within playlist
     if (source.droppableId === 'playlist' && destination.droppableId === 'playlist') {
       const updatedTracks = Array.from(entries);
+      const trackToMove = new PlaylistEntryStub(updatedTracks[source.index]);
       const [movedTrack] = updatedTracks.splice(source.index, 1);
       updatedTracks.splice(destination.index, 0, movedTrack);
       
@@ -532,7 +533,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
       setEntries(updatedEntries);
 
-      playlistRepository.reorderTracks(playlistID, [movedTrack], destination.index, false);
+      console.log(trackToMove);
+      console.log(`Moving to ${destination.index}`)
+
+      playlistRepository.reorderTracks(playlistID, [trackToMove], destination.index, false);
     }
   };
 

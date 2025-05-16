@@ -491,7 +491,7 @@ def search_album(album: str = Query(...), artist: Optional[str] = Query(None), )
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
     repo = last_fm_repository(api_key, requests_cache_session)
-    return repo.search_album(artist, album)
+    return repo.search_album(artist=artist, title=album)
 
 # get similar tracks
 @router.get("/openai/similar")

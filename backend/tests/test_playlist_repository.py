@@ -160,11 +160,22 @@ def test_reorder(test_db, playlist_repo, sample_playlist, sample_music_file):
             details=MusicFile.from_orm(f)
         )
         initial_entries.append(entry)
+    
+    requested_album_entry = RequestedAlbumEntry(
+        entry_type="requested_album",
+        details=Album(
+            id=1,
+            title="Test Album",
+            artist="Test Artist",
+        )
+    )
+
+    initial_entries.append(requested_album_entry)
 
     playlist_repo.add_entries(sample_playlist.id, initial_entries)
 
     result = playlist_repo.get_with_entries(sample_playlist.id)
-    assert len(result.entries) == 10
+    assert len(result.entries) == 11
     assert [e.details.title for e in result.entries] == [e.details.title for e in initial_entries]
     
     # Reorder entries
@@ -191,6 +202,13 @@ def test_reorder(test_db, playlist_repo, sample_playlist, sample_music_file):
     result = playlist_repo.get_with_entries(sample_playlist.id)
     logging.info(list([e.details.title for e in result.entries]))
     assert [e.details.title for e in result.entries[0:5]] == ["Test Song 0", "Test Song 1", "Test Song 2", "Test Song 4", "Test Song 3"]
+
+    playlist_repo.reorder_entries(sample_playlist.id, [10], 3)
+    result = playlist_repo.get_with_entries(sample_playlist.id)
+    
+    assert result.entries[3].entry_type == "requested_album"
+    assert result.entries[3].details.title == "Test Album"
+    assert result.entries[3].details.artist == "Test Artist"
 
 def test_sparse_ordering(test_db, playlist_repo, sample_playlist, sample_music_file):
     initial_entries = []
@@ -281,10 +299,11 @@ def test_add_album_entry(test_db, playlist_repo, sample_playlist):
     tracks = [{"title": f"Test Song {i}", "artist": "Artist"} for i in range(5)]
 
     album = Album(
+        id=123,
         title="Test Album",
         artist="Test Artist",
         art_url="/test/album_art.jpg",
-        tracks = [{"order": i, "linked_track": track} for i, track in enumerate(tracks)]
+        tracks = [{"album_id": 123, "order": i, "linked_track": track} for i, track in enumerate(tracks)]
     )
 
     entry = RequestedAlbumEntry(
@@ -392,9 +411,10 @@ def test_remove_from_playlist(test_db, playlist_repo, sample_playlist):
 def test_match_album_entry(test_db, playlist_repo, sample_playlist):
     # Create a simple requested album entry (like a user manually entered album)
     initial_album = Album(
+        id=1,
         title="Initial Album",
         artist="Initial Artist",
-        tracks=[AlbumTrack(order=0, linked_track={"title": "Initial Track", "artist": "Initial Artist"})]
+        tracks=[AlbumTrack(album_id=1, order=0, linked_track={"title": "Initial Track", "artist": "Initial Artist"})]
     )
 
     initial_entry = RequestedAlbumEntry(
@@ -414,13 +434,14 @@ def test_match_album_entry(test_db, playlist_repo, sample_playlist):
     
     # Create a "matched" album from Last.fm with more complete metadata
     matched_album = Album(
+        id=123,
         title="Matched Album Title",
         artist="Matched Artist",
         art_url="https://lastfm.com/album_art.jpg",
         last_fm_url="https://lastfm.com/album/123",
         tracks=[
-            AlbumTrack(order=0, linked_track={"title": "Track 1", "artist": "Matched Artist"}),
-            AlbumTrack(order=1, linked_track={"title": "Track 2", "artist": "Matched Artist"})
+            AlbumTrack(album_id=123, order=0, linked_track={"title": "Track 1", "artist": "Matched Artist"}),
+            AlbumTrack(album_id=123, order=1, linked_track={"title": "Track 2", "artist": "Matched Artist"})
         ]
     )
     
