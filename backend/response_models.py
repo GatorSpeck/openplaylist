@@ -43,6 +43,21 @@ class MusicEntity(BaseModel):
 
 class RequestedTrack(MusicEntity, TrackDetails):
     missing: Optional[bool] = False  # True if the track was previously scanned and is now missing from the library
+    entry_type: Literal["requested"] = "requested"
+
+    @classmethod
+    def from_json(cls, obj: dict):
+        return cls(
+            id=obj.get("id"),
+            title=obj.get("title"),
+            artist=obj.get("artist"),
+            album_artist=obj.get("album_artist"),
+            album=obj.get("album"),
+            year=obj.get("year"),
+            length=obj.get("length"),
+            publisher=obj.get("publisher"),
+            genres=[str(s) for s in obj.get("genres", [])]
+        )
 
     @classmethod
     def from_orm(cls, obj: RequestedTrackDB):
@@ -87,6 +102,7 @@ class MusicFile(MusicEntity, TrackDetails):
     exact_release_date: Optional[datetime] = None
     release_year: Optional[int] = None
     playlists: List[int] = []
+    entry_type: Literal["music_file"] = "music_file"
 
     def to_json(self) -> dict:
         return {
@@ -169,11 +185,35 @@ class AlbumTrack(MusicEntity):
             elif obj.linked_track.entry_type == "lastfm_track":
                 this_track = LastFMTrack.from_orm(obj.linked_track)
             else:
-                raise ValueError(f"Unknown linked track type: {obj.linked_track.entry_type}")
+                # default to requested
+                this_track = RequestedTrack.from_orm(obj.linked_track)
 
         return cls(
             id=obj.id,
             order=obj.order,
+            linked_track=this_track
+        )
+    
+    @classmethod
+    def from_json(cls, obj: dict):
+        if obj is None:
+            return None
+        this_track = None
+
+        if obj.get("linked_track") is not None:
+            if obj["linked_track"].get("entry_type") == "music_file":
+                this_track = MusicFile.from_json(obj["linked_track"])
+            elif obj["linked_track"].get("entry_type") == "requested_track":
+                this_track = RequestedTrack.from_json(obj["linked_track"])
+            elif obj["linked_track"].get("entry_type") == "lastfm_track":
+                this_track = LastFMTrack.from_json(obj["linked_track"])
+            else:
+                # default to requested
+                this_track = RequestedTrack.from_json(obj["linked_track"])
+
+        return cls(
+            id=obj.get("id"),
+            order=obj.get("order"),
             linked_track=this_track
         )
 
@@ -322,6 +362,32 @@ class NestedPlaylistEntry(PlaylistEntryBase):
 class LastFMTrack(MusicEntity, TrackDetails):
     url: str
     music_file_id: Optional[int] = None  # linked music file if available
+    entry_type: Literal["lastfm"] = "lastfm"
+
+    @classmethod
+    def from_json(cls, obj: dict):
+        return cls(
+            id=obj.get("id"),
+            title=obj.get("title"),
+            artist=obj.get("artist"),
+            album_artist=obj.get("album_artist"),
+            album=obj.get("album"),
+            year=obj.get("year"),
+            length=obj.get("length"),
+            publisher=obj.get("publisher"),
+            url=obj.get("url"),
+            music_file_id=obj.get("music_file_id"),
+        )
+
+    def to_json(self) -> dict:
+        return {
+            "entry_type": "lastfm_track",
+            "title": self.title,
+            "artist": self.artist,
+            "album": self.album,
+            "url": self.url,
+            "music_file_id": self.music_file_id,
+        }
 
     def to_db(self) -> LastFMTrackDB:
         return LastFMTrackDB(
@@ -517,6 +583,15 @@ class RequestedAlbumEntry(PlaylistEntryBase):
             album_id=self.requested_album_id,
             details = self.details.to_db() if self.details else None
         )
+    
+    def to_json(self) -> dict:
+        return {
+            "entry_type": "requested_album",
+            "id": self.id,
+            "order": self.order,
+            "date_added": self.date_added,
+            "details": self.details.to_json() if self.details else None
+        }
 
 PlaylistEntry = Union[MusicFileEntry, NestedPlaylistEntry, LastFMEntry, RequestedTrackEntry, AlbumEntry, RequestedAlbumEntry]
 

@@ -25,7 +25,7 @@ def from_json(payload) -> Optional[Album]:
     tracks = []
     if "track" in payload.get("album", {}).get("tracks", {}):
         for i, track in enumerate(payload.get("album").get("tracks").get("track")):
-            linked_track = LastFMTrack(title=track.get("name"), artist=track.get("artist").get("name"), url=track.get("url"))
+            linked_track = LastFMTrack(entry_type="lastfm_track", title=track.get("name"), artist=track.get("artist").get("name"), url=track.get("url"))
             tracks.append(AlbumTrack(order=i, linked_track=linked_track))
 
     return Album(
@@ -320,19 +320,24 @@ class last_fm_repository:
             try:
                 cached_info = self.redis_session.get(redis_tag)
                 if cached_info is not None:
-                    logging.error(cached_info)
+                    logging.debug(cached_info)
                     return from_json(json.loads(cached_info))
             except Exception as e:
                 logging.error(e)
                 pass
+
+        matches = self.search_album(artist=pair.artist, title=pair.album, limit=1)
+        if not matches:
+            return None
         
-        encoded_title = urllib.parse.quote(pair.album)
-        encoded_artist = urllib.parse.quote(pair.artist)
-        
-        logging.info(f"Fetching album info from Last.FM for {pair}")
-        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={encoded_artist}&album={encoded_title}&format=json&autocorrect=1"
+        match = matches[0]
+        encoded_match_title = urllib.parse.quote(match.title)
+        encoded_match_artist = urllib.parse.quote(match.artist)
+        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={encoded_match_artist}&album={encoded_match_title}&format=json&autocorrect=1"
+        logging.info(url)
+
         response = self.get_with_retries(url)
-        
+    
         album_info = None
         if response.status_code == 200:
             album_info = response.json()

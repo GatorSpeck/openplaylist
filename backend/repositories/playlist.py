@@ -24,7 +24,11 @@ from response_models import (
     RequestedTrackEntry,
     AlbumEntry,
     RequestedAlbumEntry,
-    PlaylistEntriesResponse
+    PlaylistEntriesResponse,
+    LastFMTrack,
+    AlbumTrack,
+    Album,
+    RequestedAlbumEntry
 )
 from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 from sqlalchemy import select, tuple_, and_, func, or_, case
@@ -809,8 +813,20 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
     def _update_entity_details(self, orm_model, pydantic_model):
         """Update ORM model fields from a Pydantic model"""
         for key, value in pydantic_model.dict().items():
+            if key == "id":
+                continue
+            if key == "tracks":
+                # handle nested tracks
+                tracks_to_add = []
+                for t in value:
+                    linked_track = AlbumTrack.from_json(t).to_db()
+                    tracks_to_add.append(linked_track)
+
+                setattr(orm_model, key, tracks_to_add)
+                continue
             if hasattr(orm_model, key):
                 setattr(orm_model, key, value)
+
         return orm_model
 
     def replace_track(self, playlist_id, existing_entry_id, new_entry: PlaylistEntryBase):
@@ -821,6 +837,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         
         # Check if the new entry is of the same type
         if existing_entry.entry_type == new_entry.entry_type:
+            if existing_entry.entry_type == "requested_album":
+                logging.info(RequestedAlbumEntry.from_orm(existing_entry, details=True).to_json())
+                logging.info(RequestedAlbumEntry.from_orm(new_entry, details=True).to_json())
             # If the entry types are the same, we can just update the existing entry
             self._update_entity_details(existing_entry.details, new_entry.details)
             self.session.commit()
