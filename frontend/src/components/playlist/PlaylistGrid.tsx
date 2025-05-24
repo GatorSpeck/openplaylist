@@ -460,12 +460,12 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const addSongsToPlaylist = async (songs: PlaylistEntry[]) => {
     const dupsResult = await playlistRepository.checkForDuplicates(playlistID, songs);
     if (dupsResult.length > 0) {
-      console.log(dupsResult);
-      if (!window.confirm(`The following entries already exist in the playlist: ${dupsResult.map(e => e.getTitle()).join(", ")}. Do you want to continue?`)) {
+      const dups = dupsResult.map(e => `${e.getArtist()} - ${e.getTitle()}`);
+      if (!window.confirm(`The following entries already exist in the playlist: ${dups.join(", ")}. Do you want to continue?`)) {
         return;
       }
     }
-    
+
     await addTracksToPlaylist(songs);
   };
 

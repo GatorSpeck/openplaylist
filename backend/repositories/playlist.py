@@ -761,7 +761,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         )
 
         # Apply text filter if provided
-        if filter.filter:
+        if filter.filter is not None:
             query = query.filter(
                 or_(
                     # MusicFileDB conditions
@@ -779,31 +779,34 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                     requested_album_details.artist.ilike(f"%{filter.filter}%")
                 )
             )
-        elif filter.criteria:
+        elif filter.criteria is not None:
             conditions = []
             if filter.criteria.title:
+                title = filter.criteria.title
                 conditions.append(
                     or_(
-                        music_file_details.title.ilike(f"%{filter.criteria.title}%"),
-                        requested_track_details.title.ilike(f"%{filter.criteria.title}%"),
-                        lastfm_details.title.ilike(f"%{filter.criteria.title}%"),
+                        music_file_details.title.ilike(f"%{title}%"),
+                        requested_track_details.title.ilike(f"%{title}%"),
+                        lastfm_details.title.ilike(f"%{title}%"),
                     )
                 )
             
             if filter.criteria.artist:
+                artist = filter.criteria.artist
                 conditions.append(
                     or_(
-                        music_file_details.artist.ilike(f"%{filter.criteria.artist}%"),
-                        requested_track_details.artist.ilike(f"%{filter.criteria.artist}%"),
-                        lastfm_details.artist.ilike(f"%{filter.criteria.artist}%"),
+                        music_file_details.artist.ilike(f"%{artist}%"),
+                        requested_track_details.artist.ilike(f"%{artist}%"),
+                        lastfm_details.artist.ilike(f"%{artist}%"),
                     )
                 )
 
             if filter.criteria.album:
+                album = filter.criteria.album
                 conditions.append(
                     or_(
-                        music_file_details.album.ilike(f"%{filter.criteria.album}%"),
-                        requested_album_details.title.ilike(f"%{filter.criteria.album}%"),
+                        music_file_details.album.ilike(f"%{album}%"),
+                        requested_album_details.title.ilike(f"%{album}%"),
                     )
                 )
             
@@ -1056,10 +1059,13 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         for entry in new_entries:
             # search for existing entries with the same details
             criteria = SearchQuery(title=entry.get_title(), artist=entry.get_artist(), album=entry.get_album())
-            filter = PlaylistFilter(search_criteria=criteria)
-            existing_entries = self.filter_playlist(playlist_id, filter, count_only=True)
+            filter = PlaylistFilter(criteria=criteria)
+            existing_entries = self.filter_playlist(playlist_id, filter)
 
-            if existing_entries.total > 0:
+            for e in existing_entries.entries:
+                logging.info(f"Found dup: {e.details.to_json()}")
+
+            if existing_entries.entries:
                 results.append(entry)
         
         return results
