@@ -325,6 +325,9 @@ class Album(MusicEntity):
     def get_album(self):
         return self.title
 
+    def is_album(self):
+        return True
+
 class PlaylistBase(BaseModel):
     id: Optional[int] = None
     name: str
@@ -356,6 +359,9 @@ class PlaylistEntryBase(PlaylistEntryStub, ABC):
     @abstractmethod
     def get_album(self):
         raise NotImplementedError
+
+    def is_album(self):
+        return False
 
 class MusicFileEntry(PlaylistEntryBase):
     entry_type: Literal["music_file"]
@@ -648,6 +654,9 @@ class AlbumEntry(PlaylistEntryBase):
     
     def get_album(self):
         return self.details.get_album() if self.details else None
+    
+    def is_album(self):
+        return True
 
 class RequestedAlbumEntry(PlaylistEntryBase):
     entry_type: Literal["requested_album"]
@@ -705,6 +714,9 @@ class RequestedAlbumEntry(PlaylistEntryBase):
     
     def get_album(self):
         return self.details.get_album() if self.details else None
+    
+    def is_album(self):
+        return True
 
 PlaylistEntry = Union[MusicFileEntry, NestedPlaylistEntry, LastFMEntry, RequestedTrackEntry, AlbumEntry, RequestedAlbumEntry]
 

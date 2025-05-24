@@ -783,6 +783,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             conditions = []
             if filter.criteria.title:
                 title = filter.criteria.title
+                logging.info(f"Filtering by title: {title}")
                 conditions.append(
                     or_(
                         music_file_details.title.ilike(f"%{title}%"),
@@ -793,6 +794,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             
             if filter.criteria.artist:
                 artist = filter.criteria.artist
+                logging.info(f"Filtering by artist: {artist}")
                 conditions.append(
                     or_(
                         music_file_details.artist.ilike(f"%{artist}%"),
@@ -803,6 +805,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
             if filter.criteria.album:
                 album = filter.criteria.album
+                logging.info(f"Filtering by album: {album}")
                 conditions.append(
                     or_(
                         music_file_details.album.ilike(f"%{album}%"),
@@ -1058,7 +1061,10 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
         for entry in new_entries:
             # search for existing entries with the same details
-            criteria = SearchQuery(title=entry.get_title(), artist=entry.get_artist(), album=entry.get_album())
+            criteria = SearchQuery(artist=entry.get_artist(), album=entry.get_album())
+            if not entry.is_album():
+                criteria.title = entry.get_title()
+                
             filter = PlaylistFilter(criteria=criteria)
             existing_entries = self.filter_playlist(playlist_id, filter)
 
