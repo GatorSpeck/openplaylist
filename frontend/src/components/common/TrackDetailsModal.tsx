@@ -52,7 +52,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({ entry, onClose })
   return (
     <div className="modal-overlay">
       <div className="modal-content">
-        <h2>Track Details</h2>
+        <h2>Entry Details</h2>
         <div className="track-details">
           <p><strong>ID:</strong> {entry.id}</p>
           <p><strong>Title:</strong> {entry.getTitle()}</p>
