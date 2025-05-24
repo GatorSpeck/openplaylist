@@ -28,7 +28,8 @@ from response_models import (
     LastFMTrack,
     AlbumTrack,
     Album,
-    RequestedAlbumEntry
+    RequestedAlbumEntry,
+    SearchQuery
 )
 from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 from sqlalchemy import select, tuple_, and_, func, or_, case
@@ -110,6 +111,7 @@ class PlaylistSortDirection(IntEnum):
 
 class PlaylistFilter(BaseModel):
     filter: Optional[str] = None  # overall filter for string fields
+    criteria: Optional[SearchQuery] = None  # specific criteria for filtering
     sortCriteria: PlaylistSortCriteria = PlaylistSortCriteria.ORDER
     sortDirection: PlaylistSortDirection = PlaylistSortDirection.ASC
     limit: Optional[int] = None
@@ -741,7 +743,6 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         lastfm_details = aliased(LastFMTrackDB)
         requested_album_details = aliased(AlbumDB)
 
-        # Start the base query
         query = (
             self.session.query(poly_entity)
             .filter(poly_entity.playlist_id == playlist_id)
@@ -776,6 +777,39 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                     # AlbumDB conditions
                     requested_album_details.title.ilike(f"%{filter.filter}%"),
                     requested_album_details.artist.ilike(f"%{filter.filter}%")
+                )
+            )
+        elif filter.criteria:
+            conditions = []
+            if filter.criteria.title:
+                conditions.append(
+                    or_(
+                        music_file_details.title.ilike(f"%{filter.criteria.title}%"),
+                        requested_track_details.title.ilike(f"%{filter.criteria.title}%"),
+                        lastfm_details.title.ilike(f"%{filter.criteria.title}%"),
+                    )
+                )
+            
+            if filter.criteria.artist:
+                conditions.append(
+                    or_(
+                        music_file_details.artist.ilike(f"%{filter.criteria.artist}%"),
+                        requested_track_details.artist.ilike(f"%{filter.criteria.artist}%"),
+                        lastfm_details.artist.ilike(f"%{filter.criteria.artist}%"),
+                    )
+                )
+
+            if filter.criteria.album:
+                conditions.append(
+                    or_(
+                        music_file_details.album.ilike(f"%{filter.criteria.album}%"),
+                        requested_album_details.title.ilike(f"%{filter.criteria.album}%"),
+                    )
+                )
+            
+            query = query.filter(
+                and_(
+                    *conditions
                 )
             )
         
@@ -1015,6 +1049,20 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             p.pinned_order = i
         
         self.session.commit()
+
+    def check_for_duplicates(self, playlist_id, new_entries: List[PlaylistEntryBase]):
+        results = []
+
+        for entry in new_entries:
+            # search for existing entries with the same details
+            criteria = SearchQuery(title=entry.get_title(), artist=entry.get_artist(), album=entry.get_album())
+            filter = PlaylistFilter(search_criteria=criteria)
+            existing_entries = self.filter_playlist(playlist_id, filter, count_only=True)
+
+            if existing_entries.total > 0:
+                results.append(entry)
+        
+        return results
 
     def rebalance_playlist(self, playlist_id):
         """Rebalance the order of entries in a playlist to ensure they are unique and sequential, leaving space for sparse ordering."""

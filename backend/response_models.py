@@ -83,6 +83,15 @@ class RequestedTrack(MusicEntity, TrackDetails):
             artist=self.artist,
             album=self.album,
         )
+    
+    def get_title(self):
+        return self.title
+    
+    def get_artist(self):
+        return self.artist
+    
+    def get_album(self):
+        return self.album
 
 def try_parse_int(value):
     if value is None:
@@ -168,6 +177,15 @@ class MusicFile(MusicEntity, TrackDetails):
             disc_number=self.disc_number,
             comments=self.comments,
         )
+    
+    def get_title(self):
+        return self.title
+    
+    def get_artist(self):
+        return self.artist
+    
+    def get_album(self):
+        return self.album
 
 class AlbumTrack(MusicEntity):
     id: Optional[int] = None
@@ -237,6 +255,15 @@ class AlbumTrack(MusicEntity):
             linked_track=self.linked_track.to_db() if self.linked_track else None
         )
 
+    def get_title(self):
+        return self.linked_track.get_title() if self.linked_track else None
+    
+    def get_artist(self):
+        return self.linked_track.get_artist() if self.linked_track else None
+    
+    def get_album(self):
+        return self.linked_track.get_album() if self.linked_track else None
+
 
 class Album(MusicEntity):
     id: Optional[int] =  None
@@ -288,6 +315,15 @@ class Album(MusicEntity):
             "mbid": self.mbid,
             "tracks": [t.to_json() for t in self.tracks] if self.tracks else None,
         }
+    
+    def get_title(self):
+        return self.title
+    
+    def get_artist(self):
+        return self.artist
+    
+    def get_album(self):
+        return self.title
 
 class PlaylistBase(BaseModel):
     id: Optional[int] = None
@@ -307,6 +343,18 @@ class PlaylistEntryBase(PlaylistEntryStub, ABC):
 
     @abstractmethod
     def to_playlist(self, playlist_id):
+        raise NotImplementedError
+    
+    @abstractmethod
+    def get_title(self):
+        raise NotImplementedError
+    
+    @abstractmethod
+    def get_artist(self):
+        raise NotImplementedError
+    
+    @abstractmethod
+    def get_album(self):
         raise NotImplementedError
 
 class MusicFileEntry(PlaylistEntryBase):
@@ -342,6 +390,14 @@ class MusicFileEntry(PlaylistEntryBase):
             details=MusicFile.from_orm(obj.details) if (details and obj.details is not None) else None,
         )
 
+    def get_title(self):
+        return self.details.get_title() if self.details else None
+    
+    def get_artist(self):
+        return self.details.get_artist() if self.details else None
+    
+    def get_album(self):
+        return self.details.get_album() if self.details else None
 
 class NestedPlaylistEntry(PlaylistEntryBase):
     entry_type: Literal["nested_playlist"]
@@ -427,7 +483,15 @@ class LastFMTrack(MusicEntity, TrackDetails):
             publisher=obj.publisher,
             genres=[],
         )
-
+    
+    def get_title(self):
+        return self.title
+    
+    def get_artist(self):
+        return self.artist
+    
+    def get_album(self):
+        return self.album
 
 class LastFMEntry(PlaylistEntryBase):
     entry_type: Literal["lastfm"]
@@ -471,6 +535,14 @@ class LastFMEntry(PlaylistEntryBase):
             ) if details and obj.details else None,
         )
 
+    def get_title(self):
+        return self.details.get_title() if self.details else None
+    
+    def get_artist(self):
+        return self.details.get_artist() if self.details else None
+    
+    def get_album(self):
+        return self.details.get_album() if self.details else None
 
 class RequestedTrackEntry(PlaylistEntryBase):
     entry_type: Literal["requested"]
@@ -517,6 +589,15 @@ class RequestedTrackEntry(PlaylistEntryBase):
                 genres=[],
             ),
         )
+    
+    def get_title(self):
+        return self.details.get_title() if self.details else None
+    
+    def get_artist(self):
+        return self.details.get_artist() if self.details else None
+    
+    def get_album(self):
+        return self.details.get_album() if self.details else None
 
 class AlbumEntry(PlaylistEntryBase):
     entry_type: Literal["album"]
@@ -558,6 +639,15 @@ class AlbumEntry(PlaylistEntryBase):
                 tracks=[AlbumTrack.from_orm(t) for t in obj.details.tracks],
             ) if details and obj.details else None,
         )
+    
+    def get_title(self):
+        return self.details.get_title() if self.details else None
+    
+    def get_artist(self):
+        return self.details.get_artist() if self.details else None
+    
+    def get_album(self):
+        return self.details.get_album() if self.details else None
 
 class RequestedAlbumEntry(PlaylistEntryBase):
     entry_type: Literal["requested_album"]
@@ -606,6 +696,15 @@ class RequestedAlbumEntry(PlaylistEntryBase):
             "date_added": self.date_added,
             "details": self.details.to_json() if self.details else None
         }
+    
+    def get_title(self):
+        return self.details.get_title() if self.details else None
+    
+    def get_artist(self):
+        return self.details.get_artist() if self.details else None
+    
+    def get_album(self):
+        return self.details.get_album() if self.details else None
 
 PlaylistEntry = Union[MusicFileEntry, NestedPlaylistEntry, LastFMEntry, RequestedTrackEntry, AlbumEntry, RequestedAlbumEntry]
 

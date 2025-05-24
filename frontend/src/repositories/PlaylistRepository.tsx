@@ -131,6 +131,11 @@ export class PlaylistRepository {
         );
     }
 
+    async checkForDuplicates(id: number, tracks: PlaylistEntry[]) {
+        const response = await axios.post(`/api/playlists/${id}/checkdups`, tracks);
+        return response.data.map(e => new PlaylistEntry(e));
+    }
+
     async removeTracks(id: number, tracks: PlaylistEntry[], undo: Boolean) {
         await axios.post(`/api/playlists/${id}/remove`, 
             tracks, {params: {"undo": undo}});

@@ -57,6 +57,19 @@ async def get_playlist(
     finally:
         db.close()
 
+@router.post("/{playlist_id}/checkdups", response_model=List[PlaylistEntry])
+async def check_duplicates(
+    playlist_id: int,
+    entries: List[PlaylistEntry],
+    repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    try:
+        duplicates = repo.check_for_duplicates(playlist_id, entries)
+        return duplicates
+    except Exception as e:
+        logging.error(f"Failed to check duplicates: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to check duplicates")
+
 @router.get("/{playlist_id}/entries", response_model=PlaylistEntriesResponse)
 async def get_playlist_entries(
     playlist_id: int,
