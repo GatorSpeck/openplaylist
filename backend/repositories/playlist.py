@@ -800,6 +800,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                         music_file_details.artist.ilike(f"%{artist}%"),
                         requested_track_details.artist.ilike(f"%{artist}%"),
                         lastfm_details.artist.ilike(f"%{artist}%"),
+                        requested_album_details.artist.ilike(f"%{artist}%")
                     )
                 )
 
@@ -1064,7 +1065,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             criteria = SearchQuery(artist=entry.get_artist(), album=entry.get_album())
             if not entry.is_album():
                 criteria.title = entry.get_title()
-                
+
             filter = PlaylistFilter(criteria=criteria)
             existing_entries = self.filter_playlist(playlist_id, filter)
 
