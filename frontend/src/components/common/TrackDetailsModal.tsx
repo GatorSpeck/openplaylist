@@ -27,7 +27,16 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({ entry, onClose })
 
   const dateAdded = entry.date_added ? formatDate(entry.date_added, 'MMMM Do YYYY, h:mm:ss a') : null;
 
-  const releaseDate = entry.year ? formatDate(entry.year, 'MMMM Do YYYY') : null;
+  const releaseDate = (entry.year || entry.details.year) ? formatDate(entry.year || entry.details.year, 'MMMM Do YYYY') : null;
+
+  const artistAndTitle = `${entry.getArtist()} ${entry.getTitle()}`;
+  const artistAndAlbum = `${entry.getArtist()} ${entry.getAlbum()}`;
+  const youtubeMusicSearchLink = `https://music.youtube.com/search?q=${encodeURIComponent(artistAndTitle)}`;
+  const appleMusicSearchLink = `https://music.apple.com/search?term=${encodeURIComponent(artistAndTitle)}`;
+  const spotifySearchLink = `https://open.spotify.com/search/${encodeURIComponent(artistAndTitle)}`;
+  const discogsSearchLink = entry.getAlbum() ? `https://www.discogs.com/search/?q=${encodeURIComponent(artistAndAlbum)}` : null;
+  const rateYourMusicSearchLink = entry.getAlbum() ? `https://rateyourmusic.com/search?searchtype=a&searchterm=${encodeURIComponent(entry.getAlbum())}&searchtype=l` : null;
+  const lastFmSearchLink = entry.isAlbum() ? `https://www.last.fm/search/albums?q=${encodeURIComponent(artistAndTitle)}` : `https://www.last.fm/search/tracks?q=${encodeURIComponent(artistAndTitle)}`;
 
   const playlistsList = playlists.length > 0 ? (
     <div>
@@ -47,14 +56,14 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({ entry, onClose })
         <div className="track-details">
           <p><strong>ID:</strong> {entry.id}</p>
           <p><strong>Title:</strong> {entry.getTitle()}</p>
-          <p><strong>Artist:</strong> {entry.details.artist}</p>
-          <p><strong>Album Artist:</strong> {entry.details.album_artist}</p>
-          <p><strong>Album:</strong> {entry.getAlbum()}</p>
+          {entry.details.artist ? <p><strong>Artist:</strong> {entry.details.artist}</p> : null}
+          {entry.details.album_artist ? <p><strong>Album Artist:</strong> {entry.details.album_artist}</p> : null}
+          {entry.getAlbum() ? <p><strong>Album:</strong> {entry.getAlbum()}</p> : null}
           {entry.details.disc_number ? <p><strong>Disc:</strong>{entry.details.disc_number}</p> : null}
           {entry.details.track_number ? <p><strong>Track:</strong>{entry.details.track_number}</p> : null}
           {entry.details.length ? <p><strong>Length:</strong> {formatDuration(entry.details.length)}</p> : null}
-          <p><strong>Release Date:</strong> {releaseDate || entry.details.year}</p>
-          <p><strong>Genres:</strong> {entry.details.genres ? entry.details.genres.join(", ") : null}</p>
+          {releaseDate ? <p><strong>Release Date:</strong> {releaseDate}</p> : null}
+          {entry.details.genres.length ? <p><strong>Genres:</strong> {entry.details.genres.join(", ")}</p> : null}
           {entry.details.path ? (<p><strong>Path:</strong>
             {entry.details.missing ? <s>{entry.details.path}</s> : <span>{entry.details.path}</span>}
           </p>) : null}
@@ -68,6 +77,12 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({ entry, onClose })
           {dateAdded ? <p><strong>Date Added to Playlist:</strong> {dateAdded}</p> : null}
           {entry.details.last_scanned ? <p><strong>Last Scanned:</strong> {formatDate(entry.details.last_scanned, 'MMMM Do YYYY, h:mm:ss a')}</p> : null}
           {entry.details.first_scanned ? <p><strong>First Scanned:</strong> {formatDate(entry.details.first_scanned, 'MMMM Do YYYY, h:mm:ss a')}</p> : null}
+          <p><a href={youtubeMusicSearchLink} target="_blank" rel="noopener noreferrer">Search on YouTube Music</a></p>
+          <p><a href={appleMusicSearchLink} target="_blank" rel="noopener noreferrer">Search on Apple Music</a></p>
+          <p><a href={spotifySearchLink} target="_blank" rel="noopener noreferrer">Search on Spotify</a></p>
+          <p><a href={lastFmSearchLink} target="_blank" rel="noopener noreferrer">Search on Last.fm</a></p>
+          {discogsSearchLink ? <p><a href={discogsSearchLink} target="_blank" rel="noopener noreferrer">Search on Discogs</a></p> : null}
+          {rateYourMusicSearchLink ? <p><a href={rateYourMusicSearchLink} target="_blank" rel="noopener noreferrer">Search on Rate Your Music</a></p> : null}
           {playlistsList}
         </div>
         <div className="modal-actions">
