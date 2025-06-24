@@ -28,6 +28,7 @@ import EditItemModal from './EditItemModal';
 import PlaylistEntry, {PlaylistEntryStub} from '../../lib/PlaylistEntry';
 import SelectPlaylistModal from './SelectPlaylistModal';
 import { setCookie, getCookie } from '../../lib/cookieUtils';
+import SyncConfig from './SyncConfig'; // Import the SyncConfig component
 
 const BatchActions = ({ selectedCount, onRemove, onClear }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -231,6 +232,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   // Add after your other state declarations
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<PlaylistEntry | null>(null);
+
+  const [syncConfigOpen, setSyncConfigOpen] = useState(false);
 
   // Apply debouncing to the filter
   useEffect(() => {
@@ -1137,13 +1140,22 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         />
       )}
 
+      {syncConfigOpen && (
+        <SyncConfig
+          playlistId={playlistID}
+          onClose={() => setSyncConfigOpen(false)}
+          visible={syncConfigOpen}
+        />
+      )}
+
       {playlistModalVisible && (
         <BaseModal
           title="Playlist Options"
           options={[
             { label: 'Export to m3u', action: () => exportPlaylist(playlistID) },
             { label: 'Export to JSON', action: () => exportPlaylistToJson(playlistID) },
-            { label: 'Sync to Plex', action: onSyncToPlex },
+            { label: 'Sync Options', action: () => {setSyncConfigOpen(true)} },
+            { label: 'Sync Now', action: onSyncToPlex },
             { label: 'Delete Playlist', action: onDeletePlaylist }
           ]}
           onClose={() => setPlaylistModalVisible(false)}
