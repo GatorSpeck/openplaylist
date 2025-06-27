@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Union, Literal
+from typing import List, Optional, Union, Literal, Dict
 from enum import Enum
 from datetime import datetime
 from models import (
@@ -823,3 +823,20 @@ class ArtistSearchResult(SearchResultMixin, Artist):
 
 class TrackSearchResult(SearchResultMixin, MusicFile):
     pass
+
+class SyncTargetConfig(BaseModel):
+    """Configuration for a sync target"""
+    playlist_name: Optional[str] = None
+    playlist_uri: Optional[str] = None
+    # Add other configuration fields as needed
+
+class SyncTarget(BaseModel):
+    """Model for playlist sync targets"""
+    id: Optional[int] = None
+    service: str  # 'plex', 'spotify', 'youtube'
+    config: Dict[str, str] = {}
+    enabled: bool = True
+    sendEntryAdds: bool = True
+    sendEntryRemovals: bool = True
+    receiveEntryAdds: bool = True
+    receiveEntryRemovals: bool = True

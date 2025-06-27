@@ -12,7 +12,8 @@ from models import (
     BaseNode,
     AlbumDB,
     AlbumTrackDB,
-    RequestedAlbumEntryDB
+    RequestedAlbumEntryDB,
+    SyncTargetDB
 )
 from response_models import (
     Playlist,
@@ -29,7 +30,8 @@ from response_models import (
     AlbumTrack,
     Album,
     RequestedAlbumEntry,
-    SearchQuery
+    SearchQuery,
+    SyncTarget
 )
 from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 from sqlalchemy import select, tuple_, and_, func, or_, case
@@ -1096,3 +1098,110 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         # logging.info(list([e.order for e in entries]))
         
         self.session.commit()
+
+    def get_sync_targets(self, playlist_id: int) -> List[SyncTarget]:
+        """Get all sync targets for a playlist"""
+        # Check if playlist exists
+        playlist = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
+        if not playlist:
+            raise ValueError(f"Playlist with ID {playlist_id} not found")
+        
+        # Get sync targets from the database
+        targets = self.session.query(SyncTargetDB).filter(SyncTargetDB.playlist_id == playlist_id).all()
+        
+        # Convert to Pydantic models
+        return [SyncTarget(
+            id=target.id,
+            service=target.service,
+            config=json.loads(target.config),
+            enabled=target.enabled,
+            sendEntryAdds=target.send_entry_adds,
+            sendEntryRemovals=target.send_entry_removals,
+            receiveEntryAdds=target.receive_entry_adds,
+            receiveEntryRemovals=target.receive_entry_removals
+        ) for target in targets]
+
+    def create_sync_target(self, playlist_id: int, target: SyncTarget) -> SyncTarget:
+        """Create a new sync target for a playlist"""
+        try:
+            # Check if playlist exists
+            playlist = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
+            if not playlist:
+                raise ValueError(f"Playlist with ID {playlist_id} not found")
+            
+            # Validate service
+            if target.service not in ['plex', 'spotify', 'youtube']:
+                raise ValueError(f"Invalid service: {target.service}")
+            
+            # Create new sync target
+            new_target = SyncTargetDB(
+                playlist_id=playlist_id,
+                service=target.service,
+                config=json.dumps(target.config),
+                enabled=target.enabled,
+                send_entry_adds=target.sendEntryAdds,
+                send_entry_removals=target.sendEntryRemovals,
+                receive_entry_adds=target.receiveEntryAdds,
+                receive_entry_removals=target.receiveEntryRemovals
+            )
+            
+            self.session.add(new_target)
+            self.session.commit()
+            
+            # Set the ID and return
+            target.id = new_target.id
+            return target
+        except Exception as e:
+            self.session.rollback()
+            raise e
+        finally:
+            self.session.close()
+
+    def update_sync_target(self, playlist_id: int, target: SyncTarget) -> SyncTarget:
+        """Update an existing sync target"""
+        try:
+            # Check if sync target exists and belongs to this playlist
+            db_target = self.session.query(SyncTargetDB).filter(
+                SyncTargetDB.id == target.id,
+                SyncTargetDB.playlist_id == playlist_id
+            ).first()
+            
+            if not db_target:
+                raise ValueError(f"Sync target with ID {target.id} not found for playlist {playlist_id}")
+            
+            # Update fields
+            db_target.service = target.service
+            db_target.config = json.dumps(target.config)
+            db_target.enabled = target.enabled
+            db_target.send_entry_adds = target.sendEntryAdds
+            db_target.send_entry_removals = target.sendEntryRemovals
+            db_target.receive_entry_adds = target.receiveEntryAdds
+            db_target.receive_entry_removals = target.receiveEntryRemovals
+
+            self.session.commit()
+            return target
+        except Exception as e:
+            self.session.rollback()
+            raise e
+        finally:
+            self.session.close()
+
+    def delete_sync_target(self, playlist_id: int, target_id: int) -> None:
+        """Delete a sync target"""
+        try:
+            # Check if sync target exists and belongs to this playlist
+            db_target = self.session.query(SyncTargetDB).filter(
+                SyncTargetDB.id == target_id,
+                SyncTargetDB.playlist_id == playlist_id
+            ).first()
+            
+            if not db_target:
+                raise ValueError(f"Sync target with ID {target_id} not found for playlist {playlist_id}")
+
+            self.session.delete(db_target)
+            self.session.commit()
+        except Exception as e:
+            self.session.rollback()
+            raise e
+        finally:
+            self.session.close()

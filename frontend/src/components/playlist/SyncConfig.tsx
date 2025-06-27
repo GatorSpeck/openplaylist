@@ -60,8 +60,8 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose })
     const fetchSyncTargets = async () => {
       try {
         setLoading(true);
-        return; // TODO
-        const response = await axios.get('/api/playlists/syncconfig');
+        // Fixed URL to include the playlist ID
+        const response = await axios.get(`/api/playlists/${playlistId}/syncconfig`);
         setSyncTargets(response.data);
       } catch (err) {
         console.error('Error loading sync targets:', err);
@@ -71,8 +71,11 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose })
       }
     };
 
-    fetchSyncTargets();
-  }, []);
+    // Only fetch if the modal is visible
+    if (visible) {
+      fetchSyncTargets();
+    }
+  }, [playlistId, visible]);
 
   // Handle adding a new target
   const handleAddTarget = () => {
@@ -98,7 +101,8 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose })
   const handleDeleteTarget = async (id: number) => {
     if (window.confirm('Are you sure you want to delete this sync target?')) {
       try {
-        await axios.delete(`/api/playlists/syncconfig/${id}`);
+        // Fixed URL to include the playlist ID
+        await axios.delete(`/api/playlists/${playlistId}/syncconfig/${id}`);
         setSyncTargets(syncTargets.filter(target => target.id !== id));
       } catch (err) {
         console.error('Error deleting sync target:', err);
@@ -116,9 +120,9 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose })
       let response;
       
       if (currentTarget.id) {
-        // Update existing target
+        // Fixed URL to include the playlist ID and target ID
         response = await axios.put(
-          `/api/settings/sync_targets/${currentTarget.id}`,
+          `/api/playlists/${playlistId}/syncconfig/${currentTarget.id}`,
           currentTarget
         );
         
@@ -126,8 +130,8 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose })
           target.id === currentTarget.id ? response.data : target
         ));
       } else {
-        // Add new target
-        response = await axios.post('/api/playlists/syncconfig', currentTarget);
+        // Fixed URL to include the playlist ID
+        response = await axios.post(`/api/playlists/${playlistId}/syncconfig`, currentTarget);
         setSyncTargets([...syncTargets, response.data]);
       }
       
@@ -145,8 +149,9 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose })
     const updatedTarget = {...target, enabled: !target.enabled};
     
     try {
+      // Fixed URL to include the playlist ID
       const response = await axios.put(
-        `/api/playlists/syncconfig/${target.id}`,
+        `/api/playlists/${playlistId}/syncconfig/${target.id}`,
         updatedTarget
       );
       
@@ -257,6 +262,9 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose })
               <div key={target.id} className={`target-item ${target.enabled ? 'enabled' : 'disabled'}`}>
                 <div className="target-icon">
                   {serviceConfigs[target.service].icon}
+                </div>
+                <div className="target-name">
+                  {target.config.playlist_name || 'Unnamed Playlist'}
                 </div>
                 <div className="target-details">
                   <div className="target-service">

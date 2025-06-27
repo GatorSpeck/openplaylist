@@ -5,6 +5,7 @@ from fastapi.exceptions import HTTPException
 import logging
 from plexapi.server import PlexServer
 from plexapi.playlist import Playlist as PlexPlaylist
+import plexapi
 from pydantic import BaseModel
 from datetime import datetime
 from typing import List, Optional
@@ -71,26 +72,42 @@ class plex_repository:
         self.map_target = os.getenv("PLEX_MAP_TARGET", None)
         self.plex_endpoint = os.getenv("PLEX_ENDPOINT", None)
         self.plex_token = os.getenv("PLEX_TOKEN", None)
-        self.plex_library = os.getenv("PLEX_LIBRARY", None)
+        self.plex_library = os.getenv("PLEX_LIBRARY", "Music")
 
         self.server = PlexServer(self.plex_endpoint, token=self.plex_token)
     
     def fetch_audio(self, entry: PlaylistItem):        
         # lookup the item in Plex
         try:
-            item = self.server.library.search(
+            logging.debug(f"Fetching Plex object for {entry.to_string()}")
+
+            filters = {"artist.title": entry.artist}
+            if entry.album:
+                filters["album.title"] = entry.album
+
+            item = self.server.library.section(self.plex_library).search(
                 libtype="track",
                 title=entry.title,
-                artist=entry.artist,
-                album=entry.album,
+                filters=filters,
                 maxresults=1
             )
 
             if item:
+                logging.debug(f"Found Plex object for {entry.to_string()}: {item[0]}")
                 return item[0]
         except Exception as e:
             logging.error(f"Error fetching Plex object for {entry.to_string()}: {e}")
             return None
+
+    def create_playlist_from_snapshot(self, name: str, snapshot: PlaylistSnapshot) -> PlexPlaylist:
+        audio_items = []
+        for item in snapshot.items:
+            audio = self.fetch_audio(item)
+            if audio:
+                audio_items.append(audio)
+
+        playlist = PlexPlaylist.create(self.server, title=name, items=audio_items)
+        return playlist
     
     def get_current_snapshot(self, name) -> PlaylistSnapshot:
         this_playlist = self.session.query(PlaylistSnapshotModel).filter_by(name=name).first()
@@ -164,7 +181,11 @@ class plex_repository:
     def get_playlist_snapshot(self, playlist_name) -> PlaylistSnapshot:
         try:
             logging.info(f"Fetching playlist {playlist_name} from Plex")
-            playlist = self.server.playlist(playlist_name)
+            playlist = None
+            try:
+                playlist = self.server.playlist(playlist_name)
+            except plexapi.exceptions.NotFound:
+                return None
 
             # TODO: assume same as Plex server's TZ
             local_timezone = get_local_tz()
@@ -193,7 +214,7 @@ class plex_repository:
             logging.error(f"Error fetching playlist {playlist_name}: {e}")
             raise HTTPException(status_code=500, detail=f"Error fetching playlist {playlist_name}")
     
-    def sync_playlist_to_plex(self, repo, playlist_id):
+    def sync_playlist_to_plex(self, repo, playlist_id, target_name: Optional[str] = None):
         # lookup playlist by id
         playlist = repo.get_by_id(playlist_id)
         if not playlist:
@@ -203,11 +224,11 @@ class plex_repository:
         logging.info(f"Syncing playlist {playlist.name} to Plex")
 
         # collect our three snapshots
-        old_remote_snapshot = self.get_current_snapshot(playlist.name)
+        old_remote_snapshot = self.get_current_snapshot(target_name)
         if old_remote_snapshot:
             logging.info(f"Existing remote snapshot last updated at {old_remote_snapshot.last_updated}")
 
-        new_remote_snapshot = self.get_playlist_snapshot(playlist.name)
+        new_remote_snapshot = self.get_playlist_snapshot(target_name)
         if new_remote_snapshot:
             logging.info(f"New remote snapshot last updated at {new_remote_snapshot.last_updated}")
 
@@ -220,6 +241,15 @@ class plex_repository:
 
         local_adds = set()
         local_removes = set()
+
+        if not new_remote_snapshot:
+            logging.info(f"Remote snapshot for playlist {target_name} not found, creating new one")
+            # create a new Plex playlist
+            self.create_playlist_from_snapshot(target_name, new_local_snapshot)
+            new_remote_snapshot = self.get_playlist_snapshot(target_name)
+            self.write_snapshot(new_remote_snapshot)
+            logging.info(f"Created new Plex playlist {new_remote_snapshot.name}")
+            return
 
         # first apply any changes from the local snapshot to the remote
         if old_remote_snapshot and (new_local_snapshot.last_updated > old_remote_snapshot.last_updated):
@@ -234,7 +264,7 @@ class plex_repository:
                     adds.append(self.fetch_audio(item))
                     remote_adds.add(item.to_string())
             
-            self.server.playlist(playlist.name).addItems(adds)
+            self.server.playlist(target_name).addItems(adds)
             
             for item in old_remote_snapshot.items:
                 if not new_local_snapshot.has(item):
@@ -242,7 +272,7 @@ class plex_repository:
                     logging.info(f"Removing {item.to_string()} from Plex playlist")
                     remote_removes.add(item.to_string())
                     try:
-                        self.server.playlist(playlist.name).removeItems([self.fetch_audio(item)])
+                        self.server.playlist(target_name).removeItems([self.fetch_audio(item)])
                     except Exception as e:
                         logging.error(f"Error removing {item.to_string()} from Plex playlist: {e}")
                         continue
@@ -289,6 +319,3 @@ class plex_repository:
 
         self.write_snapshot(new_remote_snapshot)
         logging.info(f"Wrote new Plex snapshot to DB")
-
-        logging.info(f"Syncing playlist {playlist.name} to Plex")
-    

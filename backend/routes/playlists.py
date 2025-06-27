@@ -3,7 +3,7 @@ from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
 from repositories.playlist import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
 from fastapi import Query, APIRouter, Depends, Body, File, UploadFile
-from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, ReplaceTrackRequest, MusicFileEntry, RequestedAlbumEntry, Album, RequestedTrackEntry, TrackDetails, PlaylistEntryStub
+from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, ReplaceTrackRequest, MusicFileEntry, RequestedAlbumEntry, Album, RequestedTrackEntry, TrackDetails, PlaylistEntryStub, SyncTarget
 import json
 from repositories.playlist import PlaylistRepository
 from repositories.music_file import MusicFileRepository
@@ -18,6 +18,8 @@ from models import PlaylistDB
 import pathlib
 import os
 from repositories.requests_cache_session import requests_cache_session
+from pydantic import BaseModel
+from typing import Dict, Optional, List, Union, Any
 
 router = APIRouter()
 
@@ -243,9 +245,27 @@ def get_playlists_by_track(track_id: int, repo: PlaylistRepository = Depends(get
         raise HTTPException(status_code=500, detail="Failed to get playlists by track")
 
 @router.get("/{playlist_id}/synctoplex")
-def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository), plex_repo: plex_repository = Depends(get_plex_repository)):
+def sync_playlist_to_plex(
+    playlist_id: int, 
+    repo: PlaylistRepository = Depends(get_playlist_repository), 
+    plex_repo: plex_repository = Depends(get_plex_repository)
+):
     try:
-        plex_repo.sync_playlist_to_plex(repo, playlist_id)
+        # Get all enabled sync targets for this playlist
+        sync_targets = repo.get_sync_targets(playlist_id)
+        
+        # Filter for enabled Plex targets
+        plex_targets = [target for target in sync_targets if target.service == 'plex' and target.enabled]
+        
+        if not plex_targets:
+            # Fall back to the existing behavior if no specific targets
+            plex_repo.sync_playlist_to_plex(repo, playlist_id)
+        else:
+            # Sync to each configured target
+            for target in plex_targets:
+                plex_name = target.config.get('playlist_name')
+                plex_repo.sync_playlist_to_plex(repo, playlist_id, target_name=plex_name)
+                
     except Exception as e:
         logging.error(f"Failed to sync playlist to Plex: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to sync playlist to Plex")
@@ -428,3 +448,51 @@ async def import_json_playlist(
             repo.delete(created_playlist.id)
         
         raise HTTPException(status_code=500, detail=f"Failed to import playlist: {str(e)}")
+
+@router.get("/{playlist_id}/syncconfig", response_model=List[SyncTarget])
+def get_playlist_sync_config(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
+    """Get sync targets for a playlist"""
+    try:
+        return repo.get_sync_targets(playlist_id)
+    except Exception as e:
+        logging.error(f"Failed to get sync targets: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get sync targets")
+
+@router.post("/{playlist_id}/syncconfig", response_model=SyncTarget)
+def create_sync_target(playlist_id: int, target: SyncTarget, repo: PlaylistRepository = Depends(get_playlist_repository)):
+    """Create a new sync target for a playlist"""
+    try:
+        return repo.create_sync_target(playlist_id, target)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logging.error(f"Failed to create sync target: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to create sync target")
+
+@router.put("/{playlist_id}/syncconfig/{target_id}", response_model=SyncTarget)
+def update_sync_target(playlist_id: int, target_id: int, target: SyncTarget, repo: PlaylistRepository = Depends(get_playlist_repository)):
+    """Update an existing sync target"""
+    try:
+        # Ensure the target ID matches the path parameter
+        if target.id is not None and target.id != target_id:
+            raise HTTPException(status_code=400, detail="Target ID mismatch")
+        
+        # Set the ID from the path parameter
+        target.id = target_id
+        
+        return repo.update_sync_target(playlist_id, target)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logging.error(f"Failed to update sync target: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update sync target")
+
+@router.delete("/{playlist_id}/syncconfig/{target_id}", response_model=dict)
+def delete_sync_target(playlist_id: int, target_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
+    """Delete a sync target"""
+    try:
+        repo.delete_sync_target(playlist_id, target_id)
+        return {"success": True, "detail": "Sync target deleted successfully"}
+    except Exception as e:
+        logging.error(f"Failed to delete sync target: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to delete sync target")
