@@ -532,11 +532,7 @@ def sync_playlist(
                 remote_repo.sync_playlist(
                     repo=repo,
                     playlist_id=playlist_id,
-                    target_name=target_name,
-                    send_adds=target.sendEntryAdds,
-                    send_removes=target.sendEntryRemovals,
-                    receive_adds=target.receiveEntryAdds,
-                    receive_removes=target.receiveEntryRemovals
+                    sync_target=target
                 )
                 
                 # Record successful sync

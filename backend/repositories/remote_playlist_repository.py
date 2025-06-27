@@ -9,8 +9,8 @@ from abc import ABC, abstractmethod
 import difflib
 from tqdm import tqdm
 
-from models import PlaylistSnapshot as PlaylistSnapshotModel, PlaylistDB, SyncTargetDB
-from response_models import PlaylistItem, PlaylistSnapshot
+from models import PlaylistSnapshot as PlaylistSnapshotModel, PlaylistDB
+from response_models import PlaylistItem, PlaylistSnapshot, SyncTarget
 
 def get_local_tz():
     return datetime.now().astimezone().tzinfo
@@ -145,20 +145,14 @@ class RemotePlaylistRepository(ABC):
         """Fetch a media item from the remote service"""
         pass
     
-    def sync_playlist(self, repo, playlist_id: int, target_name: Optional[str] = None, 
-                     send_adds: bool = True, send_removes: bool = True,
-                     receive_adds: bool = True, receive_removes: bool = True):
+    def sync_playlist(self, repo, playlist_id: int, sync_target: SyncTarget):
         """
-        Sync a local playlist with a remote playlist
+        Sync a local playlist with a remote playlist according to sync configuration
         
         Args:
             repo: Local playlist repository
             playlist_id: ID of the local playlist
-            target_name: Name of the remote playlist (uses local name if None)
-            send_adds: Whether to send additions to the remote
-            send_removes: Whether to send removals to the remote
-            receive_adds: Whether to receive additions from the remote
-            receive_removes: Whether to receive removals from the remote
+            sync_target: SyncTargetDB instance containing sync configuration
         """
         # lookup playlist by id
         playlist = repo.get_by_id(playlist_id)
@@ -166,10 +160,24 @@ class RemotePlaylistRepository(ABC):
             logging.error(f"Playlist with id {playlist_id} not found")
             raise HTTPException(status_code=404, detail="Playlist not found")
         
+        # Get configuration options from the sync target
+        target_name = sync_target.config.get("playlist_name") or sync_target.config.get("playlist_uri")
+        send_adds = sync_target.sendEntryAdds
+        send_removes = sync_target.sendEntryRemovals
+        receive_adds = sync_target.receiveEntryAdds
+        receive_removes = sync_target.receiveEntryRemovals
+        enabled = sync_target.enabled
+        
+        # Skip syncing if disabled
+        if not enabled:
+            logging.info(f"Sync is disabled for playlist {playlist.name}, skipping")
+            return
+        
         # Use the provided target name or fall back to the playlist name
         remote_playlist_name = target_name or playlist.name
         
         logging.info(f"Syncing playlist {playlist.name} to remote as {remote_playlist_name}")
+        logging.info(f"Sync options: send_adds={send_adds}, send_removes={send_removes}, receive_adds={receive_adds}, receive_removes={receive_removes}")
 
         # collect our three snapshots
         old_remote_snapshot = self.get_current_snapshot(remote_playlist_name)
@@ -191,22 +199,19 @@ class RemotePlaylistRepository(ABC):
         local_removes = set()
 
         # If remote playlist doesn't exist, create it
-        if not new_remote_snapshot:
-            if not send_adds:
-                logging.info(f"Remote playlist doesn't exist but send_adds is disabled")
-                return
-                
+        if not new_remote_snapshot:                
             logging.info(f"Remote snapshot for playlist {remote_playlist_name} not found, creating new one")
             # create a new remote playlist
             self.create_playlist(remote_playlist_name, new_local_snapshot)
             new_remote_snapshot = self.get_playlist_snapshot(remote_playlist_name)
-            self.write_snapshot(new_remote_snapshot)
-            logging.info(f"Created new remote playlist {new_remote_snapshot.name}")
+            if new_remote_snapshot:
+                self.write_snapshot(new_remote_snapshot)
+                logging.info(f"Created new remote playlist {new_remote_snapshot.name}")
             return
 
         # first apply any changes from the local snapshot to the remote
         if old_remote_snapshot and (new_local_snapshot.last_updated > old_remote_snapshot.last_updated):
-            logging.info("Local changes detected")
+            logging.info("Processing local changes to send to remote")
 
             # if the local snapshot is newer, we need to update the remote
             adds = []
@@ -220,64 +225,83 @@ class RemotePlaylistRepository(ABC):
                         remote_adds.add(item.to_string())
                 
                 if adds:
-                    self.add_items(remote_playlist_name, adds)
-            
-            if send_removes:
-                for item in old_remote_snapshot.items:
-                    if not new_local_snapshot.has(item):
-                        # send remove to remote playlist
-                        logging.info(f"Removing {item.to_string()} from remote playlist")
-                        remote_removes.add(item.to_string())
+                    try:
+                        self.add_items(remote_playlist_name, adds)
+                        logging.info(f"Added {len(adds)} tracks to remote playlist")
+                    except Exception as e:
+                        logging.error(f"Error adding tracks to remote playlist: {e}")
+            else:
+                logging.info("Skipping sending additions to remote (send_adds=False)")
+        
+            removes_count = 0
+            for item in old_remote_snapshot.items:
+                if not new_local_snapshot.has(item):
+                    # send remove to remote playlist
+                    logging.info(f"Removing {item.to_string()} from remote playlist")
+                    remote_removes.add(item.to_string())  # save off so that we don't re-add these later accidentally
+
+                    if send_removes:
                         try:
                             self.remove_items(remote_playlist_name, [item])
+                            removes_count += 1
                         except Exception as e:
                             logging.error(f"Error removing {item.to_string()} from remote playlist: {e}")
                             continue
-        else:
-            logging.info("No local changes detected")
+
+            if removes_count > 0:
+                logging.info(f"Removed {removes_count} tracks from remote playlist")
 
         # now apply any changes from the remote snapshot to the local
         if new_remote_snapshot and old_remote_snapshot and (new_remote_snapshot.last_updated > old_remote_snapshot.last_updated):
-            logging.info("Remote changes detected")
+            logging.info("Processing remote changes to apply to local")
             # if the remote snapshot is newer, we need to update the local
             adds = []
             removes = []
             
-            if receive_adds:
-                for item in new_remote_snapshot.items:
-                    if not old_remote_snapshot.has(item):
-                        # send add to local playlist
-                        adds.append(item)
-                        local_adds.add(item.to_string())
+            for item in new_remote_snapshot.items:
+                if not old_remote_snapshot.has(item):
+                    # Add to the list of items to add locally
+                    adds.append(item)
+                    local_adds.add(item.to_string())
+                    
+            logging.info(f"Found {len(adds)} tracks to add to local playlist")
             
-            if receive_removes:
-                for item in old_remote_snapshot.items:
-                    if not new_remote_snapshot.has(item):
-                        # send remove to local playlist
-                        removes.append(item)
-                        local_removes.add(item.to_string())
+            for item in old_remote_snapshot.items:
+                if not new_remote_snapshot.has(item):
+                    # Add to the list of items to remove locally
+                    removes.append(item)
+                    local_removes.add(item.to_string())
+                    
+            logging.info(f"Found {len(removes)} tracks to remove from local playlist")
 
+            # Apply the changes to the local playlist
             for item in adds:
+                # Skip if this was something we just removed
                 if item.to_string() in remote_removes:
+                    logging.info(f"Skipping addition of {item.to_string()} as it was just removed locally")
                     continue
 
-                logging.info(f"Adding {item.to_string()} to local playlist")
-
-                # add to local playlist using repo
-                result = repo.add_music_file(playlist.id, item)
-                if not result:
-                    repo.add_requested_track(playlist.id, item)
+                # Try to add as music file first, fall back to requested track
+                if receive_adds:
+                    logging.info(f"Adding {item.to_string()} to local playlist")
+                    result = repo.add_music_file(playlist.id, item)
+                    if not result:
+                        logging.info(f"Could not find music file for {item.to_string()}, adding as requested track")
+                        repo.add_requested_track(playlist.id, item)
                 
             for item in removes:
+                # Skip if this was something we just added
                 if item.to_string() in remote_adds:
+                    logging.info(f"Skipping removal of {item.to_string()} as it was just added locally")
                     continue
 
-                logging.info(f"Removing {item.to_string()} from local playlist")
+                if receive_removes:
+                    logging.info(f"Removing {item.to_string()} from local playlist")
 
-                # remove from local playlist using repo
-                repo.remove_music_file(playlist.id, item)
-        else:
-            logging.info("No remote changes detected")
+                    # remove from local playlist using repo
+                    repo.remove_music_file(playlist.id, item)
 
-        self.write_snapshot(new_remote_snapshot)
-        logging.info(f"Wrote new remote snapshot to DB")
+        # Always write the new remote snapshot to track the state
+        if new_remote_snapshot:
+            self.write_snapshot(new_remote_snapshot)
+            logging.info(f"Wrote new remote snapshot to DB for future comparison")

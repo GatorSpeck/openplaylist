@@ -343,7 +343,7 @@ class SpotifyRepository(RemotePlaylistRepository):
                     break
                 
             for item in tracks:
-                logging.info(item)
+                logging.debug(item)
                 track = item.get("track")
                 if not track:  # Skip local files or unavailable tracks
                     continue

@@ -36,16 +36,22 @@ class PlexRepository(RemotePlaylistRepository):
             if item.album:
                 filters["album.title"] = item.album
 
-            plex_item = self.server.library.section(self.plex_library).search(
+            plex_items = self.server.library.section(self.plex_library).search(
                 libtype="track",
                 title=item.title,
                 filters=filters,
-                maxresults=1
+                maxresults=10
             )
 
-            if plex_item:
-                logging.debug(f"Found Plex object for {item.to_string()}: {plex_item[0]}")
-                return plex_item[0]
+            for plex_item in plex_items:
+                if plex_item.title == item.title and plex_item.artist().title == item.artist:
+                    if item.album and plex_item.album().title != item.album:
+                        continue
+                    return plex_item
+            
+            if plex_items:
+                return plex_items[0]
+        
             return None
         except Exception as e:
             logging.error(f"Error fetching Plex object for {item.to_string()}: {e}")

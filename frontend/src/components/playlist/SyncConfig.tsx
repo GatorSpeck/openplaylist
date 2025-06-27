@@ -2,6 +2,18 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { BiTrash, BiPlus } from 'react-icons/bi';
 import Modal from '../common/Modal';
+import { 
+  Box, 
+  Typography,
+  FormControlLabel,
+  Checkbox,
+  FormGroup,
+  Divider,
+  Switch,
+  Grid,
+  Tooltip
+} from '@mui/material';
+import './SyncConfig.css'; // Import the CSS file
 
 // Types for our configuration
 interface SyncTarget {
@@ -13,7 +25,6 @@ interface SyncTarget {
 
   enabled: boolean;
 
-  // TODO
   sendEntryAdds: boolean;
   sendEntryRemovals: boolean;
   receiveEntryAdds: boolean;
@@ -25,19 +36,22 @@ const serviceConfigs = {
     fields: [
       { name: 'playlist_name', label: 'Playlist Name', placeholder: 'name', type: 'text' },
     ],
-    icon: '🎵'
+    icon: '🎵',
+    description: 'Sync with a Plex playlist'
   },
   spotify: {
     fields: [
       { name: "playlist_uri", label: "Playlist URI", placeholder: "spotify:playlist:your_playlist_id", type: "text" },
     ],
-    icon: '🟢'
+    icon: '🟢',
+    description: 'Sync with a Spotify playlist'
   },
   youtube: {
     fields: [
       { name: "playlist_uri", label: "Playlist URI", placeholder: "https://www.youtube.com/playlist?list=your_playlist_id", type: "text" },
     ],
-    icon: '▶️'
+    icon: '▶️',
+    description: 'Sync with a YouTube Music playlist'
   }
 };
 
@@ -165,7 +179,7 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose })
   };
 
   // Handle input changes in the modal form
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | boolean) => {
     if (!currentTarget) return;
     
     if (field === 'service') {
@@ -175,12 +189,19 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose })
         // Reset config when changing service type
         config: {}
       });
+    } else if (['sendEntryAdds', 'sendEntryRemovals', 'receiveEntryAdds', 'receiveEntryRemovals', 'enabled'].includes(field)) {
+      // Handle boolean toggle fields
+      setCurrentTarget({
+        ...currentTarget,
+        [field]: value as boolean
+      });
     } else {
+      // Handle config string fields
       setCurrentTarget({
         ...currentTarget,
         config: {
           ...currentTarget.config,
-          [field]: value
+          [field]: value as string
         }
       });
     }
@@ -224,7 +245,125 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose })
             />
           </div>
         ))}
+
+        <Divider sx={{ my: 2 }} />
+        
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            Sync Options
+          </Typography>
+          
+          <FormControlLabel
+            control={
+              <Switch
+                checked={currentTarget.enabled}
+                onChange={(e) => handleInputChange('enabled', e.target.checked)}
+              />
+            }
+            label="Enable Sync"
+          />
+          
+          <Box sx={{ mt: 2 }}>
+            <Grid container spacing={3}>
+              {/* Local to Remote */}
+              <Grid item xs={12} md={6}>
+                <Box sx={{ p: 2, border: '1px solid #ddd', borderRadius: 1 }}>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Local → Remote
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Changes that will be sent from your local playlist to the remote service
+                  </Typography>
+                  
+                  <FormGroup>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={currentTarget.sendEntryAdds}
+                          onChange={(e) => handleInputChange('sendEntryAdds', e.target.checked)}
+                        />
+                      }
+                      label="Send track additions"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={currentTarget.sendEntryRemovals}
+                          onChange={(e) => handleInputChange('sendEntryRemovals', e.target.checked)}
+                        />
+                      }
+                      label="Send track removals"
+                    />
+                  </FormGroup>
+                </Box>
+              </Grid>
+              
+              {/* Remote to Local */}
+              <Grid item xs={12} md={6}>
+                <Box sx={{ p: 2, border: '1px solid #ddd', borderRadius: 1 }}>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Remote → Local
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Changes that will be received from the remote service to your local playlist
+                  </Typography>
+                  
+                  <FormGroup>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={currentTarget.receiveEntryAdds}
+                          onChange={(e) => handleInputChange('receiveEntryAdds', e.target.checked)}
+                        />
+                      }
+                      label="Receive track additions"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={currentTarget.receiveEntryRemovals}
+                          onChange={(e) => handleInputChange('receiveEntryRemovals', e.target.checked)}
+                        />
+                      }
+                      label="Receive track removals"
+                    />
+                  </FormGroup>
+                </Box>
+              </Grid>
+            </Grid>
+          </Box>
+        </Box>
       </>
+    );
+  };
+
+  const renderSyncDirectionIcons = (target: SyncTarget) => {
+    return (
+      <div className="sync-direction">
+        <Tooltip title={`${target.sendEntryAdds ? 'Adding' : 'Not adding'} tracks to remote`}>
+          <span className={`direction-icon ${target.sendEntryAdds ? 'active' : 'inactive'}`}>
+            ↑+
+          </span>
+        </Tooltip>
+        
+        <Tooltip title={`${target.sendEntryRemovals ? 'Removing' : 'Not removing'} tracks from remote`}>
+          <span className={`direction-icon ${target.sendEntryRemovals ? 'active' : 'inactive'}`}>
+            ↑−
+          </span>
+        </Tooltip>
+        
+        <Tooltip title={`${target.receiveEntryAdds ? 'Receiving' : 'Not receiving'} new tracks from remote`}>
+          <span className={`direction-icon ${target.receiveEntryAdds ? 'active' : 'inactive'}`}>
+            ↓+
+          </span>
+        </Tooltip>
+        
+        <Tooltip title={`${target.receiveEntryRemovals ? 'Removing' : 'Not removing'} local tracks when removed from remote`}>
+          <span className={`direction-icon ${target.receiveEntryRemovals ? 'active' : 'inactive'}`}>
+            ↓−
+          </span>
+        </Tooltip>
+      </div>
     );
   };
 
@@ -264,12 +403,13 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose })
                   {serviceConfigs[target.service].icon}
                 </div>
                 <div className="target-name">
-                  {target.config.playlist_name || 'Unnamed Playlist'}
+                  {target.config.playlist_name || target.config.playlist_uri || 'Unnamed Playlist'}
                 </div>
                 <div className="target-details">
                   <div className="target-service">
                     {target.service.charAt(0).toUpperCase() + target.service.slice(1)}
                   </div>
+                  {renderSyncDirectionIcons(target)}
                 </div>
                 <div className="target-actions">
                   <label className="toggle">
