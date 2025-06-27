@@ -205,7 +205,7 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose })
             onChange={(e) => handleInputChange('service', e.target.value)}
           >
             <option value="plex">Plex</option>
-            {/* <option value="spotify">Spotify</option> */}
+            <option value="spotify">Spotify</option>
             {/* <option value="youtube">YouTube Music</option> */}
           </select>
         </div>

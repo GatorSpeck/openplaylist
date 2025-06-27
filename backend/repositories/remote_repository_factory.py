@@ -27,8 +27,7 @@ def create_remote_repository(
     if service == 'plex':
         return PlexRepository(session, config)
     elif service == 'spotify':
-        # return SpotifyRepository(session, config)
-        return None
+        return SpotifyRepository(session, config)
     elif service == 'youtube':
         # return YouTubeRepository(session, config)
         return None

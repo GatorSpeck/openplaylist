@@ -524,6 +524,9 @@ def sync_playlist(
                     session=db,
                     config=config
                 )
+
+                if remote_repo is None:
+                    raise HTTPException(status_code=400, detail=f"Unsupported service: {target.service}")
                 
                 # Sync the playlist
                 remote_repo.sync_playlist(

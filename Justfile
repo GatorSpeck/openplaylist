@@ -1,6 +1,6 @@
 set shell := ["bash", "-uc"]
 
-cleanup:
+clean:
     # clean up orphaned frontend/backend
     sudo fuser -k 3009/tcp || true
     sudo fuser -k 3007/tcp || true

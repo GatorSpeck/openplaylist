@@ -35,6 +35,7 @@ import json
 from pydantic import BaseModel
 import sys
 from routes import router
+from routes.spotify_router import spotify_router
 
 class TimingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable):
@@ -677,6 +678,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 app.include_router(router, prefix="/api")
+app.include_router(spotify_router, prefix="/api")
 
 host = os.getenv("HOST", "0.0.0.0")
 port = int(os.getenv("PORT", 3000))

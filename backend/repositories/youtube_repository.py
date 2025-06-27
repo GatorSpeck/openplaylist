@@ -3,7 +3,8 @@ import logging
 from typing import List, Optional, Dict, Any
 import ytmusicapi  # You'll need to install this package
 
-from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz
+from repositories.remote_playlist_repository import RemotePlaylistRepository, get_local_tz
+from response_models import PlaylistSnapshot, PlaylistItem
 
 class YouTubeRepository(RemotePlaylistRepository):
     """Repository for YouTube Music playlists"""
