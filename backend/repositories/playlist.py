@@ -31,7 +31,8 @@ from response_models import (
     Album,
     RequestedAlbumEntry,
     SearchQuery,
-    SyncTarget
+    SyncTarget,
+    TrackDetails
 )
 from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 from sqlalchemy import select, tuple_, and_, func, or_, case
@@ -553,6 +554,23 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         
         # Commit outside of no_autoflush block
         self.session.commit()
+
+    def add_requested_track(self, playlist_id: int, item):
+        if not isinstance(item, list):
+            item = [item]
+
+        items = [RequestedTrackEntry(
+            details=TrackDetails(
+                artist=i.artist,
+                title=i.title,
+                album=i.album
+            ),
+            entry_type="requested"
+        ) for i in item]
+
+        # Add to session and commit
+        self.add_entries(playlist_id, items)
+        return items
     
     def add_music_file(self, playlist_id: int, item):
         if not isinstance(item, list):
@@ -581,10 +599,14 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
             music_files.append(music_file_entry)
         
+        if not music_files:
+            return None
+        
         logging.info(f"Matched {len(music_files)} music files to add to playlist {playlist_id}")
 
         # Add to session and commit
         self.add_entries(playlist_id, music_files)
+        return music_files
 
     def remove_music_file(self, playlist_id: int, item):
         music_file = (

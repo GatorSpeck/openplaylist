@@ -264,7 +264,9 @@ class RemotePlaylistRepository(ABC):
                 logging.info(f"Adding {item.to_string()} to local playlist")
 
                 # add to local playlist using repo
-                repo.add_music_file(playlist.id, item)
+                result = repo.add_music_file(playlist.id, item)
+                if not result:
+                    repo.add_requested_track(playlist.id, item)
                 
             for item in removes:
                 if item.to_string() in remote_adds:
