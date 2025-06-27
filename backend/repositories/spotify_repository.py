@@ -14,9 +14,9 @@ def get_spotify_repo(requests_cache_session):
     if not CLIENT_ID or not CLIENT_SECRET:
         return None
     
-    return spotify_repository(CLIENT_ID, CLIENT_SECRET, requests_cache_session)
+    return SpotifyRepository(CLIENT_ID, CLIENT_SECRET, requests_cache_session)
 
-class spotify_repository:
+class SpotifyRepository:
     def __init__(self, client_id, client_secret, requests_cache_session):
         self.client_id = client_id
         self.client_secret = client_secret

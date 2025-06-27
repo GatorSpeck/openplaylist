@@ -6,179 +6,64 @@ import logging
 from plexapi.server import PlexServer
 from plexapi.playlist import Playlist as PlexPlaylist
 import plexapi
-from pydantic import BaseModel
-from datetime import datetime
-from typing import List, Optional
-from models import PlaylistSnapshot as PlaylistSnapshotModel, PlaylistDB
-import difflib
+from typing import List, Optional, Dict, Any
 from tqdm import tqdm
 
-class PlaylistItem(BaseModel):
-    artist: str
-    album: Optional[str] = None
-    title: str
+from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz
 
-    def to_string(self):
-        return f"{self.artist} - {self.album} - {self.title}"
-
-class PlaylistSnapshot(BaseModel):
-    name: str
-    last_updated: datetime
-    items: List[PlaylistItem]
-    item_set: set = set()
-
-    def has(self, item: PlaylistItem):
-        return item.to_string() in self.item_set
-
-    def add_item(self, item: PlaylistItem):
-        self.items.append(item)
-        self.item_set.add(item.to_string())
-
-    def diff(self, other):
-        # use difflib to compare the two playlists and return the differences
-        left_contents = [item.to_string() for item in self.items]
-        right_contents = [item.to_string() for item in other.items]
-        diff = difflib.ndiff(left_contents, right_contents)
-        return list(diff)
-
-def get_local_tz():
-    return datetime.now().astimezone().tzinfo
-
-def diff_snapshots(left: PlaylistSnapshot, right: PlaylistSnapshot):
-    logging.info(f"Left timestamp: {left.last_updated}, Right timestamp: {right.last_updated}")
-    d = left.diff(right)
-    changes = 0
-    for line in d:
-        if line.startswith("+ "):
-            changes += 1
-            logging.info(f"Added: {line[2:]}")
-        elif line.startswith("- "):
-            changes += 1
-            logging.info(f"Removed: {line[2:]}")
-        elif line.startswith("? "):
-            changes += 1
-            logging.info(f"Changed: {line[2:]}")
-        else:
-            logging.info(f"Unchanged: {line[2:]}")
+class PlexRepository(RemotePlaylistRepository):
+    """Repository for Plex playlists"""
     
-    logging.info(f"Found {changes} changes")
-
-class plex_repository:
-    def __init__(self, session):
-        self.session = session
-        self.m3u_source = os.getenv("PLEX_M3U_DROP_SOURCE", None)
-        self.m3u_target = os.getenv("PLEX_M3U_DROP_TARGET", None)
-        self.map_source = os.getenv("PLEX_MAP_SOURCE", None)
-        self.map_target = os.getenv("PLEX_MAP_TARGET", None)
-        self.plex_endpoint = os.getenv("PLEX_ENDPOINT", None)
-        self.plex_token = os.getenv("PLEX_TOKEN", None)
-        self.plex_library = os.getenv("PLEX_LIBRARY", "Music")
-
+    def __init__(self, session, config: Dict[str, str] = None):
+        super().__init__(session, config)
+        
+        # Try config first, then environment variables
+        self.plex_endpoint = self.config.get("endpoint") or os.getenv("PLEX_ENDPOINT")
+        self.plex_token = self.config.get("token") or os.getenv("PLEX_TOKEN")
+        self.plex_library = self.config.get("library") or os.getenv("PLEX_LIBRARY", "Music")
+        
+        if not self.plex_endpoint or not self.plex_token:
+            raise ValueError("Plex endpoint and token must be provided")
+            
         self.server = PlexServer(self.plex_endpoint, token=self.plex_token)
     
-    def fetch_audio(self, entry: PlaylistItem):        
-        # lookup the item in Plex
+    def fetch_media_item(self, item: PlaylistItem) -> Any:
+        """Fetch a media item from Plex"""
         try:
-            logging.debug(f"Fetching Plex object for {entry.to_string()}")
+            logging.debug(f"Fetching Plex object for {item.to_string()}")
 
-            filters = {"artist.title": entry.artist}
-            if entry.album:
-                filters["album.title"] = entry.album
+            filters = {"artist.title": item.artist}
+            if item.album:
+                filters["album.title"] = item.album
 
-            item = self.server.library.section(self.plex_library).search(
+            plex_item = self.server.library.section(self.plex_library).search(
                 libtype="track",
-                title=entry.title,
+                title=item.title,
                 filters=filters,
                 maxresults=1
             )
 
-            if item:
-                logging.debug(f"Found Plex object for {entry.to_string()}: {item[0]}")
-                return item[0]
-        except Exception as e:
-            logging.error(f"Error fetching Plex object for {entry.to_string()}: {e}")
+            if plex_item:
+                logging.debug(f"Found Plex object for {item.to_string()}: {plex_item[0]}")
+                return plex_item[0]
             return None
-
-    def create_playlist_from_snapshot(self, name: str, snapshot: PlaylistSnapshot) -> PlexPlaylist:
+        except Exception as e:
+            logging.error(f"Error fetching Plex object for {item.to_string()}: {e}")
+            return None
+    
+    def create_playlist(self, playlist_name: str, snapshot: PlaylistSnapshot) -> PlexPlaylist:
+        """Create a new playlist in Plex"""
         audio_items = []
         for item in snapshot.items:
-            audio = self.fetch_audio(item)
+            audio = self.fetch_media_item(item)
             if audio:
                 audio_items.append(audio)
 
-        playlist = PlexPlaylist.create(self.server, title=name, items=audio_items)
+        playlist = PlexPlaylist.create(self.server, title=playlist_name, items=audio_items)
         return playlist
     
-    def get_current_snapshot(self, name) -> PlaylistSnapshot:
-        this_playlist = self.session.query(PlaylistSnapshotModel).filter_by(name=name).first()
-        if not this_playlist:
-            return None
-        
-        result = PlaylistSnapshot(
-            name=this_playlist.name,
-            last_updated=this_playlist.last_updated.astimezone(get_local_tz()),
-            items=[]
-        )
-
-        for item in this_playlist.contents:
-            i = PlaylistItem(
-                artist=item.get("artist"),
-                album=item.get("album"),
-                title=item.get("title")
-            )
-
-            result.add_item(i)
-
-        return result
-    
-    def create_snapshot(self, playlist: PlaylistDB) -> PlaylistSnapshot:
-        result = PlaylistSnapshot(
-            name=playlist.name,
-            last_updated=playlist.updated_at.replace(tzinfo=get_local_tz()),
-            items=[]
-        )
-
-        for e in playlist.entries:
-            if not e.entry_type == "music_file":
-                continue
-            if not e.details.artist or not e.details.title:
-                continue
-
-            new_item = PlaylistItem(
-                artist=e.details.artist,
-                album=e.details.album,
-                title=e.details.title
-            )
-
-            result.add_item(new_item)
-        
-        return result
-
-    def write_snapshot(self, snapshot: PlaylistSnapshot):
-        result = self.session.query(PlaylistSnapshotModel).filter_by(name=snapshot.name).first()
-        if result:
-            self.session.delete(result)
-            self.session.commit()
-
-        result = PlaylistSnapshotModel(
-            name=snapshot.name,
-            last_updated=datetime.now(get_local_tz()),
-            contents=[]
-        )
-        
-        result.contents = []
-
-        for item in snapshot.items:
-            result.contents.append({
-                "artist": item.artist,
-                "album": item.album,
-                "title": item.title
-            })
-        
-        self.session.add(result)
-        self.session.commit()
-    
-    def get_playlist_snapshot(self, playlist_name) -> PlaylistSnapshot:
+    def get_playlist_snapshot(self, playlist_name: str) -> Optional[PlaylistSnapshot]:
+        """Get a snapshot of a Plex playlist"""
         try:
             logging.info(f"Fetching playlist {playlist_name} from Plex")
             playlist = None
@@ -206,7 +91,6 @@ class plex_repository:
 
                 result.add_item(i)
 
-
             logging.info(f"Playlist {playlist_name} has {len(playlist.items())} items")
 
             return result
@@ -214,108 +98,24 @@ class plex_repository:
             logging.error(f"Error fetching playlist {playlist_name}: {e}")
             raise HTTPException(status_code=500, detail=f"Error fetching playlist {playlist_name}")
     
-    def sync_playlist_to_plex(self, repo, playlist_id, target_name: Optional[str] = None):
-        # lookup playlist by id
-        playlist = repo.get_by_id(playlist_id)
-        if not playlist:
-            logging.error(f"Playlist with id {playlist_id} not found")
-            raise HTTPException(status_code=404, detail="Playlist not found")
+    def add_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
+        """Add items to a Plex playlist"""
+        plex_items = []
+        for item in items:
+            plex_item = self.fetch_media_item(item)
+            if plex_item:
+                plex_items.append(plex_item)
         
-        logging.info(f"Syncing playlist {playlist.name} to Plex")
-
-        # collect our three snapshots
-        old_remote_snapshot = self.get_current_snapshot(target_name)
-        if old_remote_snapshot:
-            logging.info(f"Existing remote snapshot last updated at {old_remote_snapshot.last_updated}")
-
-        new_remote_snapshot = self.get_playlist_snapshot(target_name)
-        if new_remote_snapshot:
-            logging.info(f"New remote snapshot last updated at {new_remote_snapshot.last_updated}")
-
-        new_local_snapshot = self.create_snapshot(playlist)
-        if new_local_snapshot:
-            logging.info(f"New local snapshot last updated at {new_local_snapshot.last_updated}")
-        
-        remote_adds = set()
-        remote_removes = set()
-
-        local_adds = set()
-        local_removes = set()
-
-        if not new_remote_snapshot:
-            logging.info(f"Remote snapshot for playlist {target_name} not found, creating new one")
-            # create a new Plex playlist
-            self.create_playlist_from_snapshot(target_name, new_local_snapshot)
-            new_remote_snapshot = self.get_playlist_snapshot(target_name)
-            self.write_snapshot(new_remote_snapshot)
-            logging.info(f"Created new Plex playlist {new_remote_snapshot.name}")
-            return
-
-        # first apply any changes from the local snapshot to the remote
-        if old_remote_snapshot and (new_local_snapshot.last_updated > old_remote_snapshot.last_updated):
-            logging.info("Local changes detected")
-
-            # if the local snapshot is newer, we need to update the remote
-            adds = []
-            for item in new_local_snapshot.items:
-                if not old_remote_snapshot.has(item):
-                    # send add to Plex playlist
-                    logging.info(f"Adding {item.to_string()} to Plex playlist")
-                    adds.append(self.fetch_audio(item))
-                    remote_adds.add(item.to_string())
-            
-            self.server.playlist(target_name).addItems(adds)
-            
-            for item in old_remote_snapshot.items:
-                if not new_local_snapshot.has(item):
-                    # send remove to Plex playlist
-                    logging.info(f"Removing {item.to_string()} from Plex playlist")
-                    remote_removes.add(item.to_string())
-                    try:
-                        self.server.playlist(target_name).removeItems([self.fetch_audio(item)])
-                    except Exception as e:
-                        logging.error(f"Error removing {item.to_string()} from Plex playlist: {e}")
-                        continue
-        else:
-            logging.info("No local changes detected")
-
-        # now apply any changes from the remote snapshot to the local
-        if new_remote_snapshot and old_remote_snapshot and (new_remote_snapshot.last_updated > old_remote_snapshot.last_updated):
-            logging.info("Remote changes detected")
-            # if the remote snapshot is newer, we need to update the local
-            adds = []
-            removes = []
-            for item in new_remote_snapshot.items:
-                if not old_remote_snapshot.has(item):
-                    # send add to local playlist
-                    adds.append(item)
-                    local_adds.add(item.to_string())
-            
-            for item in old_remote_snapshot.items:
-                if not new_remote_snapshot.has(item):
-                    # send remove to local playlist
-                    removes.append(item)
-                    local_removes.add(item.to_string())
-
-            for item in adds:
-                if item.to_string() in remote_removes:
+        if plex_items:
+            self.server.playlist(playlist_name).addItems(plex_items)
+    
+    def remove_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
+        """Remove items from a Plex playlist"""
+        for item in items:
+            plex_item = self.fetch_media_item(item)
+            if plex_item:
+                try:
+                    self.server.playlist(playlist_name).removeItems([plex_item])
+                except Exception as e:
+                    logging.error(f"Error removing {item.to_string()} from Plex playlist: {e}")
                     continue
-
-                logging.info(f"Adding {item.to_string()} to local playlist")
-
-                # add to local playlist using repo
-                repo.add_music_file(playlist.id, item)
-                
-            for item in removes:
-                if item.to_string() in remote_adds:
-                    continue
-
-                logging.info(f"Removing {item.to_string()} from local playlist")
-
-                # remove from local playlist using repo
-                repo.remove_music_file(playlist.id, item)
-        else:
-            logging.info("No remote changes detected")
-
-        self.write_snapshot(new_remote_snapshot)
-        logging.info(f"Wrote new Plex snapshot to DB")

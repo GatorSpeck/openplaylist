@@ -104,7 +104,7 @@ export class PlaylistRepository {
     }
 
     async syncToPlex(id: number) {
-        await axios.get(`/api/playlists/${id}/synctoplex`);
+        await axios.get(`/api/playlists/${id}/sync`);
     }
 
     async clone(fromID: number, toName: String) {

@@ -8,7 +8,7 @@ import json
 from repositories.playlist import PlaylistRepository
 from repositories.music_file import MusicFileRepository
 from repositories.last_fm_repository import get_last_fm_repo
-from repositories.plex_repository import plex_repository
+from repositories.plex_repository import PlexRepository
 import logging
 from fastapi.exceptions import HTTPException
 from dependencies import get_music_file_repository, get_playlist_repository, get_plex_repository
@@ -20,6 +20,7 @@ import os
 from repositories.requests_cache_session import requests_cache_session
 from pydantic import BaseModel
 from typing import Dict, Optional, List, Union, Any
+from repositories.remote_repository_factory import create_remote_repository
 
 router = APIRouter()
 
@@ -243,32 +244,6 @@ def get_playlists_by_track(track_id: int, repo: PlaylistRepository = Depends(get
     except Exception as e:
         logging.error(f"Failed to get playlists by track: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get playlists by track")
-
-@router.get("/{playlist_id}/synctoplex")
-def sync_playlist_to_plex(
-    playlist_id: int, 
-    repo: PlaylistRepository = Depends(get_playlist_repository), 
-    plex_repo: plex_repository = Depends(get_plex_repository)
-):
-    try:
-        # Get all enabled sync targets for this playlist
-        sync_targets = repo.get_sync_targets(playlist_id)
-        
-        # Filter for enabled Plex targets
-        plex_targets = [target for target in sync_targets if target.service == 'plex' and target.enabled]
-        
-        if not plex_targets:
-            # Fall back to the existing behavior if no specific targets
-            plex_repo.sync_playlist_to_plex(repo, playlist_id)
-        else:
-            # Sync to each configured target
-            for target in plex_targets:
-                plex_name = target.config.get('playlist_name')
-                plex_repo.sync_playlist_to_plex(repo, playlist_id, target_name=plex_name)
-                
-    except Exception as e:
-        logging.error(f"Failed to sync playlist to Plex: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to sync playlist to Plex")
 
 @router.put("/reorderpinned/{playlist_id}")
 def reorder_pinned_tracks(playlist_id: int, new_order: List[int], repo: PlaylistRepository = Depends(get_playlist_repository)):
@@ -496,3 +471,99 @@ def delete_sync_target(playlist_id: int, target_id: int, repo: PlaylistRepositor
     except Exception as e:
         logging.error(f"Failed to delete sync target: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to delete sync target")
+
+@router.get("/{playlist_id}/sync")
+def sync_playlist(
+    playlist_id: int,
+    repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    """
+    Sync a playlist with configured remote targets
+    
+    Args:
+        playlist_id: The ID of the playlist to sync
+        service: Optional filter for sync target service (e.g., 'plex', 'spotify', 'youtube')
+        target_id: Optional specific sync target ID to use
+    """
+    try:
+        # Get all enabled sync targets for this playlist
+        sync_targets = repo.get_sync_targets(playlist_id)
+        
+        if not sync_targets:
+            raise HTTPException(status_code=404, detail="No sync targets configured for this playlist")
+        
+        # Just get enabled targets
+        sync_targets = [target for target in sync_targets if target.enabled]
+        if not sync_targets:
+            raise HTTPException(status_code=404, detail="No enabled sync targets found for this playlist")
+        
+        # Initialize success and error counters
+        results = {
+            "success": [],
+            "failed": []
+        }
+        
+        db = Database.get_session()
+        
+        # Sync to each configured target
+        for target in sync_targets:
+            try:
+                # Parse the config
+                config = target.config
+                
+                # Get the target name if available
+                target_name = config.get('playlist_name', None)
+                if not target_name and target.service == 'plex':
+                    # Use playlist name as fallback for Plex
+                    playlist = repo.get_by_id(playlist_id)
+                    target_name = playlist.name
+                    
+                # Create the appropriate repository
+                remote_repo = create_remote_repository(
+                    service=target.service,
+                    session=db,
+                    config=config
+                )
+                
+                # Sync the playlist
+                remote_repo.sync_playlist(
+                    repo=repo,
+                    playlist_id=playlist_id,
+                    target_name=target_name,
+                    send_adds=target.sendEntryAdds,
+                    send_removes=target.sendEntryRemovals,
+                    receive_adds=target.receiveEntryAdds,
+                    receive_removes=target.receiveEntryRemovals
+                )
+                
+                # Record successful sync
+                results["success"].append({
+                    "service": target.service,
+                    "target_id": target.id,
+                    "target_name": target_name
+                })
+                
+            except Exception as e:
+                logging.error(f"Failed to sync to {target.service} target: {e}", exc_info=True)
+                results["failed"].append({
+                    "service": target.service,
+                    "target_id": target.id,
+                    "error": str(e)
+                })
+        
+        # For backward compatibility, maintain synctoplex endpoint
+        if not results["success"] and not results["failed"]:
+            raise HTTPException(status_code=404, detail="No sync operations performed")
+        
+        return {
+            "status": "success" if not results["failed"] else "partial",
+            "synced": results["success"],
+            "failed": results["failed"]
+        }
+    
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logging.error(f"Failed to sync playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to sync playlist")

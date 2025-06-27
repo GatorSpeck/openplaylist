@@ -28,9 +28,8 @@ from repositories.music_file import MusicFileRepository
 from repositories.playlist import PlaylistRepository
 from repositories.open_ai_repository import open_ai_repository
 from repositories.last_fm_repository import last_fm_repository
+from repositories.plex_repository import PlexRepository
 from repositories.requests_cache_session import requests_cache_session
-from repositories.spotify_repository import get_spotify_repo
-from repositories.plex_repository import plex_repository
 from redis import Redis
 import json
 from pydantic import BaseModel
@@ -598,7 +597,7 @@ def import_spotify_playlist(
 @router.post("/plex/import")
 def import_plex_playlist(
     params: PlexImportParams,
-    plex_repo: plex_repository = Depends(get_plex_repository),
+    plex_repo: PlexRepository = Depends(get_plex_repository),
     playlist_repo: PlaylistRepository = Depends(get_playlist_repository)
 ):
     new_playlist = Playlist(name=params.playlist_name, description=None, entries=[])
