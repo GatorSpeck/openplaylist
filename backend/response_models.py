@@ -22,6 +22,7 @@ from models import (
 from abc import ABC, abstractmethod
 import logging
 import difflib
+from lib.normalize_title import normalize_title
 
 
 class TrackDetails(BaseModel):
@@ -846,8 +847,12 @@ class PlaylistItem(BaseModel):
     artist: str
     album: Optional[str] = None
     title: str
+    uri: Optional[str] = None  # URI for the item, if applicable (e.g. for Spotify)
 
-    def to_string(self):
+    def to_string(self, normalize=False):
+        if normalize:
+            return f"{self.artist} - {normalize_title(self.album)} - {normalize_title(self.title)}"
+        
         return f"{self.artist} - {self.album} - {self.title}"
 
 class PlaylistSnapshot(BaseModel):
@@ -857,15 +862,15 @@ class PlaylistSnapshot(BaseModel):
     item_set: set = set()
 
     def has(self, item: PlaylistItem):
-        return item.to_string() in self.item_set
+        return item.to_string(normalize=True) in self.item_set
 
     def add_item(self, item: PlaylistItem):
         self.items.append(item)
-        self.item_set.add(item.to_string())
+        self.item_set.add(item.to_string(normalize=True))
 
     def diff(self, other):
         # use difflib to compare the two playlists and return the differences
-        left_contents = [item.to_string() for item in self.items]
-        right_contents = [item.to_string() for item in other.items]
+        left_contents = [item.to_string(normalize=True) for item in self.items]
+        right_contents = [item.to_string(normalize=True) for item in other.items]
         diff = difflib.ndiff(left_contents, right_contents)
         return list(diff)

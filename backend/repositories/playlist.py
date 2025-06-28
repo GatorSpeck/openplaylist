@@ -43,6 +43,7 @@ import json
 from datetime import datetime, timezone
 from pydantic import BaseModel
 from enum import IntEnum
+from lib.normalize_title import normalize_title
 
 import dotenv
 dotenv.load_dotenv(override=True)
@@ -572,28 +573,45 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         self.add_entries(playlist_id, items)
         return items
     
-    def add_music_file(self, playlist_id: int, item):
+    def add_music_file(self, playlist_id: int, item, normalize=False):
         if not isinstance(item, list):
             item = [item]
-
+        
         music_files = []
         for i in item:
             # look up music file by path
-            music_file = (
+            matches = (
                 self.session.query(MusicFileDB)
-                .filter(MusicFileDB.title == i.title)
-                .filter(or_(MusicFileDB.artist == i.artist, MusicFileDB.album_artist == i.artist))
-                .filter(MusicFileDB.album == i.album)
-                .first()
+                .filter(
+                    func.lower(MusicFileDB.title) == normalize_title(i.title) if normalize 
+                    else func.lower(MusicFileDB.title) == func.lower(i.title)
+                )
+                .all()
             )
 
-            if music_file is None:
-                logging.warning(f"Music file {i.artist} - {i.album} - {i.title} not found")
+            for music_file in matches:
+                score = 0
+
+                if music_file.artist.lower() == i.artist.lower():
+                    score += 10
+                elif normalize_title(music_file.artist.lower()) == normalize_title(i.artist.lower()):
+                    score += 5
+                
+                if music_file.album and (music_file.album.lower() == i.album.lower()):
+                    score += 10
+                elif music_file.album and normalize_title(music_file.album.lower()) == normalize_title(i.album.lower()):
+                    score += 5
+                
+                music_file.score = score
+            
+            matches = sorted(matches, key=lambda x: x.score, reverse=True)
+            if not matches:
+                logging.warning(f"No matching music file found for {i.artist} - {i.album} - {i.title}")
                 continue
             
             # Create a new MusicFileEntryDB object
             music_file_entry = MusicFileEntry(
-                music_file_id=music_file.id,
+                music_file_id=matches[0].id,
                 entry_type="music_file"
             )
 
@@ -608,32 +626,50 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         self.add_entries(playlist_id, music_files)
         return music_files
 
-    def remove_music_file(self, playlist_id: int, item):
-        music_file = (
-            self.session.query(MusicFileDB)
-            .filter(MusicFileDB.title == item.title)
-            .filter(MusicFileDB.artist == item.artist)
-            .filter(MusicFileDB.album == item.album)
-            .first()
-        )
-
-        if music_file is None:
-            logging.error(f"Music file not found")
-            return None
+    def remove_music_file(self, playlist_id: int, item, normalize=True):
+        # remove any music files in the playlist matching the item title/artist/album
+        if not isinstance(item, list):
+            item = [item]
         
-        entry = (
-            self.session.query(MusicFileEntryDB)
-            .filter(MusicFileEntryDB.playlist_id == playlist_id)
-            .filter(MusicFileEntryDB.music_file_id == music_file.id)
-            .first()
-        )
+        for i in item:
+            title_to_use = normalize_title(i.title) if normalize else i.title
 
-        if entry:
-            self.session.delete(entry)
+            # Find the music file entry in the playlist that matches the criteria
+            entries = (
+                self.session.query(MusicFileEntryDB)
+                .join(MusicFileDB, MusicFileEntryDB.music_file_id == MusicFileDB.id)
+                .filter(MusicFileEntryDB.playlist_id == playlist_id)
+                .filter(func.lower(MusicFileDB.title).startswith(func.lower(title_to_use)))
+                .all()
+            )
+
+            if not entries:
+                logging.warning(f"No matching music file entry found for {i.artist} - {i.album} - {i.title} in playlist {playlist_id}")
+                continue
+
+            for entry in entries:
+                score = 0
+                if entry.details.title.lower() == title_to_use.lower():
+                    score += 10
+                elif normalize_title(entry.details.title.lower()) == normalize_title(title_to_use.lower()):
+                    score += 5
+
+                if entry.details.artist.lower() == i.artist.lower():
+                    score += 10
+
+                if entry.details.album and (entry.details.album.lower() == i.album.lower()):
+                    score += 10
+                elif entry.details.album and normalize_title(entry.details.album.lower()) == normalize_title(i.album.lower()):
+                    score += 5
+
+                if score < 10:
+                    continue
+                
+                logging.info(f"Removing music file entry {entry.id} from playlist {playlist_id}")
+                self.session.delete(entry)
+
             self.session.commit()
-        else:
-            logging.warning(f"Entry not found in playlist {playlist_id}")
-
+                    
     def insert_entry(self, playlist_id: int, entry, new_index: int = -1):
         logging.info(f"Adding entry {entry} to playlist {playlist_id} at index {new_index}")
         def get_insert_location():

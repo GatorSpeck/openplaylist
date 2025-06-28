@@ -64,7 +64,8 @@ class RemotePlaylistRepository(ABC):
             i = PlaylistItem(
                 artist=item.get("artist"),
                 album=item.get("album"),
-                title=item.get("title")
+                title=item.get("title"),
+                uri=item.get("uri", None)  # Optional URI field
             )
 
             result.add_item(i)
@@ -88,7 +89,7 @@ class RemotePlaylistRepository(ABC):
             new_item = PlaylistItem(
                 artist=e.details.artist,
                 album=e.details.album,
-                title=e.details.title
+                title=e.details.title,
             )
 
             result.add_item(new_item)
@@ -114,7 +115,8 @@ class RemotePlaylistRepository(ABC):
             result.contents.append({
                 "artist": item.artist,
                 "album": item.album,
-                "title": item.title
+                "title": item.title,
+                "uri": item.uri  # Optional URI field
             })
         
         self.session.add(result)
@@ -284,7 +286,7 @@ class RemotePlaylistRepository(ABC):
                 # Try to add as music file first, fall back to requested track
                 if receive_adds:
                     logging.info(f"Adding {item.to_string()} to local playlist")
-                    result = repo.add_music_file(playlist.id, item)
+                    result = repo.add_music_file(playlist.id, item, normalize=True)
                     if not result:
                         logging.info(f"Could not find music file for {item.to_string()}, adding as requested track")
                         repo.add_requested_track(playlist.id, item)

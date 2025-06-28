@@ -8,6 +8,7 @@ import logging
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth, CacheFileHandler
 from fastapi import HTTPException, Depends
+from repositories.plex_repository import normalize_title
 
 from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz
 from repositories.requests_cache_session import requests_cache_session
@@ -248,10 +249,23 @@ class SpotifyRepository(RemotePlaylistRepository):
         if item.album:
             query += f" album:{item.album}"
         
-        results = self.sp.search(q=query, limit=1, type="track")
-        
+        results = self.sp.search(q=query, limit=10, type="track")
+
         if results and results["tracks"]["items"]:
-            return results["tracks"]["items"][0]
+            for track in results["tracks"]["items"]:
+                score = 0
+                if normalize_title(track["name"]) == normalize_title(item.title):
+                    score += 10
+                if any(artist["name"].lower() == item.artist.lower() for artist in track["artists"]):
+                    score += 5
+                if item.album and normalize_title(track["album"]["name"]) == normalize_title(item.album):
+                    score += 5
+                
+                track["score"] = score
+            
+            results["tracks"]["items"].sort(key=lambda x: x.get("score", 0), reverse=True)
+            return results["tracks"]["items"][0]  # Return the best match
+        
         return None
     
     def create_playlist(self, playlist_name: str, snapshot: PlaylistSnapshot) -> Any:
@@ -343,7 +357,6 @@ class SpotifyRepository(RemotePlaylistRepository):
                     break
                 
             for item in tracks:
-                logging.debug(item)
                 track = item.get("track")
                 if not track:  # Skip local files or unavailable tracks
                     continue
@@ -354,7 +367,8 @@ class SpotifyRepository(RemotePlaylistRepository):
                 playlist_item = PlaylistItem(
                     artist=artist,
                     album=album,
-                    title=track.get("name", "Unknown Title")
+                    title=track.get("name", "Unknown Title"),
+                    uri=track.get("uri", None)
                 )
                 result.add_item(playlist_item)
                 
@@ -386,9 +400,10 @@ class SpotifyRepository(RemotePlaylistRepository):
             raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
             
         for item in items:
-            track = self.fetch_media_item(item)
-            if track:
-                self.sp.playlist_remove_all_occurrences_of_items(self.playlist_id, [track["uri"]])
+            if item.uri:
+                self.sp.playlist_remove_all_occurrences_of_items(self.playlist_id, [item.uri])
+            else:
+                logging.warning(f"Track not found for item: {item.to_string(normalize=True)}")
 
 
 # Helper functions to get repository instances

@@ -8,6 +8,7 @@ from plexapi.playlist import Playlist as PlexPlaylist
 import plexapi
 from typing import List, Optional, Dict, Any
 from tqdm import tqdm
+from lib.normalize_title   import normalize_title
 
 from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz
 
@@ -32,22 +33,36 @@ class PlexRepository(RemotePlaylistRepository):
         try:
             logging.debug(f"Fetching Plex object for {item.to_string()}")
 
-            filters = {"artist.title": item.artist}
-            if item.album:
-                filters["album.title"] = item.album
+            normalized_title = normalize_title(item.title)
+            normalized_album = normalize_title(item.album) if item.album else None
 
             plex_items = self.server.library.section(self.plex_library).search(
                 libtype="track",
-                title=item.title,
-                filters=filters,
-                maxresults=10
+                title=normalized_title,
+                maxresults=50
             )
 
+            logging.info(f"Found {len(plex_items)} Plex items matching {item.to_string()}")
+
             for plex_item in plex_items:
-                if plex_item.title == item.title and plex_item.artist().title == item.artist:
-                    if item.album and plex_item.album().title != item.album:
-                        continue
-                    return plex_item
+                score = 0
+                if plex_item.title.lower() == item.title.lower():
+                    score += 20
+                elif normalized_title == normalize_title(plex_item.title):
+                    score += 10
+
+                if plex_item.artist().title.lower() == item.artist.lower():
+                    score += 5
+
+                if item.album and normalized_album == normalize_title(plex_item.album().title):
+                    score += 5
+                    
+                plex_item.score = score
+                logging.info(f"Score for {plex_item.title}: {score}")
+            
+            plex_items.sort(key=lambda x: getattr(x, 'score', 0), reverse=True)
+
+            logging.info(f"Best match for {item.to_string()}: {plex_items[0].title} with score {plex_items[0].score}")
             
             if plex_items:
                 return plex_items[0]
