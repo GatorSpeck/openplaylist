@@ -7,7 +7,7 @@ from ytmusicapi import YTMusic, OAuthCredentials
 
 from repositories.remote_playlist_repository import RemotePlaylistRepository, get_local_tz
 from response_models import PlaylistSnapshot, PlaylistItem
-from lib.normalize_title import normalize_title
+from lib.normalize import normalize_title
 
 class YouTubeMusicRepository(RemotePlaylistRepository):
     """Repository for YouTube Music playlists"""

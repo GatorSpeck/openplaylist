@@ -82,7 +82,14 @@ class TrackDetailsMixin:
     def track_number(cls) -> Mapped[Optional[int]]:
         """Track number"""
         return mapped_column(Integer, nullable=True)
+    
+    def get_artist(self) -> Optional[str]:
+        """Get the artist name, falling back to album artist if not set"""
+        return self.artist or self.album_artist or None
 
+    def get_album_artist(self) -> Optional[str]:
+        """Get the album artist name, falling back to artist if not set"""
+        return self.album_artist or self.artist or None
 
 class BaseNode(Base):
     __tablename__ = "base_elements"

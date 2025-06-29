@@ -43,7 +43,7 @@ import json
 from datetime import datetime, timezone
 from pydantic import BaseModel
 from enum import IntEnum
-from lib.normalize_title import normalize_title
+from lib.normalize import normalize_title
 
 import dotenv
 dotenv.load_dotenv(override=True)
@@ -592,9 +592,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             for music_file in matches:
                 score = 0
 
-                if music_file.artist.lower() == i.artist.lower():
+                if music_file.get_artist().lower() == i.artist.lower():
                     score += 10
-                elif normalize_title(music_file.artist.lower()) == normalize_title(i.artist.lower()):
+                elif normalize_title(music_file.get_artist().lower()) == normalize_title(i.artist.lower()):
                     score += 5
                 
                 if music_file.album and (music_file.album.lower() == i.album.lower()):

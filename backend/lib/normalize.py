@@ -29,3 +29,24 @@ def normalize_title(title: str) -> str:
         return title
     
     return ' '.join(normalized_tokens)
+
+def normalize_artist(artist: str) -> str:
+    """
+    Normalize artist names by removing common suffixes and extra spaces.
+    """
+    normalized_artist = artist.lower().strip().split()
+
+    normalized_tokens = []
+
+    for token in normalized_artist:
+        token = token.strip("-()[]")
+
+        if token == "the":
+            continue
+
+        normalized_tokens.append(token)
+    
+    if not normalized_tokens:
+        return artist
+
+    return ' '.join(normalized_tokens)

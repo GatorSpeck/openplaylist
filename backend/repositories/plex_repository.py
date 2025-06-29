@@ -8,7 +8,7 @@ from plexapi.playlist import Playlist as PlexPlaylist
 import plexapi
 from typing import List, Optional, Dict, Any
 from tqdm import tqdm
-from lib.normalize_title   import normalize_title
+from lib.normalize   import normalize_title
 
 from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz
 
@@ -59,15 +59,19 @@ class PlexRepository(RemotePlaylistRepository):
                     
                 plex_item.score = score
                 logging.info(f"Score for {plex_item.title}: {score}")
+
+                if score == 30:
+                    logging.info(f"Exact match found for {item.to_string()}: {plex_item.title}")
+                    return plex_item
+            
+            if not plex_items:
+                return None
             
             plex_items.sort(key=lambda x: getattr(x, 'score', 0), reverse=True)
 
             logging.info(f"Best match for {item.to_string()}: {plex_items[0].title} with score {plex_items[0].score}")
-            
-            if plex_items:
-                return plex_items[0]
-        
-            return None
+
+            return plex_items[0]
         except Exception as e:
             logging.error(f"Error fetching Plex object for {item.to_string()}: {e}")
             return None

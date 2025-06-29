@@ -148,6 +148,8 @@ class SpotifyRepository(RemotePlaylistRepository):
         self.redirect_uri = self.config.get("redirect_uri") or REDIRECT_URI
         
         self.sp = None
+
+        self.playlist_snapshots = {}
         
         # Set up authentication
         if access_token:
@@ -370,8 +372,12 @@ class SpotifyRepository(RemotePlaylistRepository):
                     title=track.get("name", "Unknown Title"),
                     uri=track.get("uri", None)
                 )
+
                 result.add_item(playlist_item)
                 
+            
+            self.playlist_snapshots[playlist_name] = result
+
             return result
         except Exception as e:
             logging.error(f"Error fetching Spotify playlist snapshot: {e}")
@@ -400,10 +406,23 @@ class SpotifyRepository(RemotePlaylistRepository):
             raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
             
         for item in items:
+            logging.info("Removing item from spotify playlist: %s", item.to_string())
             if item.uri:
                 self.sp.playlist_remove_all_occurrences_of_items(self.playlist_id, [item.uri])
+                logging.info("Removed item by URI: %s", item.uri)
             else:
-                logging.warning(f"Track not found for item: {item.to_string(normalize=True)}")
+                # try to find the track in the cached snapshot
+                snapshot = self.playlist_snapshots.get(playlist_name)
+                if snapshot:
+                    track = snapshot.search_track(item)
+
+                    if track and track.uri:
+                        self.sp.playlist_remove_all_occurrences_of_items(self.playlist_id, [track.uri])
+                        logging.info("Removed item by URI: %s", track.uri)
+                    else:
+                        logging.warning(f"Track not found in snapshot for item: {item.to_string(normalize=True)}")
+                else:
+                    logging.warning(f"Snapshot not found for playlist: {playlist_name}")
 
 
 # Helper functions to get repository instances

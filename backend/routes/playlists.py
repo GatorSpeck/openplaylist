@@ -21,6 +21,7 @@ from repositories.requests_cache_session import requests_cache_session
 from pydantic import BaseModel
 from typing import Dict, Optional, List, Union, Any
 from repositories.remote_repository_factory import create_remote_repository
+from repositories.remote_playlist_repository import SyncChange
 
 router = APIRouter()
 
@@ -478,12 +479,10 @@ def sync_playlist(
     repo: PlaylistRepository = Depends(get_playlist_repository)
 ):
     """
-    Sync a playlist with configured remote targets
+    Sync a playlist with configured remote targets using a unified sync plan
     
     Args:
         playlist_id: The ID of the playlist to sync
-        service: Optional filter for sync target service (e.g., 'plex', 'spotify', 'youtube')
-        target_id: Optional specific sync target ID to use
     """
     try:
         # Get all enabled sync targets for this playlist
@@ -505,7 +504,11 @@ def sync_playlist(
         
         db = Database.get_session()
         
-        # Sync to each configured target
+        # Step 1: Initialize all remote repositories and collect current snapshots
+        remote_repos = {}
+        current_snapshots = {}
+        old_snapshots = {}
+        
         for target in sync_targets:
             try:
                 # Parse the config
@@ -517,7 +520,7 @@ def sync_playlist(
                     # Use playlist name as fallback for Plex
                     playlist = repo.get_by_id(playlist_id)
                     target_name = playlist.name
-                    
+                
                 # Create the appropriate repository
                 remote_repo = create_remote_repository(
                     service=target.service,
@@ -526,38 +529,182 @@ def sync_playlist(
                 )
 
                 if remote_repo is None:
-                    raise HTTPException(status_code=400, detail=f"Unsupported service: {target.service}")
+                    raise Exception(f"Unsupported service: {target.service}")
                 
-                # Sync the playlist
-                remote_repo.sync_playlist(
-                    repo=repo,
-                    playlist_id=playlist_id,
-                    sync_target=target
-                )
+                # Store the repository and target name for later use
+                remote_repos[target.id] = {
+                    'repo': remote_repo,
+                    'target': target,
+                    'target_name': target_name or f"{target.service}_playlist"
+                }
                 
-                # Record successful sync
-                results["success"].append({
-                    "service": target.service,
-                    "target_id": target.id,
-                    "target_name": target_name
-                })
+                # Get current and old snapshots for unified planning
+                old_snapshots[target.id] = remote_repo.get_current_snapshot(target_name or f"{target.service}_playlist")
+                current_snapshots[target.id] = remote_repo.get_playlist_snapshot(target_name or f"{target.service}_playlist")
+                
+                logging.info(f"Initialized {target.service} repository for target {target.id}")
                 
             except Exception as e:
-                logging.error(f"Failed to sync to {target.service} target: {e}", exc_info=True)
+                logging.error(f"Failed to initialize {target.service} target {target.id}: {e}", exc_info=True)
                 results["failed"].append({
                     "service": target.service,
                     "target_id": target.id,
-                    "error": str(e)
+                    "error": f"Failed to initialize: {str(e)}"
                 })
         
-        # For backward compatibility, maintain synctoplex endpoint
-        if not results["success"] and not results["failed"]:
-            raise HTTPException(status_code=404, detail="No sync operations performed")
+        # If no repositories were successfully initialized, return early
+        if not remote_repos:
+            raise HTTPException(status_code=500, detail="Failed to initialize any remote repositories")
+        
+        # Step 2: Get the current local snapshot
+        playlist = repo.get_by_id(playlist_id)
+        if not playlist:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+        
+        # Use any remote repo to create the local snapshot (they all use the same method)
+        first_repo = next(iter(remote_repos.values()))['repo']
+        local_snapshot = first_repo.create_snapshot(playlist)
+        
+        # Step 3: Create individual sync plans and combine into unified plan
+        individual_plans = {}
+        unified_plan = None
+        
+        for target_id, repo_info in remote_repos.items():
+            try:
+                remote_repo = repo_info['repo']
+                target = repo_info['target']
+                target_name = repo_info['target_name']
+                
+                # Create sync plan for this target
+                sync_plan = remote_repo.create_sync_plan(
+                    old_remote_snapshot=old_snapshots.get(target_id),
+                    new_remote_snapshot=current_snapshots.get(target_id),
+                    new_local_snapshot=local_snapshot,
+                    sync_target=target
+                )
+                
+                individual_plans[target_id] = {
+                    'plan': sync_plan,
+                    'repo_info': repo_info
+                }
+
+                if not target.receiveEntryAdds:
+                    # remove sync changes with a source of remote
+                    sync_plan = [
+                        change for change in sync_plan
+                        if change.action != 'add' or change.target != 'remote'
+                    ]
+                
+                if not target.receiveEntryRemovals:
+                    # remove sync changes with a source of remote
+                    sync_plan = [
+                        change for change in sync_plan
+                        if change.action != 'remove' or change.target != 'remote'
+                    ]
+                
+                # Create or merge into unified plan
+                if unified_plan is None:
+                    # Use the first plan as the base unified plan
+                    unified_plan = sync_plan
+                else:
+                    # Merge this plan with the unified plan
+                    unified_plan = merge_sync_plans(unified_plan, sync_plan)
+                
+                logging.info(f"Created sync plan for {target.service} target {target_id}")
+                
+            except Exception as e:
+                logging.error(f"Failed to create sync plan for target {target_id}: {e}", exc_info=True)
+                results["failed"].append({
+                    "service": repo_info['target'].service,
+                    "target_id": target_id,
+                    "error": f"Failed to create sync plan: {str(e)}"
+                })
+        
+        # If we don't have a unified plan, we can't proceed
+        if unified_plan is None:
+            raise HTTPException(status_code=500, detail="Failed to create any sync plans")
+    
+        for change in unified_plan:
+            logging.info(f"Processing change: {change.action} {change.item.to_string()} (source: {change.source}, reason: {change.reason})")
+
+            # apply local changes first, only if the change is not from a remote source
+            if change.source != "local":
+                if change.action == 'add':
+                    logging.info(f"Adding {change.item.to_string()} to local playlist")
+                    result = repo.add_music_file(playlist_id, change.item, normalize=True)
+                    if not result:
+                        logging.info(f"Could not find music file for {change.item.to_string()}, adding as requested track")
+                        repo.add_requested_track(playlist_id, change.item)
+
+                if change.action == 'remove':
+                    logging.info(f"Removing {change.item.to_string()} from local playlist")
+                    repo.remove_music_file(playlist_id, change.item)
+
+            # Step 4: Apply the unified sync plan to each target
+            for target_id, plan_info in individual_plans.items():
+                try:
+                    repo_info = plan_info['repo_info']
+                    remote_repo = repo_info['repo']
+                    target = repo_info['target']
+                    target_name = repo_info['target_name']
+
+                    logging.info(f"Syncing with target: {target_name}")
+
+                    if target.receiveEntryAdds and change.action == "add":
+                        # check if the item is already in the remote snapshot
+                        if not current_snapshots[target_id].has(change.item):
+                            remote_repo.add_items(target_name, [change.item])
+
+                    if target.receiveEntryRemovals and change.action == "remove":
+                        # Apply remote removes
+                        if current_snapshots[target_id].has(change.item):
+                            remote_repo.remove_items(target_name, [change.item])
+                
+                except Exception as e:
+                    logging.error(f"Failed to apply sync plan for target {target_id}: {e}", exc_info=True)
+                    results["failed"].append({
+                        "service": repo_info['target'].service,
+                        "target_id": target_id,
+                        "error": f"Failed to apply sync plan: {str(e)}"
+                    })
+                    
+        # write all remote snapshots
+        for target_id, plan_info in individual_plans.items():
+            try:
+                repo_info = plan_info['repo_info']
+                remote_repo = repo_info['repo']
+                target_name = repo_info['target_name']
+
+                # Get the new snapshot after applying changes
+                new_snapshot = remote_repo.get_playlist_snapshot(target_name)
+                if new_snapshot:
+                    remote_repo.write_snapshot(new_snapshot)
+                    results["success"].append({
+                        "service": repo_info['target'].service,
+                        "target_id": target_id,
+                        "target_name": target_name
+                    })
+            except Exception as e:
+                logging.error(f"Failed to write snapshot for target {target_id}: {e}", exc_info=True)
+                results["failed"].append({
+                    "service": repo_info['target'].service,
+                    "target_id": target_id,
+                    "error": f"Failed to write snapshot: {str(e)}"
+                })
+        
+        # write local snapshot
+        new_local_snapshot = first_repo.create_snapshot(playlist)
+        first_repo.write_snapshot(new_local_snapshot)
         
         return {
             "status": "success" if not results["failed"] else "partial",
             "synced": results["success"],
-            "failed": results["failed"]
+            "failed": results["failed"],
+            "summary": {
+                "total_targets": len(sync_targets),
+                "successful": len(results["success"]),
+                "failed": len(results["failed"])
+            }
         }
     
     except HTTPException:
@@ -566,3 +713,10 @@ def sync_playlist(
     except Exception as e:
         logging.error(f"Failed to sync playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to sync playlist")
+    finally:
+        if 'db' in locals():
+            db.close()
+
+def merge_sync_plans(plan1, plan2):
+    """Merge two sync plans (lists of SyncChange instances) into a unified plan"""
+    return plan1 + plan2
