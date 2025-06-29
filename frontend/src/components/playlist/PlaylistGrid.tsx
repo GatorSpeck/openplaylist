@@ -86,18 +86,18 @@ const Row = memo(({ data, index, style }) => {
       {(provided, snapshot) => (
         <PlaylistEntryRow 
           ref={provided.innerRef}
-          {...provided.draggableProps} // Spread draggableProps on the main component
+          {...provided.draggableProps}
           style={{
             ...style,
             ...provided.draggableProps.style,
           }}
           className={`playlist-grid-row ${track.order % 2 === 0 ? 'even-row' : 'odd-row'} ${sortColumn !== 'order' ? 'drag-disabled' : ''}`}
           isDragging={snapshot.isDragging}
-          onToggle={() => toggleTrackSelection(track.id)}
+          onToggle={() => toggleTrackSelection(track.id)} // Use track.id consistently
           onContextMenu={(e) => handleContextMenu(e, track)}
-          isChecked={selectedEntries.includes(track.id)}
+          isChecked={selectedEntries.includes(track.id)} // Use track.id consistently
           entry={track}
-          dragHandleProps={provided.dragHandleProps} // Pass dragHandleProps separately
+          dragHandleProps={provided.dragHandleProps}
         />
       )}
     </Draggable>
@@ -551,18 +551,21 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     }
   };
 
-  const toggleTrackSelection = (index: number) => {
+  const toggleTrackSelection = (trackId: number) => {
     setSelectedEntries(prev => {
-      const newSelection = prev.includes(index)
-        ? prev.filter(i => i !== index)
-        : [...prev, index];
-      setAllTracksSelected(newSelection.length === entries.length);
+      const newSelection = prev.includes(trackId)
+        ? prev.filter(i => i !== trackId)
+        : [...prev, trackId];
+    
+      // Update the "all selected" state based on the new selection
+      setAllTracksSelected(newSelection.length === entries.filter(entry => entry && entry.id).length);
       return newSelection;
     });
   };
 
   const clearTrackSelection = () => {
     setSelectedEntries([]);
+    setAllTracksSelected(false);
   };
 
   const removeSelectedTracks = async () => {
@@ -573,10 +576,15 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const toggleAllTracks = () => {
     if (allPlaylistEntriesSelected) {
       setSelectedEntries([]);
+      setAllTracksSelected(false);
     } else {
-      setSelectedEntries(entries.map((_, index) => index));
+      // Select all track IDs that exist
+      const allTrackIds = entries
+        .filter(entry => entry && entry.id) // Only include entries that have an ID
+        .map(entry => entry.id);
+      setSelectedEntries(allTrackIds);
+      setAllTracksSelected(true);
     }
-    setAllTracksSelected(!allPlaylistEntriesSelected);
   };
 
   const handleSnackbarClose = () => {
@@ -1026,7 +1034,11 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="playlist-grid-header-row">
             <div className="grid-cell">
-              <input type="checkbox" checked={allEntriesSelected} onChange={toggleAllTracks} />
+              <input 
+                type="checkbox" 
+                checked={allPlaylistEntriesSelected} 
+                onChange={toggleAllTracks} 
+              />
               <span className="clickable" onClick={() => handleSort('order')}>
                 # {getSortIndicator('order')}
               </span>

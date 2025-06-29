@@ -232,76 +232,95 @@ class RemotePlaylistRepository(ABC):
         # For subsequent syncs, we need to determine what actually changed
         # by comparing the three snapshots carefully
         
+        # Create sets for efficient lookups
+        old_remote_items = {item.to_string(): item for item in old_remote_snapshot.items}
+        new_remote_items = {item.to_string(): item for item in new_remote_snapshot.items} if new_remote_snapshot else {}
+        new_local_items = {item.to_string(): item for item in new_local_snapshot.items}
+    
         # 1. Detect local changes since last sync
-        local_adds = set()
-        local_removes = set()
+        local_adds = {}  # Use dict to store actual items, not just strings
+        local_removes = {}
         
-        for item in new_local_snapshot.items:
-            if not old_remote_snapshot.has(item):
+        for item_str, item in new_local_items.items():
+            if item_str not in old_remote_items:
                 # This item is in current local but wasn't in our last known remote state
-                # This could be a local addition OR a remote addition we already received
-                if new_remote_snapshot and new_remote_snapshot.has(item):
+                if item_str in new_remote_items:
                     # Item exists in both current local and current remote
                     # This means it was likely added remotely and we already synced it
-                    pass  # No action needed
+                    logging.debug(f"Item {item_str} exists in both local and remote, no action needed")
                 else:
                     # Item exists in local but not in current remote
                     # This is a genuine local addition
-                    local_adds.add(item.to_string())
+                    local_adds[item_str] = item
+                    logging.debug(f"Detected local addition: {item_str}")
         
-        for item in old_remote_snapshot.items:
-            if not new_local_snapshot.has(item):
+        for item_str, item in old_remote_items.items():
+            if item_str not in new_local_items:
                 # This item was in our last known remote state but isn't in current local
-                # This could be a local removal OR a remote removal we already processed
-                if new_remote_snapshot and new_remote_snapshot.has(item):
+                if item_str in new_remote_items:
                     # Item still exists in current remote but not in current local
                     # This is a genuine local removal
-                    local_removes.add(item.to_string())
+                    local_removes[item_str] = item
+                    logging.debug(f"Detected local removal: {item_str}")
                 else:
                     # Item doesn't exist in either current local or current remote
                     # This means it was removed remotely and we already synced it
-                    pass  # No action needed
-        
+                    logging.debug(f"Item {item_str} removed from both local and remote, no action needed")
+    
         # 2. Detect remote changes since last sync
-        remote_adds = set()
-        remote_removes = set()
+        remote_adds = {}
+        remote_removes = {}
         
         if new_remote_snapshot:
-            for item in new_remote_snapshot.items:
-                if not old_remote_snapshot.has(item):
+            for item_str, item in new_remote_items.items():
+                if item_str not in old_remote_items:
                     # This item is in current remote but wasn't in our last known remote state
                     # This is a genuine remote addition (unless we just added it locally)
-                    if item.to_string() not in local_adds:
-                        remote_adds.add(item.to_string())
+                    if item_str not in local_adds:
+                        remote_adds[item_str] = item
+                        logging.debug(f"Detected remote addition: {item_str}")
             
-            for item in old_remote_snapshot.items:
-                if not new_remote_snapshot.has(item):
+            for item_str, item in old_remote_items.items():
+                if item_str not in new_remote_items:
                     # This item was in our last known remote state but isn't in current remote
                     # This is a genuine remote removal (unless we just removed it locally)
-                    if item.to_string() not in local_removes:
-                        remote_removes.add(item.to_string())
-        
-        # 3. Apply sync configuration to create the plan
+                    if item_str not in local_removes:
+                        remote_removes[item_str] = item
+                        logging.debug(f"Detected remote removal: {item_str}")
+    
+        # 3. Apply sync configuration to create the plan with duplicate detection
         if send_adds:
-            for item in new_local_snapshot.items:
-                if item.to_string() in local_adds:
-                    plan.add_remote_change('add', item, 'local', 'Item added locally')
-        
+            for item_str, item in local_adds.items():
+                # Double-check that we're not adding a duplicate
+                if new_remote_snapshot and new_remote_snapshot.has(item):
+                    logging.warning(f"Skipping add to remote - item {item_str} already exists in remote playlist")
+                    continue
+                plan.add_remote_change('add', item, 'local', 'Item added locally')
+    
         if send_removes:
-            for item in old_remote_snapshot.items:
-                if item.to_string() in local_removes:
-                    plan.add_remote_change('remove', item, 'local', 'Item removed locally')
-        
+            for item_str, item in local_removes.items():
+                # Only remove if the item actually exists in the current remote snapshot
+                if new_remote_snapshot and not new_remote_snapshot.has(item):
+                    logging.warning(f"Skipping remove from remote - item {item_str} doesn't exist in remote playlist")
+                    continue
+                plan.add_remote_change('remove', item, 'local', 'Item removed locally')
+    
         if receive_adds and new_remote_snapshot:
-            for item in new_remote_snapshot.items:
-                if item.to_string() in remote_adds:
-                    plan.add_local_change('add', item, 'remote', 'Item added remotely')
-        
+            for item_str, item in remote_adds.items():
+                # Double-check that we're not adding a duplicate to local
+                if new_local_snapshot.has(item):
+                    logging.warning(f"Skipping add to local - item {item_str} already exists in local playlist")
+                    continue
+                plan.add_local_change('add', item, 'remote', 'Item added remotely')
+    
         if receive_removes:
-            for item in old_remote_snapshot.items:
-                if item.to_string() in remote_removes:
-                    plan.add_local_change('remove', item, 'remote', 'Item removed remotely')
-        
+            for item_str, item in remote_removes.items():
+                # Only remove if the item actually exists in the current local snapshot
+                if not new_local_snapshot.has(item):
+                    logging.warning(f"Skipping remove from local - item {item_str} doesn't exist in local playlist")
+                    continue
+                plan.add_local_change('remove', item, 'remote', 'Item removed remotely')
+    
         return plan
     
     def apply_sync_plan(self, repo, playlist_id: int, remote_playlist_name: str, plan: SyncPlan):
@@ -403,8 +422,7 @@ class RemotePlaylistRepository(ABC):
         sync_plan = self.create_sync_plan(old_remote_snapshot, new_remote_snapshot, new_local_snapshot, sync_target)
         self.apply_sync_plan(repo, playlist_id, remote_playlist_name, sync_plan)
         
-        # Always write the new remote snapshot to track the state
+        # Finally, create a new snapshot and persist it
+        new_remote_snapshot = self.get_playlist_snapshot(remote_playlist_name)
         self.write_snapshot(new_remote_snapshot)
         logging.info(f"Wrote new remote snapshot to DB for future comparison")
-
-    # ...existing code... (abstract methods remain the same)
