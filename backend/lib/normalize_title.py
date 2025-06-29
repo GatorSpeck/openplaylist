@@ -19,7 +19,7 @@ def normalize_title(title: str) -> str:
         if token.startswith("remaster"):
             continue
             
-        if token in ["edition", "deluxe", "special", "version", "album", "single", "remix"]:
+        if token in ["edition", "deluxe", "special", "version", "album", "single", "remix", "mono", "stereo", "mix"]:
             continue
 
         if token:

@@ -227,7 +227,7 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose })
           >
             <option value="plex">Plex</option>
             <option value="spotify">Spotify</option>
-            {/* <option value="youtube">YouTube Music</option> */}
+            <option value="youtube">YouTube Music</option>
           </select>
         </div>
         
