@@ -66,7 +66,7 @@ class PlaylistEntry extends PlaylistEntryStub {
     this.date_added = entryData.date_added || null;
     
     // Type-specific IDs
-    this.music_file_id = entryData.music_file_id || null;
+    this.music_file_id = entryData.music_file_id || entryData.id || null;
     this.lastfm_track_id = entryData.lastfm_track_id || null;
     this.requested_track_id = entryData.requested_track_id || null;
     this.requested_album_id = entryData.requested_album_id || null;
