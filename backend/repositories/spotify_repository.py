@@ -333,13 +333,6 @@ class SpotifyRepository(RemotePlaylistRepository):
             if not self.is_authenticated():
                 logging.error("Not authenticated with Spotify")
                 return None
-                
-            # For Spotify, we ignore playlist_name and use the URI from config
-            playlist_id = self.playlist_id
-            if not playlist_id:
-                raise ValueError("No playlist ID provided in config")
-                
-            playlist = self.sp.playlist(playlist_id)
             
             result = PlaylistSnapshot(
                 name=playlist_name,  # Use the provided name for consistency
@@ -349,7 +342,11 @@ class SpotifyRepository(RemotePlaylistRepository):
             
             # Get all tracks (handle pagination)
             tracks = []
-            results_page = self.sp.playlist_tracks(playlist_id)
+            results_page = self.sp.playlist_tracks(playlist_name)
+
+            if not results_page or "items" not in results_page:
+                logging.error(f"Failed to fetch tracks for playlist: {playlist_name}")
+                return None
             
             while True:
                 tracks.extend(results_page.get("items", []))

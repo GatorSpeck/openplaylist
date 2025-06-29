@@ -607,6 +607,18 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             matches = sorted(matches, key=lambda x: x.score, reverse=True)
             if not matches:
                 logging.warning(f"No matching music file found for {i.artist} - {i.album} - {i.title}")
+
+                # add as RequestedTrack instead
+                requested_track = RequestedTrackEntry(
+                    details=TrackDetails(
+                        artist=i.artist,
+                        title=i.title,
+                        album=i.album
+                    ),
+                    entry_type="requested"
+                )
+                
+                music_files.append(requested_track)
                 continue
             
             # Create a new MusicFileEntryDB object
