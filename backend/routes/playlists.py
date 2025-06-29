@@ -508,6 +508,13 @@ def sync_playlist(
         remote_repos = {}
         current_snapshots = {}
         old_snapshots = {}
+
+        local_snapshot = None
+
+        # Step 2: Get the current local snapshot
+        playlist = repo.get_by_id(playlist_id)
+        if not playlist:
+            raise HTTPException(status_code=404, detail="Playlist not found")
         
         for target in sync_targets:
             try:
@@ -541,7 +548,14 @@ def sync_playlist(
                 # Get current and old snapshots for unified planning
                 old_snapshots[target.id] = remote_repo.get_current_snapshot(target_name or f"{target.service}_playlist")
                 current_snapshots[target.id] = remote_repo.get_playlist_snapshot(target_name or f"{target.service}_playlist")
-                
+
+                if not current_snapshots[target.id]:
+                    # remote playlist doesn't exist - let's create it
+                    logging.info(f"Creating new remote playlist for {target.service} target {target.id}")
+                    if local_snapshot is None:
+                        local_snapshot = remote_repo.create_snapshot(playlist)
+                    remote_repo.create_playlist(target_name or f"{target.service}_playlist", local_snapshot)
+
                 logging.info(f"Initialized {target.service} repository for target {target.id}")
                 
             except Exception as e:
@@ -556,14 +570,10 @@ def sync_playlist(
         if not remote_repos:
             raise HTTPException(status_code=500, detail="Failed to initialize any remote repositories")
         
-        # Step 2: Get the current local snapshot
-        playlist = repo.get_by_id(playlist_id)
-        if not playlist:
-            raise HTTPException(status_code=404, detail="Playlist not found")
-        
         # Use any remote repo to create the local snapshot (they all use the same method)
         first_repo = next(iter(remote_repos.values()))['repo']
-        local_snapshot = first_repo.create_snapshot(playlist)
+        if local_snapshot is None:
+            local_snapshot = first_repo.create_snapshot(playlist)
         
         # Step 3: Create individual sync plans and combine into unified plan
         individual_plans = {}
@@ -650,14 +660,16 @@ def sync_playlist(
 
                     logging.info(f"Syncing with target: {target_name}")
 
+                    this_snapshot = current_snapshots[target_id]
+
                     if target.receiveEntryAdds and change.action == "add":
                         # check if the item is already in the remote snapshot
-                        if not current_snapshots[target_id].has(change.item):
+                        if (not this_snapshot) or (not this_snapshot.has(change.item)):
                             remote_repo.add_items(target_name, [change.item])
 
                     if target.receiveEntryRemovals and change.action == "remove":
                         # Apply remote removes
-                        if current_snapshots[target_id].has(change.item):
+                        if (not this_snapshot) or current_snapshots[target_id].has(change.item):
                             remote_repo.remove_items(target_name, [change.item])
                 
                 except Exception as e:

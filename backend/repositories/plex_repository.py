@@ -76,13 +76,15 @@ class PlexRepository(RemotePlaylistRepository):
             logging.error(f"Error fetching Plex object for {item.to_string()}: {e}")
             return None
     
-    def create_playlist(self, playlist_name: str, snapshot: PlaylistSnapshot) -> PlexPlaylist:
+    def create_playlist(self, playlist_name: str, snapshot: Optional[PlaylistSnapshot]) -> PlexPlaylist:
         """Create a new playlist in Plex"""
         audio_items = []
-        for item in snapshot.items:
-            audio = self.fetch_media_item(item)
-            if audio:
-                audio_items.append(audio)
+        
+        if snapshot:
+            for item in snapshot.items:
+                audio = self.fetch_media_item(item)
+                if audio:
+                    audio_items.append(audio)
 
         playlist = PlexPlaylist.create(self.server, title=playlist_name, items=audio_items)
         return playlist

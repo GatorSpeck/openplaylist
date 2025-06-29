@@ -169,6 +169,9 @@ class RemotePlaylistRepository(ABC):
         send_removes = sync_target.sendEntryRemovals
         receive_adds = sync_target.receiveEntryAdds
         receive_removes = sync_target.receiveEntryRemovals
+
+        local_changed_since_last_sync = False
+        remote_changed_since_last_sync = False
         
         # If we don't have an old snapshot, treat as initial sync
         if not old_remote_snapshot:
