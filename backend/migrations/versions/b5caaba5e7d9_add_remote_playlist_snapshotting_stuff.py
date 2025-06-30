@@ -34,7 +34,7 @@ def upgrade() -> None:
     op.create_table('sync_targets',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('playlist_id', sa.Integer(), nullable=False),
-    sa.Column('service', sa.String(), nullable=False),
+    sa.Column('service', sa.String(length=50), nullable=False),
     sa.Column('config', sa.Text(), nullable=False),
     sa.Column('enabled', sa.Boolean(), nullable=True),
     sa.Column('send_entry_adds', sa.Boolean(), nullable=True),

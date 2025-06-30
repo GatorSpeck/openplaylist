@@ -332,7 +332,7 @@ class SyncTargetDB(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     playlist_id = Column(Integer, ForeignKey("playlists.id", ondelete="CASCADE"), nullable=False)
-    service = Column(String, nullable=False)  # 'plex', 'spotify', 'youtube'
+    service = Column(String(50), nullable=False)  # 'plex', 'spotify', 'youtube'
     config = Column(Text, nullable=False)  # JSON string with service-specific config
     enabled = Column(Boolean, default=True)
     
