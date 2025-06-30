@@ -36,6 +36,50 @@ class PlexRepository(RemotePlaylistRepository):
             normalized_title = normalize_title(item.title)
             normalized_album = normalize_title(item.album) if item.album else None
 
+            def score_plex_results(items):
+                for plex_item in items:
+                    score = 0
+                    if plex_item.title.lower() == item.title.lower():
+                        score += 20
+                    elif normalized_title == normalize_title(plex_item.title):
+                        score += 10
+
+                    if plex_item.artist().title.lower() == item.artist.lower():
+                        score += 5
+
+                    if item.album and normalized_album == normalize_title(plex_item.album().title):
+                        score += 5
+                        
+                    plex_item.score = score
+                    logging.info(f"Score for {plex_item.title}: {score}")
+
+                    if score == 30:
+                        logging.info(f"Exact match found for {item.to_string()}: {plex_item.title}")
+                        return [plex_item]
+                
+                items.sort(key=lambda x: getattr(x, 'score', 0), reverse=True)
+                return items
+            
+            filters = {
+                "track.artist": item.artist,
+                "track.album": item.album
+            } if item.album else {
+                "artist": item.artist
+            }
+            
+            plex_items = self.server.library.section(self.plex_library).search(
+                libtype="track",
+                title=normalized_title,
+                filters=filters,
+                maxresults=10
+            )
+
+            plex_items = score_plex_results(plex_items)
+
+            if plex_items and plex_items[0].score == 30:
+                return plex_items[0]
+
+            # no exact match - try a wider search
             plex_items = self.server.library.section(self.plex_library).search(
                 libtype="track",
                 title=normalized_title,
@@ -43,31 +87,11 @@ class PlexRepository(RemotePlaylistRepository):
             )
 
             logging.info(f"Found {len(plex_items)} Plex items matching {item.to_string()}")
-
-            for plex_item in plex_items:
-                score = 0
-                if plex_item.title.lower() == item.title.lower():
-                    score += 20
-                elif normalized_title == normalize_title(plex_item.title):
-                    score += 10
-
-                if plex_item.artist().title.lower() == item.artist.lower():
-                    score += 5
-
-                if item.album and normalized_album == normalize_title(plex_item.album().title):
-                    score += 5
-                    
-                plex_item.score = score
-                logging.info(f"Score for {plex_item.title}: {score}")
-
-                if score == 30:
-                    logging.info(f"Exact match found for {item.to_string()}: {plex_item.title}")
-                    return plex_item
+            
+            plex_items = score_plex_results(plex_items)
             
             if not plex_items:
                 return None
-            
-            plex_items.sort(key=lambda x: getattr(x, 'score', 0), reverse=True)
 
             logging.info(f"Best match for {item.to_string()}: {plex_items[0].title} with score {plex_items[0].score}")
 
@@ -79,7 +103,7 @@ class PlexRepository(RemotePlaylistRepository):
     def create_playlist(self, playlist_name: str, snapshot: Optional[PlaylistSnapshot]) -> PlexPlaylist:
         """Create a new playlist in Plex"""
         audio_items = []
-        
+
         if snapshot:
             for item in snapshot.items:
                 audio = self.fetch_media_item(item)

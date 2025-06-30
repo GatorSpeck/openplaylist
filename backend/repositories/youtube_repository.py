@@ -30,7 +30,13 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
         # You may need to customize this based on your authentication method
         # For now, using default authentication
         try:
-            self.ytmusic = YTMusic("oauth.json", oauth_credentials=OAuthCredentials(client_id=os.getenv("YTMUSIC_CLIENT_ID"), client_secret=os.getenv("YTMUSIC_CLIENT_SECRET")))
+            oath_path = os.getenv("YTMUSIC_OAUTH_PATH", "oauth.json")
+            
+            self.ytmusic = YTMusic(oath_path, oauth_credentials=OAuthCredentials(
+                client_id=os.getenv("YTMUSIC_CLIENT_ID"),
+                client_secret=os.getenv("YTMUSIC_CLIENT_SECRET"))
+            )
+
             logging.info("YouTube Music client initialized successfully")
         except Exception as e:
             logging.error(f"Failed to initialize YouTube Music client: {e}")
