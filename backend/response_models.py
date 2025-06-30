@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Union, Literal
+from typing import List, Optional, Union, Literal, Dict
 from enum import Enum
 from datetime import datetime
 from models import (
@@ -21,6 +21,8 @@ from models import (
 )
 from abc import ABC, abstractmethod
 import logging
+import difflib
+from lib.normalize import normalize_title, normalize_artist
 
 
 class TrackDetails(BaseModel):
@@ -823,3 +825,65 @@ class ArtistSearchResult(SearchResultMixin, Artist):
 
 class TrackSearchResult(SearchResultMixin, MusicFile):
     pass
+
+class SyncTargetConfig(BaseModel):
+    """Configuration for a sync target"""
+    playlist_name: Optional[str] = None
+    playlist_uri: Optional[str] = None
+    # Add other configuration fields as needed
+
+class SyncTarget(BaseModel):
+    """Model for playlist sync targets"""
+    id: Optional[int] = None
+    service: str  # 'plex', 'spotify', 'youtube'
+    config: Dict[str, str] = {}
+    enabled: bool = True
+    sendEntryAdds: bool = True
+    sendEntryRemovals: bool = True
+    receiveEntryAdds: bool = True
+    receiveEntryRemovals: bool = True
+
+class PlaylistItem(BaseModel):
+    artist: str
+    album: Optional[str] = None
+    title: str
+    uri: Optional[str] = None  # URI for the item, if applicable (e.g. for Spotify)
+
+    def to_string(self, normalize=False):
+        if normalize:
+            return f"{normalize_artist(self.artist)} - {normalize_title(self.title)}"
+        
+        return f"{self.artist} - {self.title}"
+
+    def __hash__(self):
+        return hash(self.to_string(normalize=True))
+
+class PlaylistSnapshot(BaseModel):
+    name: str
+    last_updated: datetime
+    items: List[PlaylistItem]
+    item_set: set = set()
+
+    def has(self, item: PlaylistItem):
+        return item.to_string(normalize=True) in self.item_set
+
+    def add_item(self, item: PlaylistItem):
+        self.items.append(item)
+        self.item_set.add(item.to_string(normalize=True))
+    
+    def search_track(self, item: PlaylistItem):
+        # Search for a track in the playlist snapshot
+        for existing_item in self.items:
+            if (normalize_artist(existing_item.artist) == normalize_artist(item.artist) and
+                normalize_title(existing_item.title) == normalize_title(item.title)):
+                return existing_item
+            
+        return None
+
+    def diff(self, other):
+        # use difflib to compare the two playlists and return the differences
+        left_contents = [item.to_string(normalize=True) for item in self.items]
+        right_contents = [item.to_string(normalize=True) for item in other.items]
+        diff = difflib.ndiff(left_contents, right_contents)
+        return list(diff)
+    

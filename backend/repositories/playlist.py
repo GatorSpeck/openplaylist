@@ -12,7 +12,8 @@ from models import (
     BaseNode,
     AlbumDB,
     AlbumTrackDB,
-    RequestedAlbumEntryDB
+    RequestedAlbumEntryDB,
+    SyncTargetDB
 )
 from response_models import (
     Playlist,
@@ -29,7 +30,9 @@ from response_models import (
     AlbumTrack,
     Album,
     RequestedAlbumEntry,
-    SearchQuery
+    SearchQuery,
+    SyncTarget,
+    TrackDetails
 )
 from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 from sqlalchemy import select, tuple_, and_, func, or_, case
@@ -40,6 +43,7 @@ import json
 from datetime import datetime, timezone
 from pydantic import BaseModel
 from enum import IntEnum
+from lib.normalize import normalize_title
 
 import dotenv
 dotenv.load_dotenv(override=True)
@@ -551,65 +555,133 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         
         # Commit outside of no_autoflush block
         self.session.commit()
-    
-    def add_music_file(self, playlist_id: int, item):
+
+    def add_requested_track(self, playlist_id: int, item):
         if not isinstance(item, list):
             item = [item]
 
+        items = [RequestedTrackEntry(
+            details=TrackDetails(
+                artist=i.artist,
+                title=i.title,
+                album=i.album
+            ),
+            entry_type="requested"
+        ) for i in item]
+
+        # Add to session and commit
+        self.add_entries(playlist_id, items)
+        return items
+    
+    def add_music_file(self, playlist_id: int, item, normalize=False):
+        if not isinstance(item, list):
+            item = [item]
+        
         music_files = []
         for i in item:
             # look up music file by path
-            music_file = (
+            matches = (
                 self.session.query(MusicFileDB)
-                .filter(MusicFileDB.title == i.title)
-                .filter(or_(MusicFileDB.artist == i.artist, MusicFileDB.album_artist == i.artist))
-                .filter(MusicFileDB.album == i.album)
-                .first()
+                .filter(
+                    func.lower(MusicFileDB.title) == normalize_title(i.title) if normalize 
+                    else func.lower(MusicFileDB.title) == func.lower(i.title)
+                )
+                .all()
             )
 
-            if music_file is None:
-                logging.warning(f"Music file {i.artist} - {i.album} - {i.title} not found")
+            for music_file in matches:
+                score = 0
+
+                if music_file.get_artist().lower() == i.artist.lower():
+                    score += 10
+                elif normalize_title(music_file.get_artist().lower()) == normalize_title(i.artist.lower()):
+                    score += 5
+                
+                if music_file.album and (music_file.album.lower() == i.album.lower()):
+                    score += 10
+                elif music_file.album and normalize_title(music_file.album.lower()) == normalize_title(i.album.lower()):
+                    score += 5
+                
+                music_file.score = score
+            
+            matches = sorted(matches, key=lambda x: x.score, reverse=True)
+            if not matches:
+                logging.warning(f"No matching music file found for {i.artist} - {i.album} - {i.title}")
+
+                # add as RequestedTrack instead
+                requested_track = RequestedTrackEntry(
+                    details=TrackDetails(
+                        artist=i.artist,
+                        title=i.title,
+                        album=i.album
+                    ),
+                    entry_type="requested"
+                )
+                
+                music_files.append(requested_track)
                 continue
             
             # Create a new MusicFileEntryDB object
             music_file_entry = MusicFileEntry(
-                music_file_id=music_file.id,
+                music_file_id=matches[0].id,
                 entry_type="music_file"
             )
 
             music_files.append(music_file_entry)
         
+        if not music_files:
+            return None
+        
         logging.info(f"Matched {len(music_files)} music files to add to playlist {playlist_id}")
 
         # Add to session and commit
         self.add_entries(playlist_id, music_files)
+        return music_files
 
-    def remove_music_file(self, playlist_id: int, item):
-        music_file = (
-            self.session.query(MusicFileDB)
-            .filter(MusicFileDB.title == item.title)
-            .filter(MusicFileDB.artist == item.artist)
-            .filter(MusicFileDB.album == item.album)
-            .first()
-        )
-
-        if music_file is None:
-            logging.error(f"Music file not found")
-            return None
+    def remove_music_file(self, playlist_id: int, item, normalize=True):
+        # remove any music files in the playlist matching the item title/artist/album
+        if not isinstance(item, list):
+            item = [item]
         
-        entry = (
-            self.session.query(MusicFileEntryDB)
-            .filter(MusicFileEntryDB.playlist_id == playlist_id)
-            .filter(MusicFileEntryDB.music_file_id == music_file.id)
-            .first()
-        )
+        for i in item:
+            title_to_use = normalize_title(i.title) if normalize else i.title
 
-        if entry:
-            self.session.delete(entry)
+            # Find the music file entry in the playlist that matches the criteria
+            entries = (
+                self.session.query(MusicFileEntryDB)
+                .join(MusicFileDB, MusicFileEntryDB.music_file_id == MusicFileDB.id)
+                .filter(MusicFileEntryDB.playlist_id == playlist_id)
+                .filter(func.lower(MusicFileDB.title).startswith(func.lower(title_to_use)))
+                .all()
+            )
+
+            if not entries:
+                logging.warning(f"No matching music file entry found for {i.artist} - {i.album} - {i.title} in playlist {playlist_id}")
+                continue
+
+            for entry in entries:
+                score = 0
+                if entry.details.title.lower() == title_to_use.lower():
+                    score += 10
+                elif normalize_title(entry.details.title.lower()) == normalize_title(title_to_use.lower()):
+                    score += 5
+
+                if entry.details.artist.lower() == i.artist.lower():
+                    score += 10
+
+                if entry.details.album and (entry.details.album.lower() == i.album.lower()):
+                    score += 10
+                elif entry.details.album and normalize_title(entry.details.album.lower()) == normalize_title(i.album.lower()):
+                    score += 5
+
+                if score < 10:
+                    continue
+                
+                logging.info(f"Removing music file entry {entry.id} from playlist {playlist_id}")
+                self.session.delete(entry)
+
             self.session.commit()
-        else:
-            logging.warning(f"Entry not found in playlist {playlist_id}")
-
+                    
     def insert_entry(self, playlist_id: int, entry, new_index: int = -1):
         logging.info(f"Adding entry {entry} to playlist {playlist_id} at index {new_index}")
         def get_insert_location():
@@ -1096,3 +1168,110 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         # logging.info(list([e.order for e in entries]))
         
         self.session.commit()
+
+    def get_sync_targets(self, playlist_id: int) -> List[SyncTarget]:
+        """Get all sync targets for a playlist"""
+        # Check if playlist exists
+        playlist = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
+        if not playlist:
+            raise ValueError(f"Playlist with ID {playlist_id} not found")
+        
+        # Get sync targets from the database
+        targets = self.session.query(SyncTargetDB).filter(SyncTargetDB.playlist_id == playlist_id).all()
+        
+        # Convert to Pydantic models
+        return [SyncTarget(
+            id=target.id,
+            service=target.service,
+            config=json.loads(target.config),
+            enabled=target.enabled,
+            sendEntryAdds=target.send_entry_adds,
+            sendEntryRemovals=target.send_entry_removals,
+            receiveEntryAdds=target.receive_entry_adds,
+            receiveEntryRemovals=target.receive_entry_removals
+        ) for target in targets]
+
+    def create_sync_target(self, playlist_id: int, target: SyncTarget) -> SyncTarget:
+        """Create a new sync target for a playlist"""
+        try:
+            # Check if playlist exists
+            playlist = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
+            if not playlist:
+                raise ValueError(f"Playlist with ID {playlist_id} not found")
+            
+            # Validate service
+            if target.service not in ['plex', 'spotify', 'youtube']:
+                raise ValueError(f"Invalid service: {target.service}")
+            
+            # Create new sync target
+            new_target = SyncTargetDB(
+                playlist_id=playlist_id,
+                service=target.service,
+                config=json.dumps(target.config),
+                enabled=target.enabled,
+                send_entry_adds=target.sendEntryAdds,
+                send_entry_removals=target.sendEntryRemovals,
+                receive_entry_adds=target.receiveEntryAdds,
+                receive_entry_removals=target.receiveEntryRemovals
+            )
+            
+            self.session.add(new_target)
+            self.session.commit()
+            
+            # Set the ID and return
+            target.id = new_target.id
+            return target
+        except Exception as e:
+            self.session.rollback()
+            raise e
+        finally:
+            self.session.close()
+
+    def update_sync_target(self, playlist_id: int, target: SyncTarget) -> SyncTarget:
+        """Update an existing sync target"""
+        try:
+            # Check if sync target exists and belongs to this playlist
+            db_target = self.session.query(SyncTargetDB).filter(
+                SyncTargetDB.id == target.id,
+                SyncTargetDB.playlist_id == playlist_id
+            ).first()
+            
+            if not db_target:
+                raise ValueError(f"Sync target with ID {target.id} not found for playlist {playlist_id}")
+            
+            # Update fields
+            db_target.service = target.service
+            db_target.config = json.dumps(target.config)
+            db_target.enabled = target.enabled
+            db_target.send_entry_adds = target.sendEntryAdds
+            db_target.send_entry_removals = target.sendEntryRemovals
+            db_target.receive_entry_adds = target.receiveEntryAdds
+            db_target.receive_entry_removals = target.receiveEntryRemovals
+
+            self.session.commit()
+            return target
+        except Exception as e:
+            self.session.rollback()
+            raise e
+        finally:
+            self.session.close()
+
+    def delete_sync_target(self, playlist_id: int, target_id: int) -> None:
+        """Delete a sync target"""
+        try:
+            # Check if sync target exists and belongs to this playlist
+            db_target = self.session.query(SyncTargetDB).filter(
+                SyncTargetDB.id == target_id,
+                SyncTargetDB.playlist_id == playlist_id
+            ).first()
+            
+            if not db_target:
+                raise ValueError(f"Sync target with ID {target_id} not found for playlist {playlist_id}")
+
+            self.session.delete(db_target)
+            self.session.commit()
+        except Exception as e:
+            self.session.rollback()
+            raise e
+        finally:
+            self.session.close()

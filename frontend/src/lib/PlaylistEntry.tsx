@@ -67,6 +67,10 @@ class PlaylistEntry extends PlaylistEntryStub {
     
     // Type-specific IDs
     this.music_file_id = entryData.music_file_id || null;
+    if (!this.music_file_id && entryData.entry_type === 'music_file') {
+      this.music_file_id = entryData.id || null; // Fallback to id if not provided
+    }
+
     this.lastfm_track_id = entryData.lastfm_track_id || null;
     this.requested_track_id = entryData.requested_track_id || null;
     this.requested_album_id = entryData.requested_album_id || null;
@@ -155,7 +159,6 @@ class PlaylistEntry extends PlaylistEntryStub {
    * @returns {PlaylistEntry} New entry with requested track type
    */
   toRequestedTrack() {
-    console.log(this);
     return new PlaylistEntry({
       ...this,
       entry_type: 'requested',
@@ -201,26 +204,23 @@ class PlaylistEntry extends PlaylistEntryStub {
     // Add details for entries that need them
     if (this.isRequestedTrack() || this.isLastFM() || this.isAlbum()) {
       baseEntry.details = {
-        title: this.title,
-        artist: this.artist,
-        album: this.album,
-        album_artist: this.album_artist,
-        year: this.year,
-        length: this.length,
-        publisher: this.publisher
+        title: this.getTitle(),
+        artist: this.getArtist(),
+        album: this.getAlbum(),
+        album_artist: this.getAlbumArtist(),
+        year: this.details.year,
+        length: this.details.length,
+        publisher: this.details.publisher,
+        genres: this.details.genres || [],
       };
 
-      if (this.url) {
-        baseEntry.details.url = this.url;
+      if (this.details.url) {
+        baseEntry.details.url = this.details.url;
       }
 
-      if (this.isAlbum() && this.tracks) {
-        baseEntry.details.tracks = this.tracks;
-        baseEntry.details.art_url = this.art_url;
-      }
-
-      if (this.genres && this.genres.length) {
-        baseEntry.details.genres = this.genres;
+      if (this.isAlbum() && this.details.tracks) {
+        baseEntry.details.tracks = this.details.tracks;
+        baseEntry.details.art_url = this.details.art_url;
       }
     }
 

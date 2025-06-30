@@ -28,14 +28,15 @@ from repositories.music_file import MusicFileRepository
 from repositories.playlist import PlaylistRepository
 from repositories.open_ai_repository import open_ai_repository
 from repositories.last_fm_repository import last_fm_repository
+from repositories.plex_repository import PlexRepository
+from repositories.spotify_repository import get_spotify_repository
 from repositories.requests_cache_session import requests_cache_session
-from repositories.spotify_repository import get_spotify_repo
-from repositories.plex_repository import plex_repository
 from redis import Redis
 import json
 from pydantic import BaseModel
 import sys
 from routes import router
+from routes.spotify_router import spotify_router
 
 class TimingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable):
@@ -573,32 +574,27 @@ def import_spotify_playlist(
     params: SpotifyImportParams,
     playlist_repo: PlaylistRepository = Depends(get_playlist_repository)
 ):
-    spotify_repo = get_spotify_repo(requests_cache_session)
+    spotify_repo = get_spotify_repository(requests_cache_session)
     if not spotify_repo:
         raise HTTPException(status_code=500, detail="Spotify API key not configured")
     
-    playlist = spotify_repo.get_playlist(params.playlist_id)
+    snapshot = spotify_repo.get_playlist_snapshot(params.playlist_id)
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="Playlist not found")
 
-    new_playlist = Playlist(name=params.playlist_name, description=playlist.description, entries=[])
-    for t in playlist.tracks:
-        track = RequestedTrackEntry(
-            entry_type="requested",
-            details=TrackDetails(
-                title=t.title,
-                artist=t.artist,
-                album=t.album,
-            )
-        )
-        new_playlist.entries.append(track)
+    new_playlist = Playlist(name=params.playlist_name, description=f"Imported from spotify playlist {params.playlist_id}", entries=[])
 
-    playlist_repo.create(new_playlist)
+    new_playlist = playlist_repo.create(new_playlist)
 
-    return playlist
+    for e in snapshot.items:
+        playlist_repo.add_music_file(new_playlist.id, e, normalize=True)
+
+    return new_playlist
 
 @router.post("/plex/import")
 def import_plex_playlist(
     params: PlexImportParams,
-    plex_repo: plex_repository = Depends(get_plex_repository),
+    plex_repo: PlexRepository = Depends(get_plex_repository),
     playlist_repo: PlaylistRepository = Depends(get_playlist_repository)
 ):
     new_playlist = Playlist(name=params.playlist_name, description=None, entries=[])
@@ -678,6 +674,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 app.include_router(router, prefix="/api")
+app.include_router(spotify_router, prefix="/api")
 
 host = os.getenv("HOST", "0.0.0.0")
 port = int(os.getenv("PORT", 3000))

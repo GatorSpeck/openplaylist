@@ -5,7 +5,7 @@ import SettingsModal from './SettingsModal';
 import ImportPlaylistModal from './ImportPlaylistModal'; // Add this import
 import playlistRepository from '../../repositories/PlaylistRepository';
 
-const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex, pinned, onTogglePin }) => (
+const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex, pinned, onTogglePin, onShowSyncOptions }) => (
   <div className="playlist-context-menu" style={{ left: x, top: y }}>
     <div onClick={onTogglePin}>{pinned ? 'Unpin Playlist' : 'Pin Playlist'}</div>
     <div onClick={onRenamePlaylist}>Rename Playlist</div>

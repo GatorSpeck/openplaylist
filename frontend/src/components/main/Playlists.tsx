@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import '../../styles/Playlists.css'; // Import the CSS file for styling
+import '../../styles/Playlists.css';
 import Snackbar from '../Snackbar';
 import PlaylistGrid from '../playlist/PlaylistGrid';
 import PlaylistSidebar from '../nav/PlaylistSidebar';
@@ -20,12 +20,52 @@ const Playlists = () => {
   const [clonePlaylistName, setClonePlaylistName] = useState('');
   const [playlistToClone, setPlaylistToClone] = useState(null);
 
+  // Add backend status state
+  const [backendReady, setBackendReady] = useState(false);
+  const [healthCheckAttempts, setHealthCheckAttempts] = useState(0);
+  const [connectionError, setConnectionError] = useState(null);
+
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: '',
     severity: 'info'
   });
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Health check function
+  const checkBackendHealth = useCallback(async () => {
+    try {
+      await axios.get('/api/health', { timeout: 5000 });
+      setBackendReady(true);
+      setConnectionError(null);
+      setHealthCheckAttempts(0);
+      return true;
+    } catch (error) {
+      console.log(`Health check failed (attempt ${healthCheckAttempts + 1}):`, error.message);
+      setHealthCheckAttempts(prev => prev + 1);
+      setConnectionError('Waiting for backend to start...');
+      return false;
+    }
+  }, [healthCheckAttempts]);
+
+  // Wait for backend with exponential backoff
+  useEffect(() => {
+    const waitForBackend = async () => {
+      const isHealthy = await checkBackendHealth();
+      
+      if (!isHealthy && healthCheckAttempts < 10) {
+        // Exponential backoff: 1s, 2s, 4s, 8s, then 10s max
+        const delay = Math.min(Math.pow(2, healthCheckAttempts) * 1000, 10000);
+        setTimeout(waitForBackend, delay);
+      } else if (!isHealthy) {
+        setConnectionError('Unable to connect to backend. Please check if the server is running.');
+      }
+    };
+
+    if (!backendReady) {
+      waitForBackend();
+    }
+  }, [checkBackendHealth, backendReady, healthCheckAttempts]);
 
   const handleSnackbarClose = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
@@ -35,17 +75,27 @@ const Playlists = () => {
   const navigate = useNavigate();
 
   const fetchPlaylists = useCallback(async () => {
+    if (!backendReady) return; // Don't fetch if backend isn't ready
+    
     try {
       const response = await playlistRepository.getPlaylists();
       setPlaylists(response);
     } catch (error) {
       console.error('Error fetching playlists:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to load playlists',
+        severity: 'error'
+      });
     }
-  }, []); // No dependencies needed as it's a stable function
+  }, [backendReady]);
 
+  // Only fetch playlists after backend is ready
   useEffect(() => {
-    fetchPlaylists();
-  }, []); // Only run on mount
+    if (backendReady) {
+      fetchPlaylists();
+    }
+  }, [backendReady, fetchPlaylists]);
 
   useEffect(() => {
     if (playlistName && playlists.length > 0) {
@@ -56,7 +106,27 @@ const Playlists = () => {
     } else {
       setSelectedPlaylistID(null);
     }
-  }, [playlistName, playlists]); // Only depends on these two values
+  }, [playlistName, playlists]);
+
+  // Show loading/error state while waiting for backend
+  if (!backendReady) {
+    return (
+      <div className="playlists-container">
+        <div className="backend-loading">
+          <h2>Connecting to server...</h2>
+          <p>{connectionError || `Checking backend health (attempt ${healthCheckAttempts + 1})`}</p>
+          {healthCheckAttempts >= 10 && (
+            <button onClick={() => {
+              setHealthCheckAttempts(0);
+              setConnectionError(null);
+            }}>
+              Retry Connection
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const deletePlaylist = async (playlistId) => {
     if (window.confirm('Are you sure you want to delete this playlist?')) {
@@ -69,6 +139,11 @@ const Playlists = () => {
         navigate("/");
       } catch (error) {
         console.error('Error deleting playlist:', error);
+        setSnackbar({
+          open: true,
+          message: 'Failed to delete playlist',
+          severity: 'error'
+        });
       }
     }
   };
@@ -87,14 +162,19 @@ const Playlists = () => {
       setSelectedPlaylistID(response.data.id);
     } catch (error) {
       console.error('Error creating new playlist:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to create playlist',
+        severity: 'error'
+      });
     }
   };
 
   const handleClonePlaylist = async () => {
     try {
-      const clonePlaylistName = clonePlaylistName.trim();
+      const cloneName = clonePlaylistName.trim();
 
-      const response = await playlistRepository.clone(playlistToClone.id, clonePlaylistName);
+      const response = await playlistRepository.clone(playlistToClone.id, cloneName);
             
       setPlaylists([...playlists, response]);
       setCloneModalVisible(false);
@@ -102,6 +182,11 @@ const Playlists = () => {
       setPlaylistToClone(null);
     } catch (error) {
       console.error('Error cloning playlist:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to clone playlist',
+        severity: 'error'
+      });
     }
   };
 

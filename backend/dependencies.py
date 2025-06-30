@@ -3,7 +3,8 @@ from database import Database
 from repositories.music_file import MusicFileRepository
 from repositories.playlist import PlaylistRepository
 from repositories.last_fm_repository import last_fm_repository
-from repositories.plex_repository import plex_repository
+from repositories.plex_repository import PlexRepository
+from repositories.spotify_repository import SpotifyRepository
 
 
 def get_db():
@@ -22,4 +23,7 @@ def get_playlist_repository(session=Depends(get_db)):
     return PlaylistRepository(session)
 
 def get_plex_repository(session=Depends(get_db)):
-    yield plex_repository(session)
+    yield PlexRepository(session)
+
+def get_spotify_repository(session=Depends(get_db)):
+    yield SpotifyRepository(session)

@@ -28,3 +28,6 @@ compose.yml
 
 **/config.json
 !healthcheck.sh
+
+# YT Music creds
+oauth.json

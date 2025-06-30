@@ -82,7 +82,14 @@ class TrackDetailsMixin:
     def track_number(cls) -> Mapped[Optional[int]]:
         """Track number"""
         return mapped_column(Integer, nullable=True)
+    
+    def get_artist(self) -> Optional[str]:
+        """Get the artist name, falling back to album artist if not set"""
+        return self.artist or self.album_artist or None
 
+    def get_album_artist(self) -> Optional[str]:
+        """Get the album artist name, falling back to artist if not set"""
+        return self.album_artist or self.artist or None
 
 class BaseNode(Base):
     __tablename__ = "base_elements"
@@ -205,6 +212,7 @@ class PlaylistDB(Base):
         single_parent=True,
         cascade="all, delete-orphan",
     )
+    sync_targets = relationship("SyncTargetDB", back_populates="playlist", cascade="all, delete-orphan")
 
 class PlaylistEntryDB(Base):
     __tablename__ = "playlist_entries"
@@ -318,3 +326,21 @@ class PlaylistSnapshot(Base):
     name = Column(String(50), index=True)
     contents = Column(JSON)
     last_updated = Column(DateTime, index=True)
+
+class SyncTargetDB(Base):
+    __tablename__ = "sync_targets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    playlist_id = Column(Integer, ForeignKey("playlists.id", ondelete="CASCADE"), nullable=False)
+    service = Column(String, nullable=False)  # 'plex', 'spotify', 'youtube'
+    config = Column(Text, nullable=False)  # JSON string with service-specific config
+    enabled = Column(Boolean, default=True)
+    
+    # Sync direction flags
+    send_entry_adds = Column(Boolean, default=True)
+    send_entry_removals = Column(Boolean, default=True)
+    receive_entry_adds = Column(Boolean, default=True)
+    receive_entry_removals = Column(Boolean, default=True)
+    
+    # Relationship
+    playlist = relationship("PlaylistDB", back_populates="sync_targets")
