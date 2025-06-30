@@ -59,13 +59,10 @@ class PlexRepository(RemotePlaylistRepository):
                 
                 items.sort(key=lambda x: getattr(x, 'score', 0), reverse=True)
                 return items
-            
-            filters = {
-                "track.artist": item.artist,
-                "track.album": item.album
-            } if item.album else {
-                "artist": item.artist
-            }
+
+            filters = {"artist.title": item.artist}
+            if item.album:
+                filters["album.title"] = item.album
             
             plex_items = self.server.library.section(self.plex_library).search(
                 libtype="track",
