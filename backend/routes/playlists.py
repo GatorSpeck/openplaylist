@@ -21,7 +21,7 @@ from repositories.requests_cache_session import requests_cache_session
 from pydantic import BaseModel
 from typing import Dict, Optional, List, Union, Any
 from repositories.remote_repository_factory import create_remote_repository
-from repositories.remote_playlist_repository import SyncChange
+from repositories.remote_playlist_repository import SyncChange, create_snapshot
 
 router = APIRouter()
 
@@ -509,12 +509,12 @@ def sync_playlist(
         current_snapshots = {}
         old_snapshots = {}
 
-        local_snapshot = None
-
         # Step 2: Get the current local snapshot
         playlist = repo.get_by_id(playlist_id)
         if not playlist:
             raise HTTPException(status_code=404, detail="Playlist not found")
+    
+        local_snapshot = create_snapshot(playlist)
         
         for target in sync_targets:
             try:
@@ -552,8 +552,7 @@ def sync_playlist(
                 if not current_snapshots[target.id]:
                     # remote playlist doesn't exist - let's create it
                     logging.info(f"Creating new remote playlist for {target.service} target {target.id}")
-                    if local_snapshot is None:
-                        local_snapshot = remote_repo.create_snapshot(playlist)
+
                     remote_repo.create_playlist(target_name or f"{target.service}_playlist", local_snapshot)
 
                 logging.info(f"Initialized {target.service} repository for target {target.id}")
@@ -569,11 +568,6 @@ def sync_playlist(
         # If no repositories were successfully initialized, return early
         if not remote_repos:
             raise HTTPException(status_code=500, detail="Failed to initialize any remote repositories")
-        
-        # Use any remote repo to create the local snapshot (they all use the same method)
-        first_repo = next(iter(remote_repos.values()))['repo']
-        if local_snapshot is None:
-            local_snapshot = first_repo.create_snapshot(playlist)
         
         # Step 3: Create individual sync plans and combine into unified plan
         individual_plans = {}
@@ -705,7 +699,8 @@ def sync_playlist(
                 })
         
         # write local snapshot
-        new_local_snapshot = first_repo.create_snapshot(playlist)
+        new_local_snapshot = create_snapshot(playlist)
+        first_repo = next(iter(remote_repos.values()))['repo']
         first_repo.write_snapshot(new_local_snapshot)
         
         return {

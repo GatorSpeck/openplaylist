@@ -41,6 +41,32 @@ class SyncChange(NamedTuple):
     source: str  # 'local' or 'remote'
     reason: str  # description of why this change is needed
 
+def create_snapshot(playlist: PlaylistDB) -> PlaylistSnapshot:
+    """Create a snapshot from a local playlist"""
+    result = PlaylistSnapshot(
+        name=playlist.name,
+        last_updated=playlist.updated_at.replace(tzinfo=get_local_tz()),
+        items=[]
+    )
+
+    for e in playlist.entries:
+        if not e.entry_type == "music_file":
+            continue
+        if not e.details.artist or not e.details.title:
+            continue
+
+        new_item = PlaylistItem(
+            artist=e.details.artist,
+            album=e.details.album,
+            title=e.details.title,
+        )
+
+        result.add_item(new_item)
+    
+    logging.info(f"Created snapshot for playlist {playlist.name} with {len(result.items)} items")
+    
+    return result
+
 class RemotePlaylistRepository(ABC):
     """Base class for remote playlist repositories"""
     
@@ -77,30 +103,6 @@ class RemotePlaylistRepository(ABC):
 
             result.add_item(i)
 
-        return result
-    
-    def create_snapshot(self, playlist: PlaylistDB) -> PlaylistSnapshot:
-        """Create a snapshot from a local playlist"""
-        result = PlaylistSnapshot(
-            name=playlist.name,
-            last_updated=playlist.updated_at.replace(tzinfo=get_local_tz()),
-            items=[]
-        )
-
-        for e in playlist.entries:
-            if not e.entry_type == "music_file":
-                continue
-            if not e.details.artist or not e.details.title:
-                continue
-
-            new_item = PlaylistItem(
-                artist=e.details.artist,
-                album=e.details.album,
-                title=e.details.title,
-            )
-
-            result.add_item(new_item)
-        
         return result
 
     def write_snapshot(self, snapshot: PlaylistSnapshot):
