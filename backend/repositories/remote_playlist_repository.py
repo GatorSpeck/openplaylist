@@ -59,6 +59,7 @@ def create_snapshot(playlist: PlaylistDB) -> PlaylistSnapshot:
             artist=e.details.artist,
             album=e.details.album,
             title=e.details.title,
+            local_path=e.details.path,
         )
 
         result.add_item(new_item)
@@ -98,7 +99,9 @@ class RemotePlaylistRepository(ABC):
                 artist=item.get("artist"),
                 album=item.get("album"),
                 title=item.get("title"),
-                uri=item.get("uri", None)  # Optional URI field
+                local_path=item.get("local_path", None),
+                spotify_uri=item.get("spotify_uri", None),
+                youtube_music_uri=item.get("youtube_music_uri", None)
             )
 
             result.add_item(i)
@@ -121,12 +124,20 @@ class RemotePlaylistRepository(ABC):
         result.contents = []
 
         for item in snapshot.items:
-            result.contents.append({
+            record = {
                 "artist": item.artist,
                 "album": item.album,
                 "title": item.title,
-                "uri": item.uri  # Optional URI field
-            })
+            }
+
+            if item.local_path:
+                record["local_path"] = item.local_path
+            if item.spotify_uri:
+                record["spotify_uri"] = item.spotify_uri
+            if item.youtube_music_uri:
+                record["youtube_music_uri"] = item.youtube_music_uri
+
+            result.contents.append(record)
         
         self.session.add(result)
         self.session.commit()

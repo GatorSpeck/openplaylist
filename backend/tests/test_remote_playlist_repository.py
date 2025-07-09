@@ -83,7 +83,7 @@ class MockRemotePlaylistRepository(RemotePlaylistRepository):
                 item = PlaylistItem(
                     artist=entry.details.artist,
                     title=entry.details.title,
-                    album=entry.details.album if hasattr(entry.details, 'album') else None
+                    album=entry.details.album if hasattr(entry.details, 'album') else None,
                 )
                 items.append(item)
         

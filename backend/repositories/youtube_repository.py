@@ -214,7 +214,8 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
                 playlist_item = PlaylistItem(
                     artist=artist,
                     album=album,
-                    title=track.get("title", "Unknown Title")
+                    title=track.get("title", "Unknown Title"),
+                    youtube_music_uri=track.get("videoId", None)
                 )
                 result.add_item(playlist_item)
                 

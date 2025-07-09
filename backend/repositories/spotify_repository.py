@@ -367,7 +367,7 @@ class SpotifyRepository(RemotePlaylistRepository):
                     artist=artist,
                     album=album,
                     title=track.get("name", "Unknown Title"),
-                    uri=track.get("uri", None)
+                    spotify_uri=track.get("uri", None),
                 )
 
                 result.add_item(playlist_item)

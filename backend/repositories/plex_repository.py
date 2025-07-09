@@ -134,7 +134,8 @@ class PlexRepository(RemotePlaylistRepository):
                 i = PlaylistItem(
                     artist=item.artist().title,
                     album=album.title if album else None,
-                    title=item.title
+                    title=item.title,
+                    local_path=item.media[0].parts[0].file if item.media else None,
                 )
 
                 result.add_item(i)

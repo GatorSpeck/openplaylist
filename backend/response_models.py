@@ -847,7 +847,9 @@ class PlaylistItem(BaseModel):
     artist: str
     album: Optional[str] = None
     title: str
-    uri: Optional[str] = None  # URI for the item, if applicable (e.g. for Spotify)
+    local_path: Optional[str] = None  # Local path to the file
+    spotify_uri: Optional[str] = None  # Spotify URI for the item
+    youtube_music_uri: Optional[str] = None  # YouTube Music URI
 
     def to_string(self, normalize=False):
         if normalize:
@@ -863,17 +865,51 @@ class PlaylistSnapshot(BaseModel):
     last_updated: datetime
     items: List[PlaylistItem]
     item_set: set = set()
+    local_paths: set = set()
+    youtube_uris: set = set()
+    spotify_uris: set = set()
 
     def has(self, item: PlaylistItem):
+        if item.local_path:
+            if item.local_path in self.local_paths:
+                return True
+        
+        if item.youtube_music_uri:
+            if item.youtube_music_uri in self.youtube_uris:
+                return True
+        
+        if item.spotify_uri:
+            if item.spotify_uri in self.spotify_uris:
+                return True
+            
         return item.to_string(normalize=True) in self.item_set
 
     def add_item(self, item: PlaylistItem):
         self.items.append(item)
         self.item_set.add(item.to_string(normalize=True))
+
+        if item.local_path:
+            self.local_paths.add(item.local_path)
+        if item.youtube_music_uri:
+            self.youtube_uris.add(item.youtube_music_uri)
+        if item.spotify_uri:
+            self.spotify_uris.add(item.spotify_uri)
     
     def search_track(self, item: PlaylistItem):
         # Search for a track in the playlist snapshot
         for existing_item in self.items:
+            if item.local_path and existing_item.local_path:
+                if item.local_path == existing_item.local_path:
+                    return existing_item
+                
+            if item.youtube_music_uri and existing_item.youtube_music_uri:
+                if item.youtube_music_uri == existing_item.youtube_music_uri:
+                    return existing_item
+                
+            if item.spotify_uri and existing_item.spotify_uri:
+                if item.spotify_uri == existing_item.spotify_uri:
+                    return existing_item
+                
             if (normalize_artist(existing_item.artist) == normalize_artist(item.artist) and
                 normalize_title(existing_item.title) == normalize_title(item.title)):
                 return existing_item
