@@ -608,6 +608,62 @@ def import_plex_playlist(
     
     return new_playlist
 
+@router.post("/youtube/import")
+def import_youtube_playlist(
+    params: dict,
+    playlist_repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    """Import a playlist from YouTube Music"""
+    try:
+        from repositories.youtube_repository import YouTubeMusicRepository
+        
+        # Extract parameters
+        playlist_id = params.get("playlist_id")
+        playlist_name = params.get("playlist_name")
+        
+        if not playlist_id:
+            raise HTTPException(status_code=400, detail="YouTube playlist ID is required")
+        if not playlist_name:
+            raise HTTPException(status_code=400, detail="Playlist name is required")
+        
+        # Create YouTube Music repository
+        youtube_repo = YouTubeMusicRepository(
+            session=Database.get_session(),
+            config={"playlist_uri": playlist_id}
+        )
+        
+        if not youtube_repo.is_authenticated():
+            raise HTTPException(status_code=401, detail="YouTube Music authentication required")
+        
+        # Get playlist snapshot
+        snapshot = youtube_repo.get_playlist_snapshot(playlist_name)
+        if not snapshot:
+            raise HTTPException(status_code=404, detail="YouTube playlist not found")
+
+        # Create new playlist
+        new_playlist = Playlist(
+            name=playlist_name, 
+            description=f"Imported from YouTube Music playlist {playlist_id}", 
+            entries=[]
+        )
+        new_playlist = playlist_repo.create(new_playlist)
+
+        # Add tracks from snapshot
+        for item in snapshot.items:
+            # Try to find matching local track first
+            result = playlist_repo.add_music_file(new_playlist.id, item, normalize=True)
+            if not result:
+                # Add as requested track if not found locally
+                playlist_repo.add_requested_track(new_playlist.id, item)
+
+        return new_playlist
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error importing YouTube Music playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to import YouTube Music playlist: {str(e)}")
+
 class Directory(BaseModel):
     name: str
     path: str
