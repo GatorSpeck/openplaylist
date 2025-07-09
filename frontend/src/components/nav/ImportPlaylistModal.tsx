@@ -10,6 +10,7 @@ const ImportPlaylistModal = ({ open, onClose, onPlaylistImported }) => {
   const [importSource, setImportSource] = useState('file');
   const [spotifyPlaylistId, setSpotifyPlaylistId] = useState('');
   const [plexPlaylistName, setPlexPlaylistName] = useState('');
+  const [youtubePlaylistId, setYoutubePlaylistId] = useState('');
 
   const handleFileChange = (e) => {
     setSelectedFile(e.target.files[0]);
@@ -23,14 +24,22 @@ const ImportPlaylistModal = ({ open, onClose, onPlaylistImported }) => {
     if (e.target.value === 'spotify') {
       setSelectedFile(null);
       setPlexPlaylistName('');
+      setYoutubePlaylistId('');
     }
     else if (e.target.value === 'plex') {
       setSelectedFile(null);
       setSpotifyPlaylistId('');
+      setYoutubePlaylistId('');
+    }
+    else if (e.target.value === 'youtube') {
+      setSelectedFile(null);
+      setSpotifyPlaylistId('');
+      setPlexPlaylistName('');
     }
     else {
       setSpotifyPlaylistId('');
       setPlexPlaylistName('');
+      setYoutubePlaylistId('');
     }
   };
 
@@ -129,6 +138,32 @@ const ImportPlaylistModal = ({ open, onClose, onPlaylistImported }) => {
         setIsLoading(false);
       }
     }
+    else if (importSource === 'youtube') {
+      // YouTube Music import validation
+      if (!youtubePlaylistId.trim()) {
+        setError('Please enter a YouTube Music playlist ID');
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const id = encodeURIComponent(youtubePlaylistId.trim());
+        const response = await axios.post(
+          `/api/youtube/import`,
+          { playlist_id: id, playlist_name: playlistName },
+        );
+        
+        if (onPlaylistImported) {
+          onPlaylistImported(response.data);
+        }
+        onClose();
+      } catch (error) {
+        console.error('Error importing playlist from YouTube Music:', error);
+        setError(error.response?.data?.detail || 'Failed to import playlist from YouTube Music');
+      } finally {
+        setIsLoading(false);
+      }
+    }
   };
 
   let importForm = null;
@@ -182,6 +217,23 @@ const ImportPlaylistModal = ({ open, onClose, onPlaylistImported }) => {
       </div>
     );
   }
+  else if (importSource === "youtube") {
+    importForm = (
+      <div className="form-group">
+        <label htmlFor="youtube-id">YouTube Music Playlist ID:</label>
+        <input
+          id="youtube-id"
+          type="text"
+          value={youtubePlaylistId}
+          onChange={(e) => setYoutubePlaylistId(e.target.value)}
+          placeholder="e.g. PLrAl6w_5dWWDk7WS_CL5lBNxFMlsJ1Y_n"
+        />
+        <small className="helper-text">
+          Enter the YouTube Music playlist ID (found in the URL after "list=")
+        </small>
+      </div>
+    );
+  }
 
   return (
     <Modal
@@ -211,6 +263,7 @@ const ImportPlaylistModal = ({ open, onClose, onPlaylistImported }) => {
             <option value="file">File (JSON/M3U)</option>
             <option value="spotify">Spotify Playlist</option>
             <option value="plex">Plex Playlist</option>
+            <option value="youtube">YouTube Music Playlist</option>
           </select>
         </div>
 
