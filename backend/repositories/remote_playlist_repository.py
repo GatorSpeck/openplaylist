@@ -101,7 +101,7 @@ class RemotePlaylistRepository(ABC):
                 title=item.get("title"),
                 local_path=item.get("local_path", None),
                 spotify_uri=item.get("spotify_uri", None),
-                youtube_music_uri=item.get("youtube_music_uri", None)
+                youtube_url=item.get("youtube_url", None)
             )
 
             result.add_item(i)
@@ -134,8 +134,8 @@ class RemotePlaylistRepository(ABC):
                 record["local_path"] = item.local_path
             if item.spotify_uri:
                 record["spotify_uri"] = item.spotify_uri
-            if item.youtube_music_uri:
-                record["youtube_music_uri"] = item.youtube_music_uri
+            if item.youtube_url:
+                record["youtube_url"] = item.youtube_url
 
             result.contents.append(record)
         

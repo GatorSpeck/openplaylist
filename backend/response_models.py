@@ -7,13 +7,9 @@ from models import (
     MusicFileDB,
     PlaylistDB,
     NestedPlaylistDB,
-    LastFMTrackDB,
-    RequestedTrackDB,
     PlaylistEntryDB,
     MusicFileEntryDB,
     NestedPlaylistEntryDB,
-    LastFMEntryDB,
-    RequestedTrackEntryDB,
     AlbumDB,
     AlbumTrackDB,
     AlbumEntryDB,
@@ -44,57 +40,6 @@ class TrackDetails(BaseModel):
 class MusicEntity(BaseModel):
     id: Optional[int] = None
 
-class RequestedTrack(MusicEntity, TrackDetails):
-    missing: Optional[bool] = False  # True if the track was previously scanned and is now missing from the library
-    entry_type: Literal["requested"] = "requested"
-
-    @classmethod
-    def from_json(cls, obj: dict):
-        return cls(
-            id=obj.get("id"),
-            title=obj.get("title"),
-            artist=obj.get("artist"),
-            album_artist=obj.get("album_artist"),
-            album=obj.get("album"),
-            year=obj.get("year"),
-            length=obj.get("length"),
-            publisher=obj.get("publisher"),
-            genres=[str(s) for s in obj.get("genres", [])]
-        )
-
-    @classmethod
-    def from_orm(cls, obj: RequestedTrackDB):
-        return cls(
-            id=obj.id,
-            title=obj.title,
-            artist=obj.artist,
-            album=obj.album,
-        )
-    
-    def to_json(self) -> dict:
-        return {
-            "title": self.title,
-            "artist": self.artist,
-            "album": self.album,
-        }
-
-    def to_db(self) -> RequestedTrackDB:
-        return RequestedTrackDB(
-            id=self.id,
-            title=self.title,
-            artist=self.artist,
-            album=self.album,
-        )
-    
-    def get_title(self):
-        return self.title
-    
-    def get_artist(self):
-        return self.artist
-    
-    def get_album(self):
-        return self.album
-
 def try_parse_int(value):
     if value is None:
         return None
@@ -103,14 +48,23 @@ def try_parse_int(value):
     except ValueError:
         return None
 
-class MusicFile(MusicEntity, TrackDetails):
-    path: str
+class LocalTrackDetails(BaseModel):
+    path: Optional[str] = None
     kind: Optional[str] = None
     first_scanned: Optional[datetime] = None
     last_scanned: Optional[datetime] = None
     missing: Optional[bool] = False  # True if the track was previously scanned and is now missing from the index
-    rating: Optional[int] = None
     size: Optional[int] = None
+
+class ExternalTrackDetails(BaseModel):
+    last_fm_url: Optional[str] = None
+    spotify_uri: Optional[str] = None
+    youtube_url: Optional[str] = None
+    mbid: Optional[str] = None
+    plex_rating_key: Optional[str] = None
+
+class MusicFile(MusicEntity, TrackDetails, LocalTrackDetails, ExternalTrackDetails):
+    rating: Optional[int] = None
     exact_release_date: Optional[datetime] = None
     release_year: Optional[int] = None
     playlists: List[int] = []
@@ -152,16 +106,17 @@ class MusicFile(MusicEntity, TrackDetails):
             track_number=try_parse_int(obj.track_number),
             disc_number=try_parse_int(obj.disc_number),
             comments=obj.comments,
+            last_fm_url=obj.last_fm_url,
+            spotify_uri=obj.spotify_uri,
+            youtube_url=obj.youtube_url,
+            mbid=obj.mbid,
+            plex_rating_key=obj.plex_rating_key,
             playlists=[]
         )
     
     def to_db(self) -> MusicFileDB:
-        return MusicFileDB(
+        music_file = MusicFileDB(
             id=self.id,
-            path=self.path,
-            kind=self.kind,
-            first_scanned=self.first_scanned,
-            last_scanned=self.last_scanned,
             title=self.title,
             artist=self.artist,
             album_artist=self.album_artist,
@@ -170,15 +125,38 @@ class MusicFile(MusicEntity, TrackDetails):
             length=self.length,
             publisher=self.publisher,
             genres=[TrackGenreDB(parent_type="music_file", genre=g) for g in self.genres],
-            missing=self.missing,
             rating=self.rating,
             exact_release_date=self.exact_release_date,
             release_year=self.release_year,
-            size=self.size,
             track_number=self.track_number,
             disc_number=self.disc_number,
             comments=self.comments,
         )
+        
+        # Add local file if path exists
+        if self.path:
+            music_file.local_file = LocalFileDB(
+                path=self.path,
+                kind=self.kind,
+                first_scanned=self.first_scanned,
+                last_scanned=self.last_scanned,
+                size=self.size,
+                missing=self.missing or False
+            )
+        
+        # Add external sources
+        if self.last_fm_url:
+            music_file.set_external_source('lastfm', self.last_fm_url, self.last_fm_url)
+        if self.spotify_uri:
+            music_file.set_external_source('spotify', self.spotify_uri)
+        if self.youtube_url:
+            music_file.set_external_source('youtube', self.youtube_url, self.youtube_url)
+        if self.mbid:
+            music_file.set_external_source('musicbrainz', self.mbid)
+        if self.plex_rating_key:
+            music_file.set_external_source('plex', self.plex_rating_key)
+        
+        return music_file
     
     def get_title(self):
         return self.title
@@ -192,7 +170,7 @@ class MusicFile(MusicEntity, TrackDetails):
 class AlbumTrack(MusicEntity):
     id: Optional[int] = None
     order: int
-    linked_track: Optional[Union[MusicFile, RequestedTrack, "LastFMTrack"]] = None
+    linked_track: Optional[MusicFile] = None
     album_id: Optional[int] = None
     
     @classmethod
@@ -200,15 +178,7 @@ class AlbumTrack(MusicEntity):
         this_track = None
 
         if obj.linked_track is not None:
-            if obj.linked_track.entry_type == "music_file":
-                this_track = MusicFile.from_orm(obj.linked_track)
-            elif obj.linked_track.entry_type == "requested_track":
-                this_track = RequestedTrack.from_orm(obj.linked_track)
-            elif obj.linked_track.entry_type.startswith("lastfm"):
-                this_track = LastFMTrack.from_orm(obj.linked_track)
-            else:
-                # default to requested
-                this_track = RequestedTrack.from_orm(obj.linked_track)
+            this_track = MusicFile.from_orm(obj.linked_track)
 
         return cls(
             id=obj.id,
@@ -224,15 +194,7 @@ class AlbumTrack(MusicEntity):
         this_track = None
 
         if obj.get("linked_track") is not None:
-            if obj["linked_track"].get("entry_type") == "music_file":
-                this_track = MusicFile.from_json(obj["linked_track"])
-            elif obj["linked_track"].get("entry_type") == "requested_track":
-                this_track = RequestedTrack.from_json(obj["linked_track"])
-            elif obj["linked_track"].get("entry_type").startswith("lastfm"):
-                this_track = LastFMTrack.from_json(obj["linked_track"])
-            else:
-                # default to requested
-                this_track = RequestedTrack.from_json(obj["linked_track"])
+            this_track = MusicFile.from_json(obj["linked_track"])
 
         return cls(
             id=obj.get("id"),
@@ -344,6 +306,7 @@ class PlaylistEntryStub(BaseModel):
     date_added: Optional[datetime] = None
 
 class PlaylistEntryBase(PlaylistEntryStub, ABC):
+    entry_type: Optional[Literal["music_file", "nested_playlist", "album", "requested_album"]] = None  # TODO: consolidate album & requested_album
     image_url: Optional[str] = None
 
     @abstractmethod
@@ -366,31 +329,38 @@ class PlaylistEntryBase(PlaylistEntryStub, ABC):
         return False
 
 class MusicFileEntry(PlaylistEntryBase):
-    entry_type: Literal["music_file"]
-    music_file_id: int
+    entry_type: Optional[str] = "music_file"
+    music_file_id: Optional[int] = None
     details: Optional[MusicFile] = None
+
+    def to_json(self) -> dict:
+        return {
+            "entry_type": "music_file",
+            "music_file_id": self.music_file_id,
+            "id": self.id,
+            "order": self.order,
+            "date_added": self.date_added,
+            "details": self.details.to_json() if self.details else None
+        }
 
     def to_playlist(self, playlist_id, order=None) -> MusicFileEntryDB:
         return MusicFileEntryDB(
             order=order,
             playlist_id=playlist_id,
-            entry_type=self.entry_type,
+            entry_type="music_file",  # deprecated
             music_file_id=self.music_file_id,
             date_added = self.date_added or datetime.now()
         )
 
     def to_db(self) -> MusicFileDB:
-        return MusicFileDB(
-            id=self.music_file_id,
-            path=self.details.path,
-            kind=self.details.kind,
-            last_scanned=self.details.last_scanned,
-        )
+        if not self.details:
+            raise ValueError("MusicFileEntry requires details to convert to MusicFileDB")
+        
+        return self.details.to_db()
 
     @classmethod
     def from_orm(cls, obj: MusicFileEntryDB, details: bool = False):
         return cls(
-            entry_type="music_file",
             id=obj.id,
             order=obj.order,
             music_file_id=obj.music_file_id,
@@ -434,178 +404,6 @@ class NestedPlaylistEntry(PlaylistEntryBase):
             playlist_id=obj.playlist_id,
             details=Playlist(id=obj.details.id, name=obj.details.name, entries=[]) if details else None,
         )
-
-
-class LastFMTrack(MusicEntity, TrackDetails):
-    url: str
-    music_file_id: Optional[int] = None  # linked music file if available
-    entry_type: Literal["lastfm_track"] = "lastfm_track"
-
-    @classmethod
-    def from_json(cls, obj: dict):
-        return cls(
-            id=obj.get("id"),
-            title=obj.get("title"),
-            artist=obj.get("artist"),
-            album_artist=obj.get("album_artist"),
-            album=obj.get("album"),
-            year=obj.get("year"),
-            length=obj.get("length"),
-            publisher=obj.get("publisher"),
-            url=obj.get("url"),
-            music_file_id=obj.get("music_file_id"),
-        )
-
-    def to_json(self) -> dict:
-        return {
-            "entry_type": "lastfm_track",
-            "title": self.title,
-            "artist": self.artist,
-            "album": self.album,
-            "url": self.url,
-            "music_file_id": self.music_file_id,
-        }
-
-    def to_db(self) -> LastFMTrackDB:
-        return LastFMTrackDB(
-            url=self.url,
-            title=self.title,
-            artist=self.artist,
-            album_artist=self.album_artist,
-            album=self.album,
-            year=self.year,
-            length=self.length,
-            publisher=self.publisher,
-        )
-    
-    @classmethod
-    def from_orm(cls, obj: LastFMTrackDB):
-        return cls(
-            id=obj.id,
-            url=obj.url,
-            title=obj.title,
-            artist=obj.artist,
-            album=obj.album,
-            year=obj.year,
-            length=obj.length,
-            publisher=obj.publisher,
-            genres=[],
-        )
-    
-    def get_title(self):
-        return self.title
-    
-    def get_artist(self):
-        return self.artist
-    
-    def get_album(self):
-        return self.album
-
-class LastFMEntry(PlaylistEntryBase):
-    entry_type: Literal["lastfm"]
-    lastfm_track_id: Optional[int] = None
-    details: Optional[LastFMTrack] = None
-
-    def to_playlist(self, playlist_id, order=None) -> LastFMEntryDB:
-        return LastFMEntryDB(
-            order=order,
-            playlist_id=playlist_id,
-            entry_type=self.entry_type,
-            lastfm_track_id=self.lastfm_track_id,
-            date_added = self.date_added or datetime.now()
-        )
-
-    def to_db(self) -> LastFMTrackDB:
-        return LastFMTrackDB(
-            url=self.details.url,
-            title=self.details.title,
-            artist=self.details.artist,
-            album_artist=self.details.album_artist,
-            album=self.details.album,
-            year=self.details.year,
-            length=self.details.length,
-            publisher=self.details.publisher,
-        )
-
-    @classmethod
-    def from_orm(cls, obj: LastFMEntryDB, details: bool = False):
-        return cls(
-            entry_type="lastfm",
-            id=obj.id,
-            order=obj.order,
-            date_added=obj.date_added,
-            details=LastFMTrack(
-                url=obj.details.url,
-                title=obj.details.title,
-                artist=obj.details.artist,
-                album=obj.details.album,
-                genres=[],
-            ) if details and obj.details else None,
-        )
-
-    def get_title(self):
-        return self.details.get_title() if self.details else None
-    
-    def get_artist(self):
-        return self.details.get_artist() if self.details else None
-    
-    def get_album(self):
-        return self.details.get_album() if self.details else None
-
-class RequestedTrackEntry(PlaylistEntryBase):
-    entry_type: Literal["requested"]
-    requested_track_id: Optional[int] = None
-    details: Optional[TrackDetails] = None
-
-    def to_playlist(self, playlist_id, order=None) -> RequestedTrackEntryDB:
-        return RequestedTrackEntryDB(
-            order=order,
-            playlist_id=playlist_id,
-            entry_type=self.entry_type,
-            requested_track_id=self.requested_track_id,
-            date_added = self.date_added or datetime.now()
-        )
-
-    def to_db(self) -> RequestedTrackDB:
-        return RequestedTrackDB(
-            title=self.details.title,
-            artist=self.details.artist,
-            album_artist=self.details.album_artist,
-            album=self.details.album,
-            year=self.details.year,
-            length=self.details.length,
-            publisher=self.details.publisher,
-        )
-
-    @classmethod
-    def from_orm(cls, obj: RequestedTrackEntryDB, details: bool = False):
-        if not details or obj.details is None:
-            return cls(entry_type="requested", id=obj.id, order=obj.order)
-        return cls(
-            id=obj.id,
-            order=obj.order,
-            entry_type="requested",
-            date_added=obj.date_added,
-            details=TrackDetails(
-                title=obj.details.title,
-                artist=obj.details.artist,
-                album_artist=obj.details.album_artist,
-                album=obj.details.album,
-                year=obj.details.year,
-                length=obj.details.length,
-                publisher=obj.details.publisher,
-                genres=[],
-            ),
-        )
-    
-    def get_title(self):
-        return self.details.get_title() if self.details else None
-    
-    def get_artist(self):
-        return self.details.get_artist() if self.details else None
-    
-    def get_album(self):
-        return self.details.get_album() if self.details else None
 
 class AlbumEntry(PlaylistEntryBase):
     entry_type: Literal["album"]
@@ -720,7 +518,7 @@ class RequestedAlbumEntry(PlaylistEntryBase):
     def is_album(self):
         return True
 
-PlaylistEntry = Union[MusicFileEntry, NestedPlaylistEntry, LastFMEntry, RequestedTrackEntry, AlbumEntry, RequestedAlbumEntry]
+PlaylistEntry = Union[MusicFileEntry, NestedPlaylistEntry, AlbumEntry, RequestedAlbumEntry]
 
 class Playlist(PlaylistBase):
     entries: List[PlaylistEntry] = [Field(discriminator="entry_type")]
@@ -729,14 +527,10 @@ class Playlist(PlaylistBase):
     def from_orm(cls, obj: PlaylistDB, details: bool = False):
         entries = []
         for entry in obj.entries:
-            if entry.entry_type == "music_file":
+            if entry.entry_type in ("music_file", "lastfm", "requested"):
                 entries.append(MusicFileEntry.from_orm(entry, details))
             elif entry.entry_type == "nested_playlist":
                 entries.append(NestedPlaylistEntry.from_orm(entry, details))
-            elif entry.entry_type == "lastfm":
-                entries.append(LastFMEntry.from_orm(entry, details))
-            elif entry.entry_type == "requested":
-                entries.append(RequestedTrackEntry.from_orm(entry, details))
             else:
                 raise ValueError(f"Unknown entry type: {entry.entry_type}")
 
@@ -787,9 +581,15 @@ class PlaylistEntriesResponse(BaseModel):
     entries: List[PlaylistEntry]
     total: Optional[int] = None
 
-class ReplaceTrackRequest(BaseModel):
-    existing_track_id: int
-    new_track: Optional[PlaylistEntry] = None
+class UnlinkTrackRequest(BaseModel):
+    unlink_local: bool = False
+    unlink_youtube: bool = False
+    unlink_spotify: bool = False
+    unlink_plex: bool = False
+    unlink_lastfm: bool = False
+    unlink_musicbrainz: bool = False
+
+    track_id: int
 
 class SpotifyImportParams(BaseModel):
     playlist_id: str
@@ -849,7 +649,7 @@ class PlaylistItem(BaseModel):
     title: str
     local_path: Optional[str] = None  # Local path to the file
     spotify_uri: Optional[str] = None  # Spotify URI for the item
-    youtube_music_uri: Optional[str] = None  # YouTube Music URI
+    youtube_url: Optional[str] = None  # YouTube Music URI
 
     def to_string(self, normalize=False):
         if normalize:
@@ -874,8 +674,8 @@ class PlaylistSnapshot(BaseModel):
             if item.local_path in self.local_paths:
                 return True
         
-        if item.youtube_music_uri:
-            if item.youtube_music_uri in self.youtube_uris:
+        if item.youtube_url:
+            if item.youtube_url in self.youtube_uris:
                 return True
         
         if item.spotify_uri:
@@ -890,8 +690,8 @@ class PlaylistSnapshot(BaseModel):
 
         if item.local_path:
             self.local_paths.add(item.local_path)
-        if item.youtube_music_uri:
-            self.youtube_uris.add(item.youtube_music_uri)
+        if item.youtube_url:
+            self.youtube_uris.add(item.youtube_url)
         if item.spotify_uri:
             self.spotify_uris.add(item.spotify_uri)
     
@@ -902,8 +702,8 @@ class PlaylistSnapshot(BaseModel):
                 if item.local_path == existing_item.local_path:
                     return existing_item
                 
-            if item.youtube_music_uri and existing_item.youtube_music_uri:
-                if item.youtube_music_uri == existing_item.youtube_music_uri:
+            if item.youtube_url and existing_item.youtube_url:
+                if item.youtube_url == existing_item.youtube_url:
                     return existing_item
                 
             if item.spotify_uri and existing_item.spotify_uri:
@@ -922,4 +722,3 @@ class PlaylistSnapshot(BaseModel):
         right_contents = [item.to_string(normalize=True) for item in other.items]
         diff = difflib.ndiff(left_contents, right_contents)
         return list(diff)
-    

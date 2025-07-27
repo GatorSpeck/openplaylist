@@ -106,44 +106,240 @@ class TrackGenreDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     parent_type = Column(String(50), nullable=False)
     music_file_id = Column(Integer, ForeignKey("music_files.id"), nullable=True)
-    lastfm_track_id = Column(Integer, ForeignKey("lastfm_tracks.id"), nullable=True)
-    requested_track_id = Column(
-        Integer, ForeignKey("requested_tracks.id"), nullable=True
-    )
     genre = Column(String(50), index=True)
 
 
+class LocalFileDB(Base):
+    """Represents a physical file on the local filesystem"""
+    __tablename__ = "local_files"
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Local file specific data
+    path = Column(String(1024), index=True, unique=True)  # Make path unique
+    kind = Column(String(32), index=True)  # File format (MP3, FLAC, etc.)
+    first_scanned = Column(DateTime)
+    last_scanned = Column(DateTime, index=True)
+    size = Column(Integer)  # Size in bytes
+    missing = Column(Boolean, default=False)
+    
+    # File-based metadata (what was read from the file tags)
+    file_title = Column(String(1024), index=True, nullable=True)
+    file_artist = Column(String(1024), index=True, nullable=True)
+    file_album_artist = Column(String(1024), index=True, nullable=True)
+    file_album = Column(String(1024), index=True, nullable=True)
+    file_year = Column(String(32), index=True, nullable=True)
+    file_length = Column(Integer, index=True, nullable=True)
+    file_publisher = Column(String(255), index=True, nullable=True)
+    file_rating = Column(Integer, index=True, nullable=True)
+    file_comments = Column(Text(1024), nullable=True)
+    file_disc_number = Column(Integer, nullable=True)
+    file_track_number = Column(Integer, nullable=True)
+    
+    # Relationship back to MusicFileDB
+    music_file_id = Column(Integer, ForeignKey("music_files.id"), nullable=True)
+    music_file = relationship("MusicFileDB", back_populates="local_file")
+    
+    # File-based genres (one-to-many)
+    file_genres = relationship(
+        "LocalFileGenreDB",
+        back_populates="local_file",
+        cascade="all, delete-orphan"
+    )
+
+class LocalFileGenreDB(Base):
+    """Represents genres read from local file tags"""
+    __tablename__ = "local_file_genres"
+    id = Column(Integer, primary_key=True, index=True)
+    
+    local_file_id = Column(Integer, ForeignKey("local_files.id"), nullable=False)
+    genre = Column(String(50), index=True)
+    
+    local_file = relationship("LocalFileDB", back_populates="file_genres")
+
+class ExternalSourceDB(Base):
+    """Represents links to external music sources"""
+    __tablename__ = "external_sources"
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # External source data
+    source_type = Column(String(50), nullable=False)  # 'lastfm', 'spotify', 'youtube', 'musicbrainz', 'plex'
+    external_id = Column(String(1024), nullable=False)  # The ID/URI from the external source
+    url = Column(String(1024), nullable=True)  # Full URL if applicable
+    
+    # Relationship back to MusicFileDB
+    music_file_id = Column(Integer, ForeignKey("music_files.id"), nullable=False)
+    music_file = relationship("MusicFileDB", back_populates="external_sources")
+    
+    # Ensure uniqueness per source type and music file
+    __table_args__ = (
+        Index('external_sources_music_file_type_idx', music_file_id, source_type),
+    )
+
+# Update MusicFileDB to add helper methods for working with file metadata
 class MusicFileDB(BaseNode, TrackDetailsMixin):
     __tablename__ = "music_files"
     id = Column(Integer, ForeignKey("base_elements.id"), primary_key=True)
-    path = Column(String(1024), index=True)
-    kind = Column(String(32), index=True)
-    first_scanned = Column(DateTime)
-    last_scanned = Column(DateTime, index=True)
-    size = Column(Integer)  # size in bytes
+    
+    # Optional local file relationship (one-to-one)
+    local_file = relationship(
+        "LocalFileDB", 
+        back_populates="music_file", 
+        uselist=False,
+        cascade="all, delete-orphan"
+    )
+    
+    # External sources (one-to-many)
+    external_sources = relationship(
+        "ExternalSourceDB",
+        back_populates="music_file",
+        cascade="all, delete-orphan"
+    )
+
     genres = relationship(
         "TrackGenreDB",
         primaryjoin="and_(TrackGenreDB.music_file_id==MusicFileDB.id, TrackGenreDB.parent_type=='music_file')",
         cascade="all, delete-orphan",
     )
-    missing = Column(Boolean, default=False)
 
     __mapper_args__ = {"polymorphic_identity": "music_file"}
-
-
-class LastFMTrackDB(BaseNode, TrackDetailsMixin):
-    __tablename__ = "lastfm_tracks"
-    id = Column(Integer, ForeignKey("base_elements.id"), primary_key=True)
-    url = Column(String(1024), index=True)
-    genres = relationship(
-        "TrackGenreDB",
-        primaryjoin="and_(TrackGenreDB.lastfm_track_id==LastFMTrackDB.id, TrackGenreDB.parent_type=='lastfm')",
-        cascade="all, delete-orphan",
-    )
-    mbid = Column(String(50), nullable=True)  # MusicBrainz ID
-
-    __mapper_args__ = {"polymorphic_identity": "lastfm_track"}
-
+    
+    # Helper properties for backward compatibility
+    @property
+    def path(self) -> Optional[str]:
+        return self.local_file.path if self.local_file else None
+    
+    @property
+    def kind(self) -> Optional[str]:
+        return self.local_file.kind if self.local_file else None
+    
+    @property
+    def size(self) -> Optional[int]:
+        return self.local_file.size if self.local_file else None
+    
+    @property
+    def missing(self) -> bool:
+        return self.local_file.missing if self.local_file else False
+    
+    @property
+    def first_scanned(self) -> Optional[datetime]:
+        return self.local_file.first_scanned if self.local_file else None
+    
+    @property
+    def last_scanned(self) -> Optional[datetime]:
+        return self.local_file.last_scanned if self.local_file else None
+    
+    # Methods to work with file metadata
+    def sync_from_file_metadata(self):
+        """Copy metadata from the local file tags to the music file record"""
+        if not self.local_file:
+            return
+            
+        self.title = self.local_file.file_title
+        self.artist = self.local_file.file_artist
+        self.album_artist = self.local_file.file_album_artist
+        self.album = self.local_file.file_album
+        self.year = self.local_file.file_year
+        self.length = self.local_file.file_length
+        self.publisher = self.local_file.file_publisher
+        self.rating = self.local_file.file_rating
+        self.comments = self.local_file.file_comments
+        self.disc_number = self.local_file.file_disc_number
+        self.track_number = self.local_file.file_track_number
+        
+        # Copy genres
+        self.genres.clear()
+        for file_genre in self.local_file.file_genres:
+            self.genres.append(TrackGenreDB(
+                parent_type="music_file",
+                genre=file_genre.genre
+            ))
+    
+    def get_file_metadata_differences(self) -> dict:
+        """Compare current metadata with file metadata and return differences"""
+        if not self.local_file:
+            return {}
+        
+        differences = {}
+        
+        # Compare each field
+        fields_to_compare = [
+            ('title', 'file_title'),
+            ('artist', 'file_artist'),
+            ('album_artist', 'file_album_artist'),
+            ('album', 'file_album'),
+            ('year', 'file_year'),
+            ('length', 'file_length'),
+            ('publisher', 'file_publisher'),
+            ('rating', 'file_rating'),
+            ('comments', 'file_comments'),
+            ('disc_number', 'file_disc_number'),
+            ('track_number', 'file_track_number'),
+        ]
+        
+        for current_field, file_field in fields_to_compare:
+            current_value = getattr(self, current_field)
+            file_value = getattr(self.local_file, file_field)
+            
+            if current_value != file_value:
+                differences[current_field] = {
+                    'current': current_value,
+                    'file': file_value
+                }
+        
+        # Compare genres
+        current_genres = set(g.genre for g in self.genres)
+        file_genres = set(g.genre for g in self.local_file.file_genres)
+        
+        if current_genres != file_genres:
+            differences['genres'] = {
+                'current': list(current_genres),
+                'file': list(file_genres)
+            }
+        
+        return differences
+    
+    # Helper methods for external sources
+    def get_external_source(self, source_type: str) -> Optional[str]:
+        """Get external ID/URI for a specific source type"""
+        for source in self.external_sources:
+            if source.source_type == source_type:
+                return source.external_id
+        return None
+    
+    def set_external_source(self, source_type: str, external_id: str, url: Optional[str] = None):
+        """Set or update external source"""
+        # Remove existing source of this type
+        self.external_sources = [s for s in self.external_sources if s.source_type != source_type]
+        
+        # Add new source
+        new_source = ExternalSourceDB(
+            source_type=source_type,
+            external_id=external_id,
+            url=url
+        )
+        self.external_sources.append(new_source)
+    
+    @property
+    def last_fm_url(self) -> Optional[str]:
+        source = next((s for s in self.external_sources if s.source_type == 'lastfm'), None)
+        return source.url if source else None
+    
+    @property
+    def spotify_uri(self) -> Optional[str]:
+        return self.get_external_source('spotify')
+    
+    @property
+    def youtube_url(self) -> Optional[str]:
+        source = next((s for s in self.external_sources if s.source_type == 'youtube'), None)
+        return source.url if source else None
+    
+    @property
+    def mbid(self) -> Optional[str]:
+        return self.get_external_source('musicbrainz')
+    
+    @property
+    def plex_rating_key(self) -> Optional[str]:
+        return self.get_external_source('plex')
 
 class NestedPlaylistDB(BaseNode):
     __tablename__ = "nested_playlists"
@@ -184,18 +380,6 @@ class AlbumTrackDB(BaseNode, TrackDetailsMixin):
         "inherit_condition": id == BaseNode.id,
         "polymorphic_identity": "album_track",
     }
-
-class RequestedTrackDB(BaseNode, TrackDetailsMixin):
-    __tablename__ = "requested_tracks"
-    id = Column(Integer, ForeignKey("base_elements.id"), primary_key=True)
-    genres = relationship(
-        "TrackGenreDB",
-        primaryjoin="and_(TrackGenreDB.requested_track_id==RequestedTrackDB.id, TrackGenreDB.parent_type=='requested')",
-        cascade="all, delete-orphan",
-    )
-
-    __mapper_args__ = {"polymorphic_identity": "requested_track"}
-
 
 class PlaylistDB(Base):
     __tablename__ = "playlists"
@@ -248,6 +432,7 @@ class MusicFileEntryDB(PlaylistEntryDB):
     id = Column(Integer, ForeignKey("playlist_entries.id", ondelete="CASCADE"), primary_key=True)
     
     music_file_id = Column(Integer, ForeignKey("music_files.id", ondelete="SET NULL"))
+    
     details = relationship(
         "MusicFileDB", 
         foreign_keys=[music_file_id], 
@@ -269,26 +454,6 @@ class NestedPlaylistEntryDB(PlaylistEntryDB):
 
     __mapper_args__ = {"polymorphic_identity": "nested_playlist"}
 
-
-class LastFMEntryDB(PlaylistEntryDB):
-    __tablename__ = "lastfm_entries"
-
-    __mapper_args__ = {"polymorphic_identity": "lastfm"}
-
-    id = Column(Integer, ForeignKey("playlist_entries.id", ondelete="CASCADE"), primary_key=True)
-    lastfm_track_id = Column(Integer, ForeignKey("lastfm_tracks.id", ondelete="SET NULL"))
-    details = relationship("LastFMTrackDB", foreign_keys=[lastfm_track_id], passive_deletes=True)
-
-
-class RequestedTrackEntryDB(PlaylistEntryDB):
-    __tablename__ = "requested_entries"
-
-    id = Column(Integer, ForeignKey("playlist_entries.id", ondelete="CASCADE"), primary_key=True)
-    
-    requested_track_id = Column(Integer, ForeignKey("requested_tracks.id", ondelete="SET NULL"))
-    details = relationship("RequestedTrackDB", foreign_keys=[requested_track_id], passive_deletes=True)
-
-    __mapper_args__ = {"polymorphic_identity": "requested"}
 
 class AlbumEntryDB(PlaylistEntryDB):
     __tablename__ = "album_entries"

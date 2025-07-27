@@ -3,7 +3,7 @@ from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
 from repositories.playlist import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
 from fastapi import Query, APIRouter, Depends, Body, File, UploadFile
-from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, ReplaceTrackRequest, MusicFileEntry, RequestedAlbumEntry, Album, RequestedTrackEntry, TrackDetails, PlaylistEntryStub, SyncTarget
+from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, UnlinkTrackRequest, MusicFileEntry, RequestedAlbumEntry, Album, TrackDetails, PlaylistEntryStub, SyncTarget
 import json
 from repositories.playlist import PlaylistRepository
 from repositories.music_file import MusicFileRepository
@@ -195,13 +195,13 @@ def delete_playlist(playlist_id: int):
         db.close()
     return {"detail": "Playlist deleted successfully"}
 
-@router.put("/{playlist_id}/replace")
-def replace_track(playlist_id: int, details: ReplaceTrackRequest = Body(...), repo: PlaylistRepository = Depends(get_playlist_repository)):
+@router.put("/{playlist_id}/unlink")
+def unlink_track(playlist_id: int, details: UnlinkTrackRequest = Body(...), repo: PlaylistRepository = Depends(get_playlist_repository)):
     try:
-        repo.replace_track(playlist_id, details.existing_track_id, details.new_track)
+        repo.unlink_track(playlist_id, details)
     except Exception as e:
-        logging.error(f"Failed to replace track: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to replace track")
+        logging.error(f"Failed to unlink track: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to unlink track")
 
 @router.get("/{playlist_id}/export", response_class=StreamingResponse)
 def export_playlist(playlist_id: int, type: str = Query("m3u"), repo: PlaylistRepository = Depends(get_playlist_repository)):
@@ -401,8 +401,7 @@ async def import_json_playlist(
 
                         logging.info(f"Adding requested track {details.artist} - {details.title}")
 
-                        entries.append(RequestedTrackEntry(
-                            entry_type="requested",
+                        entries.append(MusicFileEntry(
                             details=details,
                         ))
             

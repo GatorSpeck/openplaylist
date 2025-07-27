@@ -1,7 +1,7 @@
 from .base import BaseRepository
 from models import MusicFileDB, TrackGenreDB
 from typing import Optional
-from response_models import MusicFile, SearchQuery, RequestedTrack, TrackDetails, Playlist, MusicFileEntry, try_parse_int
+from response_models import MusicFile, SearchQuery, TrackDetails, Playlist, MusicFileEntry, try_parse_int
 from sqlalchemy import text, or_, func
 import time
 import urllib
@@ -11,7 +11,7 @@ from repositories.playlist import PlaylistRepository
 def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
     return MusicFile(
         id=music_file_db.id,
-        path=music_file_db.path,
+        path=music_file_db.path,  # Uses the property
         title=music_file_db.title,
         artist=music_file_db.artist,
         album_artist=music_file_db.album_artist,
@@ -19,12 +19,24 @@ def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
         year=music_file_db.year,
         length=music_file_db.length,
         publisher=music_file_db.publisher,
-        kind=music_file_db.kind,
+        kind=music_file_db.kind,  # Uses the property
         genres=[g.genre for g in music_file_db.genres] or [],
-        last_scanned=music_file_db.last_scanned,
-        missing=music_file_db.missing,
+        last_scanned=music_file_db.last_scanned,  # Uses the property
+        missing=music_file_db.missing,  # Uses the property
         track_number=try_parse_int(music_file_db.track_number),
         disc_number=try_parse_int(music_file_db.disc_number),
+        size=music_file_db.size,  # Uses the property
+        first_scanned=music_file_db.first_scanned,  # Uses the property
+        last_fm_url=music_file_db.last_fm_url,  # Uses the property
+        spotify_uri=music_file_db.spotify_uri,  # Uses the property
+        youtube_url=music_file_db.youtube_url,  # Uses the property
+        mbid=music_file_db.mbid,  # Uses the property
+        plex_rating_key=music_file_db.plex_rating_key,  # Uses the property
+        comments=music_file_db.comments,
+        rating=music_file_db.rating,
+        exact_release_date=music_file_db.exact_release_date,
+        release_year=music_file_db.release_year,
+        playlists=[]
     )
 
 
@@ -294,3 +306,23 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         except Exception as e:
             logging.error(f"Failed to dump library to playlist: {e}")
             raise e
+    
+    def sync_metadata_from_file(self, music_file_id: int):
+        """Sync metadata from file tags to the music file record"""
+        music_file = self.session.query(MusicFileDB).get(music_file_id)
+        if music_file:
+            music_file.sync_from_file_metadata()
+            self.session.commit()
+    
+    def get_metadata_differences(self, music_file_id: int) -> dict:
+        """Get differences between current metadata and file metadata"""
+        music_file = self.session.query(MusicFileDB).get(music_file_id)
+        if music_file:
+            return music_file.get_file_metadata_differences()
+        return {}
+    
+    def get_files_with_metadata_differences(self, limit: int = 50, offset: int = 0):
+        """Get files where the current metadata differs from file metadata"""
+        # This would require a more complex query - you might want to implement
+        # this as a background job that periodically checks for differences
+        pass

@@ -155,7 +155,7 @@ export class PlaylistRepository {
         );
     }
 
-    async replaceTrack(id: number, existingTrackID: number, newTrack: PlaylistEntry) {
+    async unlinkTrack(id: number, existingTrackID: number, newTrack: PlaylistEntry) {
         console.log(`Replacing track: ${existingTrackID} with new track`);
         await axios.put(`/api/playlists/${id}/replace`, {
             existing_track_id: existingTrackID,

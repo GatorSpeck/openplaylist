@@ -129,7 +129,6 @@ def test_add_lastfm_to_playlist(client, test_tracks):
                 {
                     "order": 0,
                     "url": "https://www.last.fm/music/Test/_/Song",
-                    "entry_type": "lastfm",
                     "details": {
                         "url": "https://www.last.fm/music/Test/_/Song",
                         "title": "Test Song",

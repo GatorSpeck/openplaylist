@@ -2,7 +2,7 @@ import urllib
 import urllib.parse
 from fastapi.exceptions import HTTPException
 import logging
-from response_models import LastFMTrack, Album, AlbumTrack, AlbumAndArtist, Artist, AlbumSearchResult
+from response_models import Album, AlbumTrack, AlbumAndArtist, Artist, AlbumSearchResult, MusicFile
 import os
 import warnings
 import json
@@ -25,7 +25,7 @@ def from_json(payload) -> Optional[Album]:
     tracks = []
     if "track" in payload.get("album", {}).get("tracks", {}):
         for i, track in enumerate(payload.get("album").get("tracks").get("track")):
-            linked_track = LastFMTrack(entry_type="lastfm_track", title=track.get("name"), artist=track.get("artist").get("name"), url=track.get("url"))
+            linked_track = MusicFile(title=track.get("name"), artist=track.get("artist").get("name"), last_fm_url=track.get("url"))
             tracks.append(AlbumTrack(order=i, linked_track=linked_track))
 
     return Album(
@@ -74,9 +74,9 @@ class last_fm_repository:
         
         similar_tracks = similar_data.get("similartracks", {}).get("track", [])
 
-        return [LastFMTrack(title=track.get("name", ""), artist=track.get("artist", {}).get("name", ""), url=track.get("url")) for track in similar_tracks]
+        return [MusicFile(title=track.get("name", ""), artist=track.get("artist", {}).get("name", ""), last_fm_url=track.get("url")) for track in similar_tracks]
 
-    def search_track(self, title: Optional[str] = None, artist: Optional[str] = None, limit: int=10, page: int=1) -> List[LastFMTrack]:
+    def search_track(self, title: Optional[str] = None, artist: Optional[str] = None, limit: int=10, page: int=1) -> List[MusicFile]:
         # URL encode parameters
         encoded_title = urllib.parse.quote(title) if title else None
         encoded_artist = urllib.parse.quote(artist) if artist else None
@@ -101,7 +101,7 @@ class last_fm_repository:
             
             data = response.json()
             tracks = data.get("toptracks", {}).get("track", [])
-            return [LastFMTrack(title=track.get("name", ""), artist=track.get("artist", {}).get("name", ""), url=track.get("url")) for track in tracks]
+            return [MusicFile(title=track.get("name", ""), artist=track.get("artist", {}).get("name", ""), last_fm_url=track.get("url")) for track in tracks]
 
         base_url = f"http://ws.audioscrobbler.com/2.0/?method=track.search&track={encoded_title}&api_key={self.api_key}&format=json&limit={limit}&page={page}"
 
@@ -120,7 +120,7 @@ class last_fm_repository:
                 data = response.json()
                 tracks = data.get("results", {}).get("trackmatches", {}).get("track", [])
 
-                results.extend([LastFMTrack(title=track.get("name", ""), artist=track.get("artist", ""), url=track.get("url")) for track in tracks])
+                results.extend([MusicFile(title=track.get("name", ""), artist=track.get("artist", ""), url=track.get("url")) for track in tracks])
         else:
             # fetch without artist
             url = base_url
@@ -130,7 +130,7 @@ class last_fm_repository:
             data = response.json()
             tracks = data.get("results", {}).get("trackmatches", {}).get("track", [])
 
-            results.extend([LastFMTrack(title=track.get("name", ""), artist=track.get("artist", ""), url=track.get("url")) for track in tracks])
+            results.extend([MusicFile(title=track.get("name", ""), artist=track.get("artist", ""), last_fm_url=track.get("url")) for track in tracks])
 
         return results[:limit]
     

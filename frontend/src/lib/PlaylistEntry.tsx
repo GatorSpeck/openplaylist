@@ -175,6 +175,10 @@ class PlaylistEntry extends PlaylistEntryStub {
     });
   }
 
+  getDetails() {
+    return this.details;
+  }
+
   /**
    * Convert this entry to a format suitable for API requests
    * @returns {Object} Entry data ready for API

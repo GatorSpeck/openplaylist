@@ -324,6 +324,36 @@ def scan_directory(directory: str, full=False):
 
                 this_track = metadata.to_db()
 
+                # Set up local file with file metadata
+                local_file = LocalFileDB(
+                    path=full_path,
+                    kind=metadata.kind,
+                    first_scanned=datetime.now(),
+                    last_scanned=datetime.now(),
+                    size=file_size,
+                    # Store file metadata
+                    file_title=metadata.title,
+                    file_artist=metadata.artist,
+                    file_album_artist=metadata.album_artist,
+                    file_album=metadata.album,
+                    file_year=year,
+                    file_length=metadata.length,
+                    file_publisher=metadata.publisher,
+                    file_rating=metadata.rating,
+                    file_comments=metadata.comments,
+                    file_track_number=metadata.track_number,
+                    file_disc_number=metadata.disc_number,
+                )
+                
+                # Add file genres
+                for genre in metadata.genres:
+                    local_file.file_genres.append(LocalFileGenreDB(genre=genre))
+                
+                this_track.local_file = local_file
+                
+                # Initially sync the main metadata from file metadata
+                this_track.sync_from_file_metadata()
+                
                 db.add(this_track)
 
                 if album is not None:
@@ -448,7 +478,7 @@ async def get_stats():
 def find_local_files(tracks: List[TrackDetails], repo: MusicFileRepository = Depends(get_music_file_repository)):
     return repo.find_local_files(tracks)
 
-@router.get("/lastfm", response_model=List[LastFMTrack])
+@router.get("/lastfm", response_model=List[MusicFile])
 def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
@@ -458,7 +488,7 @@ def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
     return repo.search_track(title=title, artist=artist)
 
 # get similar tracks using last.fm API
-@router.get("/lastfm/similar", response_model=List[LastFMTrack])
+@router.get("/lastfm/similar", response_model=List[MusicFile])
 def get_similar_tracks(title: str = Query(...), artist: str = Query(...)):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
