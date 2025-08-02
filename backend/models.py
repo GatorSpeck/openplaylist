@@ -185,7 +185,7 @@ class MusicFileDB(BaseNode, TrackDetailsMixin):
         "LocalFileDB", 
         back_populates="music_file", 
         uselist=False,
-        cascade="all, delete-orphan"
+        cascade="save-update, merge"  # Remove delete-orphan
     )
     
     # External sources (one-to-many)

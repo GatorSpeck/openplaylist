@@ -3,7 +3,7 @@ from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
 from repositories.playlist import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
 from fastapi import Query, APIRouter, Depends, Body, File, UploadFile
-from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, UnlinkTrackRequest, MusicFileEntry, RequestedAlbumEntry, Album, TrackDetails, PlaylistEntryStub, SyncTarget
+from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, LinkChangeRequest, MusicFileEntry, RequestedAlbumEntry, Album, TrackDetails, PlaylistEntryStub, SyncTarget
 import json
 from repositories.playlist import PlaylistRepository
 from repositories.music_file import MusicFileRepository
@@ -194,14 +194,14 @@ def delete_playlist(playlist_id: int):
     finally:
         db.close()
     return {"detail": "Playlist deleted successfully"}
-
-@router.put("/{playlist_id}/unlink")
-def unlink_track(playlist_id: int, details: UnlinkTrackRequest = Body(...), repo: PlaylistRepository = Depends(get_playlist_repository)):
+    
+@router.put("/{playlist_id}/links")
+def update_links(playlist_id: int, details: LinkChangeRequest = Body(...), repo: PlaylistRepository = Depends(get_playlist_repository)):
     try:
-        repo.unlink_track(playlist_id, details)
+        repo.update_links(playlist_id, details)
     except Exception as e:
-        logging.error(f"Failed to unlink track: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to unlink track")
+        logging.error(f"Failed to update links: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update links")
 
 @router.get("/{playlist_id}/export", response_class=StreamingResponse)
 def export_playlist(playlist_id: int, type: str = Query("m3u"), repo: PlaylistRepository = Depends(get_playlist_repository)):

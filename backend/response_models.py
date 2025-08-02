@@ -13,7 +13,8 @@ from models import (
     AlbumDB,
     AlbumTrackDB,
     AlbumEntryDB,
-    RequestedAlbumEntryDB
+    RequestedAlbumEntryDB,
+    LocalFileDB
 )
 from abc import ABC, abstractmethod
 import logging
@@ -112,6 +113,37 @@ class MusicFile(MusicEntity, TrackDetails, LocalTrackDetails, ExternalTrackDetai
             mbid=obj.mbid,
             plex_rating_key=obj.plex_rating_key,
             playlists=[]
+        )
+    
+    @classmethod
+    def from_local_file(cls, obj: LocalFileDB) -> "MusicFile":
+        return cls(
+            id=obj.id,  # Add this line
+            path=obj.path,
+            kind=obj.kind,
+            first_scanned=obj.first_scanned,
+            last_scanned=obj.last_scanned,
+            size=obj.size,
+            missing=obj.missing,
+            # Use file metadata, not MusicFileDB metadata
+            title=obj.file_title,
+            artist=obj.file_artist,
+            album_artist=obj.file_album_artist,
+            album=obj.file_album,
+            year=obj.file_year,
+            length=obj.file_length,
+            publisher=obj.file_publisher,
+            rating=obj.file_rating,
+            comments=obj.file_comments,
+            disc_number=obj.file_disc_number,
+            track_number=obj.file_track_number,
+            # External sources should be None for unlinked local files
+            last_fm_url=None,
+            spotify_uri=None,
+            youtube_url=None,
+            mbid=None,
+            plex_rating_key=None,
+            genres=[]  # Add this too - local file genres if needed
         )
     
     def to_db(self) -> MusicFileDB:
@@ -581,15 +613,23 @@ class PlaylistEntriesResponse(BaseModel):
     entries: List[PlaylistEntry]
     total: Optional[int] = None
 
-class UnlinkTrackRequest(BaseModel):
-    unlink_local: bool = False
-    unlink_youtube: bool = False
-    unlink_spotify: bool = False
-    unlink_plex: bool = False
-    unlink_lastfm: bool = False
-    unlink_musicbrainz: bool = False
-
+class LinkChangeRequest(BaseModel):
     track_id: int
+    updates: Dict[str, Optional[str]] = {}
+    
+    def model_validate(cls, v):
+        # Valid keys for updates
+        VALID_KEYS = {
+            'local_path', 'youtube_url', 'spotify_uri', 
+            'last_fm_url', 'mbid', 'plex_rating_key'
+        }
+
+        if isinstance(v, dict) and 'updates' in v:
+            # Validate that all keys in updates are valid
+            invalid_keys = set(v['updates'].keys()) - VALID_KEYS
+            if invalid_keys:
+                raise ValueError(f"Invalid update keys: {invalid_keys}")
+        return super().model_validate(v)
 
 class SpotifyImportParams(BaseModel):
     playlist_id: str

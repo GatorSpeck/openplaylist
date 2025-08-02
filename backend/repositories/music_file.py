@@ -1,5 +1,5 @@
 from .base import BaseRepository
-from models import MusicFileDB, TrackGenreDB
+from models import MusicFileDB, TrackGenreDB, LocalFileDB
 from typing import Optional
 from response_models import MusicFile, SearchQuery, TrackDetails, Playlist, MusicFileEntry, try_parse_int
 from sqlalchemy import text, or_, func
@@ -55,19 +55,19 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         scoring = """
             CASE
                 -- Exact title match (highest priority)
-                WHEN lower(title) = lower(:token) THEN 100
+                WHEN lower(file_title) = lower(:token) THEN 100
                 -- Title starts with token
-                WHEN lower(title) LIKE lower(:token || '%') THEN 75
+                WHEN lower(file_title) LIKE lower(:token || '%') THEN 75
                 -- Title contains token
-                WHEN lower(title) LIKE lower('%' || :token || '%') THEN 50
+                WHEN lower(file_title) LIKE lower('%' || :token || '%') THEN 50
                 -- Artist exact match
-                WHEN lower(artist) = lower(:token) THEN 40
+                WHEN lower(file_artist) = lower(:token) THEN 40
                 -- Artist contains token
-                WHEN lower(artist) LIKE lower('%' || :token || '%') THEN 30
+                WHEN lower(file_artist) LIKE lower('%' || :token || '%') THEN 30
                 -- Album exact match
-                WHEN lower(album) = lower(:token) THEN 20
+                WHEN lower(file_album) = lower(:token) THEN 20
                 -- Album contains token
-                WHEN lower(album) LIKE lower('%' || :token || '%') THEN 10
+                WHEN lower(file_album) LIKE lower('%' || :token || '%') THEN 10
                 ELSE 0
             END
         """
@@ -78,7 +78,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         )
 
         # Build query with scoring
-        query = self.session.query(MusicFileDB, text(f"({score_sum}) as relevance"))
+        query = self.session.query(LocalFileDB, text(f"({score_sum}) as relevance"))
 
         # Add token parameters
         for i, token in enumerate(tokens):
@@ -87,16 +87,16 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             # Filter to only include results matching at least one token
             query = query.filter(
                 or_(
-                    MusicFileDB.title.ilike(f"%{token}%"),
-                    MusicFileDB.artist.ilike(f"%{token}%"),
-                    MusicFileDB.album.ilike(f"%{token}%"),
+                    LocalFileDB.file_title.ilike(f"%{token}%"),
+                    LocalFileDB.file_artist.ilike(f"%{token}%"),
+                    LocalFileDB.file_album.ilike(f"%{token}%"),
                 )
             )
 
         # Order by relevance score
         results = (
             query.order_by(text("relevance DESC"))
-                .order_by(MusicFileDB.artist, MusicFileDB.album, MusicFileDB.title)
+                .order_by(LocalFileDB.file_artist, LocalFileDB.file_album, LocalFileDB.file_title)
                 .limit(query_package.limit).offset(query_package.offset).all()
         )
 
@@ -104,8 +104,9 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             f"Search query: {search_query} returned {len(results)} results in {time.time() - start_time:.2f} seconds"
         )
 
-        # Extract just the MusicFileDB objects from results
-        return [to_music_file(r.MusicFileDB) for r in results]
+        # Extract just the LocalFileDB objects from results (first element of each tuple)
+        local_files = [result[0] for result in results]
+        return [MusicFile.from_local_file(local_file) for local_file in local_files]
 
     def filter(
         self,

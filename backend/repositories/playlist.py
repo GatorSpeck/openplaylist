@@ -9,7 +9,9 @@ from models import (
     AlbumDB,
     AlbumTrackDB,
     RequestedAlbumEntryDB,
-    SyncTargetDB
+    SyncTargetDB,
+    LocalFileDB,  # Add this
+    ExternalSourceDB  # Add this
 )
 from response_models import (
     Playlist,
@@ -20,7 +22,7 @@ from response_models import (
     AlbumEntry,
     RequestedAlbumEntry,
     PlaylistEntriesResponse,
-    UnlinkTrackRequest,
+    LinkChangeRequest,
     AlbumTrack,
     Album,
     SearchQuery,
@@ -152,35 +154,118 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
     
     def get_count(self, playlist_id: int):
         return {"count": self.session.query(PlaylistEntryDB).filter(PlaylistEntryDB.playlist_id == playlist_id).count()}
-    
-    def unlink_track(self, playlist_id: int, details: UnlinkTrackRequest):
-        # Get the playlist entry
+
+    def update_links(self, playlist_id: int, details: LinkChangeRequest):
+        """Update track links using the new LocalFileDB and ExternalSourceDB structure"""
+        # Find the playlist entry - could be by entry ID or by music file ID
+        entry = None
+        
+        # First try to find by playlist entry ID (for already linked entries)
         entry = self.session.query(PlaylistEntryDB).filter(
             PlaylistEntryDB.playlist_id == playlist_id,
-            PlaylistEntryDB.id == details.existing_track_id
+            PlaylistEntryDB.id == details.track_id
         ).first()
+        
+        # If not found, try to find by music file ID (for unlinked Last.fm entries)
+        if entry is None:
+            entry = self.session.query(MusicFileEntryDB).filter(
+                MusicFileEntryDB.playlist_id == playlist_id,
+                MusicFileEntryDB.music_file_id == details.track_id
+            ).first()
 
         if entry is None:
-            raise ValueError(f"Track with ID {details.existing_track_id} not found in playlist {playlist_id}")
+            raise ValueError(f"Track with ID {details.track_id} not found in playlist {playlist_id}")
 
-        # Unlink the track based on the flags
-        if details.unlink_local:
-            entry.music_file_id = None
+        # Only handle music file entries for linking
+        if not isinstance(entry, MusicFileEntryDB):
+            raise ValueError(f"Can only link music file entries, got {type(entry)}")
 
-        if details.unlink_youtube:
-            entry.requested_album_id = None
-        
-        if details.unlink_spotify:
-            entry.spotify_id = None
-        
-        if details.unlink_plex:
-            entry.plex_id = None
-        
-        if details.unlink_lastfm:
-            entry.last_fm_id = None
-        
-        if details.unlink_musicbrainz:
-            entry.music_brainz_id = None
+        # Get or create the music file record
+        music_file = entry.details
+        if music_file is None:
+            raise ValueError(f"No music file details found for entry {details.track_id}")
+
+        # Handle local file linking/unlinking - only if explicitly provided
+        if 'local_path' in details.updates:
+            local_path = details.updates['local_path']
+            if local_path is None:
+                # Unlink local file - ONLY remove the relationship, preserve LocalFileDB record
+                if music_file.local_file:
+                    # Store reference to the local file before unlinking
+                    local_file_to_preserve = music_file.local_file
+                    
+                    # Break the relationship in both directions
+                    music_file.local_file = None
+                    local_file_to_preserve.music_file_id = None
+                    
+                    logging.info(f"Unlinked local file {local_file_to_preserve.path} from music file {music_file.id}")
+            else:
+                # Link to local file - find the local file by path
+                local_file = self.session.query(LocalFileDB).filter(
+                    LocalFileDB.path == local_path
+                ).first()
+                
+                if local_file is None:
+                    raise ValueError(f"Local file not found: {local_path}")
+                
+                # Check if this local file is already linked to another music file
+                if local_file.music_file_id is not None:
+                    # Unlink from the existing music file first
+                    existing_music_file = self.session.query(MusicFileDB).filter(
+                        MusicFileDB.id == local_file.music_file_id
+                    ).first()
+                    
+                    if existing_music_file:
+                        existing_music_file.local_file = None
+                        logging.info(f"Unlinked local file {local_file.path} from existing music file {existing_music_file.id}")
+                
+                # Now check if the current music file already has a local file linked
+                if music_file.local_file is not None:
+                    # Unlink the current local file
+                    current_local_file = music_file.local_file
+                    current_local_file.music_file_id = None
+                    music_file.local_file = None
+                    logging.info(f"Unlinked existing local file {current_local_file.path} from music file {music_file.id}")
+                
+                # Now establish the new link
+                music_file.local_file = local_file
+                local_file.music_file_id = music_file.id
+                logging.info(f"Linked local file {local_file.path} to music file {music_file.id}")
+
+        # Handle external source linking/unlinking - ONLY process explicitly provided fields
+        external_source_mappings = {
+            'last_fm_url': 'lastfm',
+            'spotify_uri': 'spotify', 
+            'youtube_url': 'youtube',
+            'mbid': 'musicbrainz',
+            'plex_rating_key': 'plex'
+        }
+
+        for field_name, source_type in external_source_mappings.items():
+            # Only process if the field is explicitly provided in the updates
+            if field_name in details.updates:
+                field_value = details.updates[field_name]
+                
+                # Remove existing external source of this type
+                existing_source = self.session.query(ExternalSourceDB).filter(
+                    ExternalSourceDB.music_file_id == music_file.id,
+                    ExternalSourceDB.source_type == source_type
+                ).first()
+                
+                if existing_source:
+                    self.session.delete(existing_source)
+                    logging.info(f"Removed existing {source_type} external source for music file {music_file.id}")
+                
+                # Add new external source if value is provided (and not None/empty)
+                if field_value is not None and field_value.strip():
+                    new_source = ExternalSourceDB(
+                        music_file_id=music_file.id,
+                        source_type=source_type,
+                        external_id=field_value.strip(),
+                        url=field_value.strip() if source_type in ['lastfm', 'youtube'] else None
+                    )
+                    self.session.add(new_source)
+                    logging.info(f"Added new {source_type} external source for music file {music_file.id}")
 
         self.session.commit()
     
@@ -1091,6 +1176,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         album_artists = set()
 
         for e in entries:
+            if not e.details.album:
+                continue
+
             artist_to_use = e.details.album_artist or e.details.artist
             album_artist = artist_to_use + " - " + e.details.album
             if album_artist in album_artists:

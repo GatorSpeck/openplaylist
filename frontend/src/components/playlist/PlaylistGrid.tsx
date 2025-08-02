@@ -1096,10 +1096,20 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         />
       )}
 
-      {showTrackDetails && (
+      {showTrackDetails && selectedTrack && (
         <TrackDetailsModal
           entry={selectedTrack}
+          playlistId={playlistID}
           onClose={() => setShowTrackDetails(false)}
+          onEntryUpdated={(updatedEntry) => {
+            // Update the entry in your playlist state
+            const newEntries = [...entries];
+            const entryIndex = entries.findIndex(e => e.id === updatedEntry.id);
+            if (entryIndex !== -1) {
+              newEntries[entryIndex] = updatedEntry;
+              setEntries(newEntries);
+            }
+          }}
         />
       )}
 
