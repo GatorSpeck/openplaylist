@@ -69,7 +69,7 @@ def upgrade() -> None:
     
     op.create_index('external_sources_music_file_type_idx', 'external_sources', ['music_file_id', 'source_type'])
     
-    # Step 2: Create new music_files table structure
+    # Step 2: Create new music_files table structure (WITHOUT notes - notes belong to playlist entries)
     print("Creating new music_files table...")
     
     op.create_table('music_files_new',
@@ -84,26 +84,36 @@ def upgrade() -> None:
         sa.Column('length', sa.Integer(), index=True, nullable=True),
         sa.Column('publisher', sa.String(255), index=True, nullable=True),
         sa.Column('rating', sa.Integer(), index=True, nullable=True),
-        sa.Column('notes', sa.Text(1024), nullable=True),
-        sa.Column('comments', sa.Text(1024), nullable=True),
+        sa.Column('comments', sa.Text(1024), nullable=True),  # Keep comments on music file
         sa.Column('disc_number', sa.Integer(), nullable=True),
         sa.Column('track_number', sa.Integer(), nullable=True)
+        # NOTE: notes field removed - it belongs to playlist entries
     )
     
-    # Step 3: Bulk migrate existing music_files data
+    # Step 2.5: Add notes column to playlist_entries table
+    print("Adding notes column to playlist_entries...")
+    
+    # Check if notes column already exists
+    inspector = sa.inspect(conn)
+    columns = [col['name'] for col in inspector.get_columns('playlist_entries')]
+    
+    if 'notes' not in columns:
+        op.add_column('playlist_entries', sa.Column('notes', sa.Text(), nullable=True))
+    
+    # Step 3: Bulk migrate existing music_files data (without notes)
     print("Bulk migrating existing music_files metadata...")
     
-    # Insert metadata using bulk INSERT FROM SELECT
+    # Insert metadata using bulk INSERT FROM SELECT (excluding notes)
     conn.execute(text("""
         INSERT INTO music_files_new (
             id, title, artist, album_artist, album, year,
             exact_release_date, release_year, length, publisher,
-            rating, notes, comments, disc_number, track_number
+            rating, comments, disc_number, track_number
         )
         SELECT 
             id, title, artist, album_artist, album, year,
             exact_release_date, release_year, length, publisher,
-            rating, notes, comments, disc_number, track_number
+            rating, comments, disc_number, track_number
         FROM music_files
     """))
     
@@ -172,19 +182,19 @@ def upgrade() -> None:
         WHERE plex_rating_key IS NOT NULL AND plex_rating_key != ''
     """))
     
-    # Step 4: Bulk migrate lastfm_tracks
+    # Step 4: Bulk migrate lastfm_tracks (without notes - notes go to playlist entries)
     print("Bulk migrating lastfm_tracks...")
     
     conn.execute(text("""
         INSERT INTO music_files_new (
             id, title, artist, album_artist, album, year,
             exact_release_date, release_year, length, publisher,
-            rating, notes, comments, disc_number, track_number
+            rating, comments, disc_number, track_number
         )
         SELECT 
             id, title, artist, album_artist, album, year,
             exact_release_date, release_year, length, publisher,
-            rating, notes, comments, disc_number, track_number
+            rating, comments, disc_number, track_number
         FROM lastfm_tracks
     """))
     
@@ -202,19 +212,19 @@ def upgrade() -> None:
         WHERE mbid IS NOT NULL AND mbid != ''
     """))
     
-    # Step 5: Bulk migrate requested_tracks
+    # Step 5: Bulk migrate requested_tracks (without notes - notes go to playlist entries)
     print("Bulk migrating requested_tracks...")
     
     conn.execute(text("""
         INSERT INTO music_files_new (
             id, title, artist, album_artist, album, year,
             exact_release_date, release_year, length, publisher,
-            rating, notes, comments, disc_number, track_number
+            rating, comments, disc_number, track_number
         )
         SELECT 
             id, title, artist, album_artist, album, year,
             exact_release_date, release_year, length, publisher,
-            rating, notes, comments, disc_number, track_number
+            rating, comments, disc_number, track_number
         FROM requested_tracks
     """))
     

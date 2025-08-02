@@ -64,11 +64,6 @@ class TrackDetailsMixin:
         return mapped_column(Integer, index=True, nullable=True)
     
     @declared_attr
-    def notes(cls) -> Mapped[Optional[str]]:
-        """User notes"""
-        return mapped_column(Text(1024), nullable=True)
-    
-    @declared_attr
     def comments(cls) -> Mapped[Optional[str]]:
         """Comments on track file"""
         return mapped_column(Text(1024), nullable=True)
@@ -408,6 +403,8 @@ class PlaylistEntryDB(Base):
 
     playlist_id: Mapped[int] = mapped_column(ForeignKey("playlists.id"), index=True)
     playlist: Mapped["PlaylistDB"] = relationship("PlaylistDB", back_populates="entries")
+
+    notes = Column(Text, nullable=True)
     
     details_id = Column(Integer, ForeignKey("base_elements.id"), nullable=True)
     details = relationship(

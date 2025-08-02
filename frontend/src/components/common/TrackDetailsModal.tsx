@@ -31,6 +31,9 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
     mbid: '',
     plex_rating_key: ''
   });
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesValue, setNotesValue] = useState(() => entry.notes || entry.details?.notes || '');
+  const [savingNotes, setSavingNotes] = useState(false);
   
   if (!entry) return null;
 
@@ -44,6 +47,10 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
 
     fn();
   }, [entry]);
+
+  useEffect(() => {
+    setNotesValue(entry.notes || entry.details?.notes || '');
+  }, [entry.notes, entry.details?.notes]);
 
   const searchForLocalFiles = async () => {
     setIsSearching(true);
@@ -287,6 +294,90 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
     }));
   };
 
+  const handleSaveNotes = async () => {
+    if (!playlistId) {
+      console.error('Cannot save notes without playlist ID');
+      return;
+    }
+
+    const trimmedNotes = notesValue.trim() || null;
+
+    // Optimistically update the entry immediately
+    const updatedEntry = new PlaylistEntry({
+      ...entry,
+      notes: trimmedNotes,
+      details: {
+        ...entry.details,
+        notes: trimmedNotes
+      }
+    });
+
+    // Update the UI immediately
+    if (onEntryUpdated) {
+      onEntryUpdated(updatedEntry);
+    }
+
+    // Close the editing state immediately
+    setEditingNotes(false);
+
+    // Now save to backend in the background
+    setSavingNotes(true);
+    try {
+      const updateRequest = {
+        track_id: entry.id,
+        updates: {
+          notes: trimmedNotes
+        }
+      };
+
+      const response = await fetch(`/api/playlists/${playlistId}/update-entry`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateRequest)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Success - the optimistic update was correct
+      console.log('Notes saved successfully');
+
+    } catch (error) {
+      console.error('Error saving notes:', error);
+      
+      // Revert the optimistic update on error
+      const revertedEntry = new PlaylistEntry({
+        ...entry,
+        notes: entry.notes, // Revert to original notes
+        details: {
+          ...entry.details,
+          notes: entry.notes
+        }
+      });
+
+      if (onEntryUpdated) {
+        onEntryUpdated(revertedEntry);
+      }
+      
+      // Reopen the editor with the current value
+      setNotesValue(entry.notes || entry.details?.notes || '');
+      setEditingNotes(true);
+      
+      alert('Failed to save notes. Please try again.');
+    } finally {
+      setSavingNotes(false);
+    }
+  };
+
+  const handleCancelNotes = () => {
+    // Reset to the current entry's notes (from the updated entry prop)
+    setNotesValue(entry.notes || entry.details?.notes || '');
+    setEditingNotes(false);
+  };
+
   const dateAdded = entry.date_added ? formatDate(entry.date_added, 'MMMM Do YYYY, h:mm:ss a') : null;
   const releaseDate = (entry.year || entry.details.year) ? formatDate(entry.year || entry.details.year, 'MMMM Do YYYY') : null;
 
@@ -492,8 +583,6 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
 
           {entry.details.publisher ? <p><strong>Publisher:</strong> {entry.details.publisher}</p> : null}
           {entry.details.url ? <p><strong>URL:</strong> <a href={entry.details.url}>{entry.details.url}</a></p> : null}
-          {entry.details.notes ? <p><strong>Notes:</strong> {entry.details.notes}</p> : null}
-          {entry.details.comments ? <p><strong>Comments:</strong> {entry.details.comments}</p> : null}
           {dateAdded ? <p><strong>Date Added to Playlist:</strong> {dateAdded}</p> : null}
           
           <div className="external-links">
@@ -507,6 +596,60 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
           </div>
           
           {playlistsList}
+
+          {/* Notes Section - make it editable */}
+          <div className="notes-section">
+            <div className="notes-header">
+              <strong>Notes:</strong>
+              {playlistId && !editingNotes && (
+                <button 
+                  onClick={() => setEditingNotes(true)}
+                  className="edit-notes-button"
+                >
+                  {(entry.notes || entry.details?.notes) ? 'Edit' : 'Add Notes'}
+                </button>
+              )}
+            </div>
+            
+            {editingNotes ? (
+              <div className="notes-editor">
+                <textarea
+                  value={notesValue}
+                  onChange={(e) => setNotesValue(e.target.value)}
+                  placeholder="Add your notes here..."
+                  rows={4}
+                  className="notes-textarea"
+                />
+                <div className="notes-actions">
+                  <button 
+                    onClick={handleSaveNotes}
+                    disabled={savingNotes}
+                    className="save-button"
+                  >
+                    Save
+                  </button>
+                  <button 
+                    onClick={handleCancelNotes}
+                    disabled={savingNotes}
+                    className="cancel-button"
+                  >
+                    Cancel
+                  </button>
+                  {savingNotes && (
+                    <span className="saving-indicator">Saving...</span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="notes-display">
+                {(notesValue || entry.notes || entry.details?.notes) ? (
+                  <p className="notes-text">{notesValue || entry.notes || entry.details?.notes}</p>
+                ) : (
+                  <p className="no-notes">No notes added</p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
         <div className="modal-actions">
           <button onClick={onClose}>Close</button>

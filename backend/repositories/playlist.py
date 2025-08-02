@@ -62,8 +62,6 @@ def playlist_orm_to_response(playlist_entry: PlaylistEntryDB, order: Optional[in
         logging.error(f"Error converting playlist entry: {e}")
         logging.error(f"Playlist entry data: {playlist_entry.__dict__}")
         raise
-
-    result.db_order = result.order
     
     if order is not None:
         result.order = order

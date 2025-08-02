@@ -163,6 +163,7 @@ class MusicFile(MusicEntity, TrackDetails, LocalTrackDetails, ExternalTrackDetai
             track_number=self.track_number,
             disc_number=self.disc_number,
             comments=self.comments,
+            notes=self.notes
         )
         
         # Add local file if path exists
@@ -333,9 +334,9 @@ class PlaylistBase(BaseModel):
 
 class PlaylistEntryStub(BaseModel):
     id: Optional[int] = None
-    db_order: Optional[int] = None
     order: Optional[int] = None
     date_added: Optional[datetime] = None
+    notes: Optional[str] = None  # Add this line
 
 class PlaylistEntryBase(PlaylistEntryStub, ABC):
     entry_type: Optional[Literal["music_file", "nested_playlist", "album", "requested_album"]] = None  # TODO: consolidate album & requested_album
@@ -364,6 +365,7 @@ class MusicFileEntry(PlaylistEntryBase):
     entry_type: Optional[str] = "music_file"
     music_file_id: Optional[int] = None
     details: Optional[MusicFile] = None
+    notes: Optional[str] = None
 
     def to_json(self) -> dict:
         return {
@@ -372,6 +374,7 @@ class MusicFileEntry(PlaylistEntryBase):
             "id": self.id,
             "order": self.order,
             "date_added": self.date_added,
+            "notes": self.notes,
             "details": self.details.to_json() if self.details else None
         }
 
@@ -397,6 +400,7 @@ class MusicFileEntry(PlaylistEntryBase):
             order=obj.order,
             music_file_id=obj.music_file_id,
             date_added=obj.date_added,
+            notes=obj.notes,
             details=MusicFile.from_orm(obj.details) if (details and obj.details is not None) else None,
         )
 
@@ -413,6 +417,7 @@ class NestedPlaylistEntry(PlaylistEntryBase):
     entry_type: Literal["nested_playlist"]
     playlist_id: int
     details: Optional[PlaylistBase] = None
+    notes: Optional[str] = None
 
     def to_playlist(self, playlist_id, order=None) -> NestedPlaylistEntryDB:
         return NestedPlaylistEntryDB(
@@ -435,12 +440,14 @@ class NestedPlaylistEntry(PlaylistEntryBase):
             order=obj.order,
             playlist_id=obj.playlist_id,
             details=Playlist(id=obj.details.id, name=obj.details.name, entries=[]) if details else None,
+            notes=obj.notes
         )
 
 class AlbumEntry(PlaylistEntryBase):
     entry_type: Literal["album"]
     album_id: Optional[int] = None
     details: Optional[Album] = None
+    notes: Optional[str] = None
 
     def to_playlist(self, playlist_id, order=None) -> AlbumEntryDB:
         return AlbumEntryDB(
@@ -469,6 +476,7 @@ class AlbumEntry(PlaylistEntryBase):
             order=obj.order,
             album_id=obj.album_id,
             date_added=obj.date_added,
+            notes=obj.notes,
             details=Album(
                 title=obj.details.title,
                 artist=obj.details.artist,
@@ -494,6 +502,7 @@ class RequestedAlbumEntry(PlaylistEntryBase):
     entry_type: Literal["requested_album"]
     details: Optional[Album] = None
     requested_album_id: Optional[int] = None
+    notes: Optional[str] = None
 
     def to_playlist(self, playlist_id, order=None) -> RequestedAlbumEntryDB:
         return RequestedAlbumEntryDB(
@@ -521,6 +530,7 @@ class RequestedAlbumEntry(PlaylistEntryBase):
                 art_url=obj.details.art_url,
                 last_fm_url=obj.details.last_fm_url
             ) if details and obj.details else None,
+            notes=obj.notes
         )
 
     def to_db(self) -> RequestedAlbumEntryDB:

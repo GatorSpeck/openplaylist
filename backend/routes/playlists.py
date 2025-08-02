@@ -14,7 +14,7 @@ from fastapi.exceptions import HTTPException
 from dependencies import get_music_file_repository, get_playlist_repository, get_plex_repository
 from typing import Optional, List
 from database import Database
-from models import PlaylistDB
+from models import PlaylistDB, PlaylistEntryDB, MusicFileEntryDB
 import pathlib
 import os
 from repositories.requests_cache_session import requests_cache_session
@@ -726,3 +726,41 @@ def sync_playlist(
 def merge_sync_plans(plan1, plan2):
     """Merge two sync plans (lists of SyncChange instances) into a unified plan"""
     return plan1 + plan2
+
+@router.put("/{playlist_id}/update-entry")
+def update_entry_details(
+    playlist_id: int, 
+    update_request: dict = Body(...),
+    repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    """Update specific fields of a playlist entry"""
+    try:
+        track_id = update_request.get('track_id')
+        updates = update_request.get('updates', {})
+        
+        if not track_id:
+            raise HTTPException(status_code=400, detail="track_id is required")
+        
+        # Find the playlist entry
+        entry = repo.session.query(PlaylistEntryDB).filter(
+            PlaylistEntryDB.playlist_id == playlist_id,
+            PlaylistEntryDB.id == track_id
+        ).first()
+        
+        if not entry:
+            raise HTTPException(status_code=404, detail="Entry not found")
+        
+        # Update other entry-level fields as needed
+        updatable_fields = ['notes']  # Add other entry-level fields here as needed
+        for field in updatable_fields:
+            if field in updates:
+                setattr(entry, field, updates[field])
+                logging.info(f"Updated {field} for playlist entry {entry.id}: {updates[field]}")
+        
+        repo.session.commit()
+        
+        return {"message": "Entry updated successfully"}
+        
+    except Exception as e:
+        logging.error(f"Failed to update entry: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update entry")
