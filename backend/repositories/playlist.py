@@ -230,7 +230,11 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 # Now establish the new link
                 music_file.local_file = local_file
                 local_file.music_file_id = music_file.id
-                logging.info(f"Linked local file {local_file.path} to music file {music_file.id}")
+                
+                # Sync metadata from the local file to the music file record
+                music_file.sync_from_file_metadata()
+                
+                logging.info(f"Linked local file {local_file.path} to music file {music_file.id} and synced metadata")
 
         # Handle external source linking/unlinking - ONLY process explicitly provided fields
         external_source_mappings = {

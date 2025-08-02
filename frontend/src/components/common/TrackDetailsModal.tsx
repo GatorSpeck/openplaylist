@@ -86,20 +86,43 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      // Create updated entry with local file data
+      // Create updated entry with local file metadata taking precedence
       const linkedEntry = new PlaylistEntry({
         ...entry,
         entry_type: 'music_file',
         music_file_id: localFile.id,
         details: {
+          // Start with original entry details to preserve external sources
           ...entry.details,
-          ...localFile,
+          
+          // Override with local file metadata (this should take precedence)
+          title: localFile.title || entry.details.title,
+          artist: localFile.artist || entry.details.artist,
+          album: localFile.album || entry.details.album,
+          album_artist: localFile.album_artist || entry.details.album_artist,
+          year: localFile.year || entry.details.year,
+          length: localFile.length || entry.details.length,
+          publisher: localFile.publisher || entry.details.publisher,
+          rating: localFile.rating || entry.details.rating,
+          comments: localFile.comments || entry.details.comments,
+          disc_number: localFile.disc_number || entry.details.disc_number,
+          track_number: localFile.track_number || entry.details.track_number,
+          genres: localFile.genres && localFile.genres.length > 0 ? localFile.genres : entry.details.genres,
+          
+          // Local file specific properties
           path: localFile.path,
           kind: localFile.kind,
           size: localFile.size,
           missing: localFile.missing || false,
           first_scanned: localFile.first_scanned,
-          last_scanned: localFile.last_scanned
+          last_scanned: localFile.last_scanned,
+          
+          // Preserve external sources from the original entry
+          last_fm_url: entry.details.last_fm_url,
+          spotify_uri: entry.details.spotify_uri,
+          youtube_url: entry.details.youtube_url,
+          mbid: entry.details.mbid,
+          plex_rating_key: entry.details.plex_rating_key
         }
       });
 
