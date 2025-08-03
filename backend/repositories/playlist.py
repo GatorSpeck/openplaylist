@@ -10,8 +10,7 @@ from models import (
     AlbumTrackDB,
     RequestedAlbumEntryDB,
     SyncTargetDB,
-    LocalFileDB,  # Add this
-    ExternalSourceDB  # Add this
+    LocalFileDB
 )
 from response_models import (
     Playlist,
@@ -154,7 +153,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         return {"count": self.session.query(PlaylistEntryDB).filter(PlaylistEntryDB.playlist_id == playlist_id).count()}
 
     def update_links(self, playlist_id: int, details: LinkChangeRequest):
-        """Update track links using the new LocalFileDB and ExternalSourceDB structure"""
+        """Update track links using the new music_files column structure"""
         # Find the playlist entry - could be by entry ID or by music file ID
         entry = None
         
@@ -164,7 +163,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             PlaylistEntryDB.id == details.track_id
         ).first()
         
-        # If not found, try to find by music file ID (for unlinked Last.fm entries)
+        # If not found, try to find by music file ID (for unlinked entries)
         if entry is None:
             entry = self.session.query(MusicFileEntryDB).filter(
                 MusicFileEntryDB.playlist_id == playlist_id,
@@ -234,40 +233,28 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 
                 logging.info(f"Linked local file {local_file.path} to music file {music_file.id} and synced metadata")
 
-        # Handle external source linking/unlinking - ONLY process explicitly provided fields
+        # Handle external source linking/unlinking - directly update music_files columns
         external_source_mappings = {
-            'last_fm_url': 'lastfm',
-            'spotify_uri': 'spotify', 
-            'youtube_url': 'youtube',
-            'mbid': 'musicbrainz',
-            'plex_rating_key': 'plex'
+            'last_fm_url': 'last_fm_url',
+            'spotify_uri': 'spotify_uri', 
+            'youtube_url': 'youtube_url',
+            'mbid': 'mbid',
+            'plex_rating_key': 'plex_rating_key'
         }
 
-        for field_name, source_type in external_source_mappings.items():
+        for field_name, column_name in external_source_mappings.items():
             # Only process if the field is explicitly provided in the updates
             if field_name in details.updates:
                 field_value = details.updates[field_name]
                 
-                # Remove existing external source of this type
-                existing_source = self.session.query(ExternalSourceDB).filter(
-                    ExternalSourceDB.music_file_id == music_file.id,
-                    ExternalSourceDB.source_type == source_type
-                ).first()
-                
-                if existing_source:
-                    self.session.delete(existing_source)
-                    logging.info(f"Removed existing {source_type} external source for music file {music_file.id}")
-                
-                # Add new external source if value is provided (and not None/empty)
+                # Update the column directly on the music file
                 if field_value is not None and field_value.strip():
-                    new_source = ExternalSourceDB(
-                        music_file_id=music_file.id,
-                        source_type=source_type,
-                        external_id=field_value.strip(),
-                        url=field_value.strip() if source_type in ['lastfm', 'youtube'] else None
-                    )
-                    self.session.add(new_source)
-                    logging.info(f"Added new {source_type} external source for music file {music_file.id}")
+                    setattr(music_file, column_name, field_value.strip())
+                    logging.info(f"Updated {column_name} to '{field_value.strip()}' for music file {music_file.id}")
+                else:
+                    # Set to None/empty to clear the field
+                    setattr(music_file, column_name, None)
+                    logging.info(f"Cleared {column_name} for music file {music_file.id}")
 
         self.session.commit()
     
@@ -460,14 +447,10 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
             # No need for bulk_save_objects since we're adding to session directly
             self.session.flush()
-        
-        for e in entries:
-            if e.music_file_id is None:
-                raise ValueError("Music file ID cannot be None for entry: " + str(e))
 
         return entries
 
-    def add_entries(self, playlist_id: int, entries: List[PlaylistEntryBase], undo=False) -> None:
+    def add_entries(self, playlist_id: int, entries: List[PlaylistEntry], undo=False) -> None:
         if undo:
             return self.undo_add_entries(playlist_id, entries)
         

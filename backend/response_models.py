@@ -362,7 +362,7 @@ class PlaylistEntryBase(PlaylistEntryStub, ABC):
         return False
 
 class MusicFileEntry(PlaylistEntryBase):
-    entry_type: Optional[str] = "music_file"
+    entry_type: Optional[Literal["music_file"]] = "music_file"
     music_file_id: Optional[int] = None
     details: Optional[MusicFile] = None
     notes: Optional[str] = None
@@ -414,7 +414,7 @@ class MusicFileEntry(PlaylistEntryBase):
         return self.details.get_album() if self.details else None
 
 class NestedPlaylistEntry(PlaylistEntryBase):
-    entry_type: Literal["nested_playlist"]
+    entry_type: Optional[Literal["nested_playlist"]] = "nested_playlist"
     playlist_id: int
     details: Optional[PlaylistBase] = None
     notes: Optional[str] = None
@@ -444,7 +444,7 @@ class NestedPlaylistEntry(PlaylistEntryBase):
         )
 
 class AlbumEntry(PlaylistEntryBase):
-    entry_type: Literal["album"]
+    entry_type: Optional[Literal["album"]] = "album"
     album_id: Optional[int] = None
     details: Optional[Album] = None
     notes: Optional[str] = None
@@ -499,7 +499,7 @@ class AlbumEntry(PlaylistEntryBase):
         return True
 
 class RequestedAlbumEntry(PlaylistEntryBase):
-    entry_type: Literal["requested_album"]
+    entry_type: Optional[Literal["requested_album"]] = "requested_album"
     details: Optional[Album] = None
     requested_album_id: Optional[int] = None
     notes: Optional[str] = None

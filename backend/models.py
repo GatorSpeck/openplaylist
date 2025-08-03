@@ -13,6 +13,31 @@ from datetime import datetime, timezone
 
 Base = declarative_base()
 
+class ExternalDetailMixin:
+    @declared_attr
+    def last_fm_url(cls) -> Mapped[Optional[str]]:
+        """URL to the track on last.fm"""
+        return mapped_column(String(1024), nullable=True)
+
+    @declared_attr
+    def spotify_uri(cls) -> Mapped[Optional[str]]:
+        """Spotify URI for the track"""
+        return mapped_column(String(1024), nullable=True)
+    
+    @declared_attr
+    def youtube_url(cls) -> Mapped[Optional[str]]:
+        """YouTube URL for the track"""
+        return mapped_column(String(1024), nullable=True)
+    
+    @declared_attr
+    def mbid(cls) -> Mapped[Optional[str]]:
+        """MusicBrainz ID for the track"""
+        return mapped_column(String(50), nullable=True)
+    
+    @declared_attr
+    def plex_rating_key(cls) -> Mapped[Optional[str]]:
+        """Primary key for Plex"""
+        return mapped_column(String(1024), nullable=True)
 
 class TrackDetailsMixin:
     """Mixin for track metadata"""
@@ -151,27 +176,8 @@ class LocalFileGenreDB(Base):
     
     local_file = relationship("LocalFileDB", back_populates="file_genres")
 
-class ExternalSourceDB(Base):
-    """Represents links to external music sources"""
-    __tablename__ = "external_sources"
-    id = Column(Integer, primary_key=True, index=True)
-    
-    # External source data
-    source_type = Column(String(50), nullable=False)  # 'lastfm', 'spotify', 'youtube', 'musicbrainz', 'plex'
-    external_id = Column(String(1024), nullable=False)  # The ID/URI from the external source
-    url = Column(String(1024), nullable=True)  # Full URL if applicable
-    
-    # Relationship back to MusicFileDB
-    music_file_id = Column(Integer, ForeignKey("music_files.id"), nullable=False)
-    music_file = relationship("MusicFileDB", back_populates="external_sources")
-    
-    # Ensure uniqueness per source type and music file
-    __table_args__ = (
-        Index('external_sources_music_file_type_idx', music_file_id, source_type),
-    )
-
 # Update MusicFileDB to add helper methods for working with file metadata
-class MusicFileDB(BaseNode, TrackDetailsMixin):
+class MusicFileDB(BaseNode, TrackDetailsMixin, ExternalDetailMixin):
     __tablename__ = "music_files"
     id = Column(Integer, ForeignKey("base_elements.id"), primary_key=True)
     
@@ -181,13 +187,6 @@ class MusicFileDB(BaseNode, TrackDetailsMixin):
         back_populates="music_file", 
         uselist=False,
         cascade="save-update, merge"  # Remove delete-orphan
-    )
-    
-    # External sources (one-to-many)
-    external_sources = relationship(
-        "ExternalSourceDB",
-        back_populates="music_file",
-        cascade="all, delete-orphan"
     )
 
     genres = relationship(
@@ -292,49 +291,6 @@ class MusicFileDB(BaseNode, TrackDetailsMixin):
             }
         
         return differences
-    
-    # Helper methods for external sources
-    def get_external_source(self, source_type: str) -> Optional[str]:
-        """Get external ID/URI for a specific source type"""
-        for source in self.external_sources:
-            if source.source_type == source_type:
-                return source.external_id
-        return None
-    
-    def set_external_source(self, source_type: str, external_id: str, url: Optional[str] = None):
-        """Set or update external source"""
-        # Remove existing source of this type
-        self.external_sources = [s for s in self.external_sources if s.source_type != source_type]
-        
-        # Add new source
-        new_source = ExternalSourceDB(
-            source_type=source_type,
-            external_id=external_id,
-            url=url
-        )
-        self.external_sources.append(new_source)
-    
-    @property
-    def last_fm_url(self) -> Optional[str]:
-        source = next((s for s in self.external_sources if s.source_type == 'lastfm'), None)
-        return source.url if source else None
-    
-    @property
-    def spotify_uri(self) -> Optional[str]:
-        return self.get_external_source('spotify')
-    
-    @property
-    def youtube_url(self) -> Optional[str]:
-        source = next((s for s in self.external_sources if s.source_type == 'youtube'), None)
-        return source.url if source else None
-    
-    @property
-    def mbid(self) -> Optional[str]:
-        return self.get_external_source('musicbrainz')
-    
-    @property
-    def plex_rating_key(self) -> Optional[str]:
-        return self.get_external_source('plex')
 
 class NestedPlaylistDB(BaseNode):
     __tablename__ = "nested_playlists"
@@ -343,21 +299,23 @@ class NestedPlaylistDB(BaseNode):
 
     __mapper_args__ = {"polymorphic_identity": "nested_playlist"}
 
-class AlbumDB(BaseNode):
+class AlbumDB(BaseNode, ExternalDetailMixin):
     __tablename__ = "albums"
     id = Column(Integer, ForeignKey("base_elements.id"), primary_key=True)
-    title = Column(String(1024), index=True)
-    artist = Column(String(1024), index=True)
-    year = Column(String(32), index=True)
+    title = Column(String(1024), index=True)  # title of the album, all tracks should have this as their "album"
+    artist = Column(String(1024), index=True)  # artist of the album, all tracks should have this as their "album artist"
+    year = Column(String(32), nullable=True, index=True)
+
     tracks: Mapped[List[AlbumTrackDB]] = relationship(
         order_by="AlbumTrackDB.order",
         collection_class=ordering_list("order"),
         foreign_keys="AlbumTrackDB.album_id",
     )
-    art_url = Column(String(1024), nullable=True)
-    publisher = Column(String(255), index=True)
-    last_fm_url = Column(String(1024), nullable=True)  # last.fm url
-    mbid = Column(String(50), nullable=True)  # MusicBrainz ID
+
+    exact_release_date = Column(DateTime, index=True, nullable=True)
+
+    art_url = Column(String(1024), nullable=True)  # URL to album art
+    publisher = Column(String(255), index=True)  # record label
 
     __mapper_args__ = {"polymorphic_identity": "album"}
 
