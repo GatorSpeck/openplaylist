@@ -262,7 +262,7 @@ class AlbumTrack(MusicEntity):
         return self.linked_track.get_album() if self.linked_track else None
 
 
-class Album(MusicEntity):
+class Album(MusicEntity, ExternalTrackDetails):
     id: Optional[int] =  None
     title: str
     artist: str
@@ -270,8 +270,6 @@ class Album(MusicEntity):
     publisher: Optional[str] = None
     tracks: Optional[List[AlbumTrack]] = None
     art_url: Optional[str] = None
-    last_fm_url: Optional[str] = None
-    mbid: Optional[str] = None
 
     @classmethod
     def from_orm(cls, obj: AlbumDB):
@@ -284,7 +282,10 @@ class Album(MusicEntity):
             tracks=[AlbumTrack.from_orm(t) for t in obj.tracks] if obj.tracks else None,
             art_url=obj.art_url,
             last_fm_url=obj.last_fm_url,
-            mbid=obj.mbid
+            mbid=obj.mbid,
+            spotify_uri=obj.spotify_uri,
+            youtube_url=obj.youtube_url,
+            plex_rating_key=obj.plex_rating_key
         )
     
     def to_db(self) -> AlbumDB:
@@ -298,6 +299,9 @@ class Album(MusicEntity):
             art_url=self.art_url,
             last_fm_url=self.last_fm_url,
             mbid=self.mbid,
+            spotify_uri=self.spotify_uri,
+            youtube_url=self.youtube_url,
+            plex_rating_key=self.plex_rating_key
         )
 
     def to_json(self) -> dict:
@@ -311,6 +315,9 @@ class Album(MusicEntity):
             "publisher": self.publisher,
             "mbid": self.mbid,
             "tracks": [t.to_json() for t in self.tracks] if self.tracks else None,
+            "spotify_uri": self.spotify_uri,
+            "youtube_url": self.youtube_url,
+            "plex_rating_key": self.plex_rating_key
         }
     
     def get_title(self):

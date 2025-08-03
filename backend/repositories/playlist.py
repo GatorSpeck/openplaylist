@@ -408,6 +408,28 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 if existing_album:
                     # If it exists, use its ID
                     entries[idx].requested_album_id = existing_album.id
+
+                    # can update this album's metadata if we have it handy
+                    if not existing_album.last_fm_url:
+                        existing_album.last_fm_url = entry.details.last_fm_url
+                    
+                    if not existing_album.art_url:
+                        existing_album.art_url = entry.details.art_url
+                    
+                    if not existing_album.mbid:
+                        existing_album.mbid = entry.details.mbid
+                    
+                    if not existing_album.spotify_uri:
+                        existing_album.spotify_uri = entry.details.spotify_uri
+                    
+                    if not existing_album.youtube_url:
+                        existing_album.youtube_url = entry.details.youtube_url
+                    
+                    if not existing_album.plex_rating_key:
+                        existing_album.plex_rating_key = entry.details.plex_rating_key
+                    
+                    self.session.flush()
+
                     continue
 
                 album = AlbumDB(
