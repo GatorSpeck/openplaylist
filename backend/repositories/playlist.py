@@ -173,9 +173,11 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         if entry is None:
             raise ValueError(f"Track with ID {details.track_id} not found in playlist {playlist_id}")
 
+        update_local_path_link = False
+
         # Only handle music file entries for linking
-        if not isinstance(entry, MusicFileEntryDB):
-            raise ValueError(f"Can only link music file entries, got {type(entry)}")
+        if isinstance(entry, MusicFileEntryDB):
+            update_local_path_link = True
 
         # Get or create the music file record
         music_file = entry.details
@@ -183,7 +185,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             raise ValueError(f"No music file details found for entry {details.track_id}")
 
         # Handle local file linking/unlinking - only if explicitly provided
-        if 'local_path' in details.updates:
+        if update_local_path_link and 'local_path' in details.updates:
             local_path = details.updates['local_path']
             if local_path is None:
                 # Unlink local file - ONLY remove the relationship, preserve LocalFileDB record

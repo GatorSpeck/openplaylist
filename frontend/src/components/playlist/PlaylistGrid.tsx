@@ -761,7 +761,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         return;
       }
 
-      await playlistRepository.unlinkTrack(playlistID, albumToMatch.id, newAlbum);
+      await playlistRepository.updateLinks(playlistID, albumToMatch.id, newAlbum);
       
       // Update local state
       pushToHistory(entries);
