@@ -531,7 +531,8 @@ def sync_playlist(
                 remote_repo = create_remote_repository(
                     service=target.service,
                     session=db,
-                    config=config
+                    config=config,
+                    music_file_repo=get_music_file_repository(db)
                 )
 
                 if remote_repo is None:

@@ -26,7 +26,8 @@ from response_models import (
     Album,
     SearchQuery,
     SyncTarget,
-    TrackDetails
+    TrackDetails,
+    MusicFile
 )
 from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 from sqlalchemy import select, tuple_, and_, func, or_, case
@@ -700,6 +701,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         music_files = []
         for i in item:
             # look up music file by path
+            # TODO: refactor to use music_file repo
             matches = (
                 self.session.query(MusicFileDB)
                 .filter(
@@ -729,19 +731,28 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 logging.warning(f"No matching music file found for {i.artist} - {i.album} - {i.title}")
 
                 requested_track = MusicFileEntry(
-                    details=TrackDetails(
+                    details=MusicFile(
                         artist=i.artist,
                         title=i.title,
-                        album=i.album
+                        album=i.album,
+                        spotify_uri=i.spotify_uri,
+                        youtube_url=i.youtube_url,
+                        plex_rating_key=i.plex_rating_key
                     ),
                 )
                 
                 music_files.append(requested_track)
                 continue
             
+            # enrich the first match with external details if they exist
+            matches[0].spotify_uri = i.spotify_uri
+            matches[0].youtube_url = i.youtube_url
+            matches[0].plex_rating_key = i.plex_rating_key
+            
             # Create a new MusicFileEntryDB object
             music_file_entry = MusicFileEntry(
                 music_file_id=matches[0].id,
+                details=MusicFile.from_orm(matches[0]),
             )
 
             music_files.append(music_file_entry)

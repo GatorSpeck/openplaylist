@@ -38,6 +38,25 @@ class TrackDetails(BaseModel):
     disc_number: Optional[int] = None
     comments: Optional[str] = None
 
+    @classmethod
+    def from_orm(cls, music_file: MusicFileDB):
+        return cls(
+            title=music_file.title,
+            artist=music_file.artist,
+            album_artist=music_file.album_artist,
+            album=music_file.album,
+            year=music_file.year,
+            length=music_file.length,
+            publisher=music_file.publisher,
+            genres=[s.genre for s in music_file.genres],
+            exact_release_date=music_file.exact_release_date,
+            release_year=music_file.release_year,
+            rating=music_file.rating,
+            track_number=try_parse_int(music_file.track_number),
+            disc_number=try_parse_int(music_file.disc_number),
+            comments=music_file.comments
+        )
+
 class MusicEntity(BaseModel):
     id: Optional[int] = None
 
@@ -162,8 +181,7 @@ class MusicFile(MusicEntity, TrackDetails, LocalTrackDetails, ExternalTrackDetai
             release_year=self.release_year,
             track_number=self.track_number,
             disc_number=self.disc_number,
-            comments=self.comments,
-            notes=self.notes
+            comments=self.comments
         )
         
         # Add local file if path exists
@@ -176,18 +194,6 @@ class MusicFile(MusicEntity, TrackDetails, LocalTrackDetails, ExternalTrackDetai
                 size=self.size,
                 missing=self.missing or False
             )
-        
-        # Add external sources
-        if self.last_fm_url:
-            music_file.set_external_source('lastfm', self.last_fm_url, self.last_fm_url)
-        if self.spotify_uri:
-            music_file.set_external_source('spotify', self.spotify_uri)
-        if self.youtube_url:
-            music_file.set_external_source('youtube', self.youtube_url, self.youtube_url)
-        if self.mbid:
-            music_file.set_external_source('musicbrainz', self.mbid)
-        if self.plex_rating_key:
-            music_file.set_external_source('plex', self.plex_rating_key)
         
         return music_file
     
@@ -704,9 +710,12 @@ class PlaylistItem(BaseModel):
     artist: str
     album: Optional[str] = None
     title: str
+    music_file_id: Optional[int] = None  # ID of the linked music file
     local_path: Optional[str] = None  # Local path to the file
     spotify_uri: Optional[str] = None  # Spotify URI for the item
     youtube_url: Optional[str] = None  # YouTube Music URI
+    plex_rating_key: Optional[str] = None  # Plex rating key for the item
+    
 
     def to_string(self, normalize=False):
         if normalize:
@@ -725,6 +734,7 @@ class PlaylistSnapshot(BaseModel):
     local_paths: set = set()
     youtube_uris: set = set()
     spotify_uris: set = set()
+    plex_rating_keys: set = set()
 
     def has(self, item: PlaylistItem):
         if item.local_path:
@@ -737,6 +747,10 @@ class PlaylistSnapshot(BaseModel):
         
         if item.spotify_uri:
             if item.spotify_uri in self.spotify_uris:
+                return True
+        
+        if item.plex_rating_key:
+            if item.plex_rating_key in self.plex_rating_keys:
                 return True
             
         return item.to_string(normalize=True) in self.item_set
@@ -751,7 +765,9 @@ class PlaylistSnapshot(BaseModel):
             self.youtube_uris.add(item.youtube_url)
         if item.spotify_uri:
             self.spotify_uris.add(item.spotify_uri)
-    
+        if item.plex_rating_key:
+            self.plex_rating_keys.add(item.plex_rating_key)
+
     def search_track(self, item: PlaylistItem):
         # Search for a track in the playlist snapshot
         for existing_item in self.items:
@@ -765,6 +781,10 @@ class PlaylistSnapshot(BaseModel):
                 
             if item.spotify_uri and existing_item.spotify_uri:
                 if item.spotify_uri == existing_item.spotify_uri:
+                    return existing_item
+                
+            if item.plex_rating_key and existing_item.plex_rating_key:
+                if item.plex_rating_key == existing_item.plex_rating_key:
                     return existing_item
                 
             if (normalize_artist(existing_item.artist) == normalize_artist(item.artist) and

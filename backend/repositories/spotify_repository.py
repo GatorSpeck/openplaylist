@@ -120,7 +120,7 @@ class SpotifyRepository(RemotePlaylistRepository):
     """Repository for Spotify playlists that extends RemotePlaylistRepository"""
     
     def __init__(self, session=None, config: Dict[str, str] = None, 
-                 username=None, access_token=None):
+                 username=None, access_token=None, redis_session=None, music_file_repo=None):
         """
         Initialize the repository
         
@@ -132,6 +132,8 @@ class SpotifyRepository(RemotePlaylistRepository):
         """
         # Call parent constructor first
         super().__init__(session, config or {})
+
+        self.music_file_repo = music_file_repo
         
         # Extract playlist URI from config if available
         self.playlist_uri = self.config.get("playlist_uri")
@@ -148,6 +150,8 @@ class SpotifyRepository(RemotePlaylistRepository):
         self.redirect_uri = self.config.get("redirect_uri") or REDIRECT_URI
         
         self.sp = None
+
+        self.redis_session = redis_session
 
         self.playlist_snapshots = {}
         
@@ -246,12 +250,34 @@ class SpotifyRepository(RemotePlaylistRepository):
         """Search for a track on Spotify"""
         if not self.is_authenticated():
             raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
+        
+        if item.spotify_uri:
+            # If we already have a Spotify URI, just return it
+            try:
+                track = self.sp.track(item.spotify_uri)
+                if track:
+                    logging.info(f"Found track by URI: {item.spotify_uri}")
+                    return track
+            except Exception as e:
+                logging.error(f"Error fetching track by URI {item.spotify_uri}: {e}")
+                return None
             
         query = f"artist:{item.artist} track:{item.title}"
         if item.album:
             query += f" album:{item.album}"
         
-        results = self.sp.search(q=query, limit=10, type="track")
+        results = None
+        if self.redis_session:
+            cached_result = self.redis_session.get(query)
+            if cached_result:
+                logging.info(f"Using cached result for query: {query}")
+                results = json.loads(cached_result)
+
+        if not results:
+            results = self.sp.search(q=query, limit=10, type="track")
+        
+        if results and self.redis_session:
+            self.redis_session.set(query, json.dumps(results), ex=3600)
 
         if results and results["tracks"]["items"]:
             for track in results["tracks"]["items"]:
@@ -266,7 +292,26 @@ class SpotifyRepository(RemotePlaylistRepository):
                 track["score"] = score
             
             results["tracks"]["items"].sort(key=lambda x: x.get("score", 0), reverse=True)
-            return results["tracks"]["items"][0]  # Return the best match
+
+            best_match = results["tracks"]["items"][0]
+
+            item = PlaylistItem(
+                artist=best_match["artists"][0]["name"],
+                title=best_match["name"],
+            )
+
+            music_file = self.music_file_repo.search_by_playlist_item(item)
+            if not music_file:
+                logging.warning(f"No music file found for {item.to_string()}")
+            else:
+                music_file_db = self.session.query(self.music_file_repo.model).filter(self.music_file_repo.model.id == music_file.id).first()
+                if not music_file_db:
+                    logging.warning(f"No music file DB entry found for ID {music_file.id}")
+                else:
+                    music_file_db.spotify_uri = best_match["uri"]
+                    self.session.commit()
+
+            return best_match
         
         return None
     
@@ -288,6 +333,8 @@ class SpotifyRepository(RemotePlaylistRepository):
             public=False, 
             description=f"Created by Playlist App on {time.strftime('%Y-%m-%d')}"
         )
+
+        self.playlist_id = new_playlist["id"]
             
         # Add all tracks
         track_uris = []
@@ -300,7 +347,7 @@ class SpotifyRepository(RemotePlaylistRepository):
         if track_uris:
             for i in range(0, len(track_uris), 100):
                 batch = track_uris[i:i+100]
-                self.sp.playlist_add_items(new_playlist["id"], batch)
+                self.sp.playlist_add_items(self.playlist_id, batch)
             
         return new_playlist
     
@@ -333,6 +380,10 @@ class SpotifyRepository(RemotePlaylistRepository):
             if not self.is_authenticated():
                 logging.error("Not authenticated with Spotify")
                 return None
+
+            if not self.playlist_id:
+                logging.error("No playlist ID configured")
+                return None
             
             result = PlaylistSnapshot(
                 name=playlist_name,  # Use the provided name for consistency
@@ -342,7 +393,7 @@ class SpotifyRepository(RemotePlaylistRepository):
             
             # Get all tracks (handle pagination)
             tracks = []
-            results_page = self.sp.playlist_tracks(playlist_name)
+            results_page = self.sp.playlist_tracks(self.playlist_id)
 
             if not results_page or "items" not in results_page:
                 logging.error(f"Failed to fetch tracks for playlist: {playlist_name}")
@@ -368,10 +419,12 @@ class SpotifyRepository(RemotePlaylistRepository):
                     album=album,
                     title=track.get("name", "Unknown Title"),
                     spotify_uri=track.get("uri", None),
+                    youtube_url=None,
+                    plex_rating_key=None,
+                    local_path=None
                 )
 
                 result.add_item(playlist_item)
-                
             
             self.playlist_snapshots[playlist_name] = result
 
@@ -403,19 +456,19 @@ class SpotifyRepository(RemotePlaylistRepository):
             raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
             
         for item in items:
-            logging.info("Removing item from spotify playlist: %s", item.to_string())
-            if item.uri:
-                self.sp.playlist_remove_all_occurrences_of_items(self.playlist_id, [item.uri])
-                logging.info("Removed item by URI: %s", item.uri)
+            logging.info("Removing item with URI %s from spotify playlist: %s", item.spotify_uri, playlist_name)
+            if item.spotify_uri:
+                self.sp.playlist_remove_all_occurrences_of_items(self.playlist_id, [item.spotify_uri])
+                logging.info("Removed item by URI: %s", item.spotify_uri)
             else:
                 # try to find the track in the cached snapshot
                 snapshot = self.playlist_snapshots.get(playlist_name)
                 if snapshot:
                     track = snapshot.search_track(item)
 
-                    if track and track.uri:
-                        self.sp.playlist_remove_all_occurrences_of_items(self.playlist_id, [track.uri])
-                        logging.info("Removed item by URI: %s", track.uri)
+                    if track and track.spotify_uri:
+                        self.sp.playlist_remove_all_occurrences_of_items(self.playlist_id, [track.spotify_uri])
+                        logging.info("Removed item by URI: %s", track.spotify_uri)
                     else:
                         logging.warning(f"Track not found in snapshot for item: {item.to_string(normalize=True)}")
                 else:
@@ -424,7 +477,7 @@ class SpotifyRepository(RemotePlaylistRepository):
 
 # Helper functions to get repository instances
 
-def get_spotify_repo(session=None, username=None, config=None):
+def get_spotify_repo(session=None, username=None, config=None, redis_session=None):
     """Get a Spotify repository instance"""
     if not CLIENT_ID or not CLIENT_SECRET or not REDIRECT_URI:
         logging.warning("Spotify credentials incomplete. Set SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, and SPOTIFY_REDIRECT_URI")
@@ -433,10 +486,11 @@ def get_spotify_repo(session=None, username=None, config=None):
     return SpotifyRepository(
         session=session,
         username=username,
-        config=config
+        config=config,
+        redis_session=redis_session
     )
 
 # For use with dependency injection
-def get_spotify_repository(session=None):
+def get_spotify_repository(session=None, redis_session=None):
     """Get a Spotify repository for dependency injection"""
-    return get_spotify_repo(session=session)
+    return get_spotify_repo(session=session, redis_session=redis_session)

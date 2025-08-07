@@ -12,7 +12,7 @@ from lib.normalize import normalize_title
 class YouTubeMusicRepository(RemotePlaylistRepository):
     """Repository for YouTube Music playlists"""
     
-    def __init__(self, session, config: Dict[str, str] = None):
+    def __init__(self, session, config: Dict[str, str] = None, music_file_repo=None):
         super().__init__(session, config)
         
         # Get the playlist ID from the config
@@ -25,6 +25,8 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             self.playlist_id = self.playlist_uri.split("list=")[1].split("&")[0]
         else:
             self.playlist_id = self.playlist_uri
+        
+        self.music_file_repo = music_file_repo
             
         # Set up authentication
         # You may need to customize this based on your authentication method
@@ -60,6 +62,17 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
         if not self.is_authenticated():
             logging.error("Not authenticated with YouTube Music")
             return None
+        
+        if item.youtube_url:
+            # If we already have a YouTube URL, just return it
+            try:
+                track = self.ytmusic.get_song(item.youtube_url)
+                if track:
+                    logging.info(f"Found track by URL: {item.youtube_url}")
+                    return track
+            except Exception as e:
+                logging.error(f"Error fetching track by URL {item.youtube_url}: {e}")
+                return None
             
         try:
             # Build search query
@@ -101,11 +114,28 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             
             # Sort by score and return the best match
             search_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+            result = None
             
             if search_results[0].get("score", 0) > 0:
-                return search_results[0]
+                result = search_results[0]
                 
-            return search_results[0] if search_results else None
+            if not result:
+                result = search_results[0] if search_results else None
+            
+            if result:
+                music_file = self.music_file_repo.search_by_playlist_item(item)
+                if not music_file:
+                    logging.warning(f"No music file found for {item.to_string()}")
+                else:
+                    music_file_db = self.session.query(self.music_file_repo.model).filter(self.music_file_repo.model.id == music_file.id).first()
+                    if not music_file_db:
+                        logging.warning(f"No music file DB entry found for ID {music_file.id}")
+                    else:
+                        music_file_db.youtube_url = result.get("videoId")
+                        self.session.commit()
+
+            return result
             
         except Exception as e:
             logging.error(f"Error searching for YouTube Music track {item.to_string()}: {e}")

@@ -1,12 +1,13 @@
 from .base import BaseRepository
 from models import MusicFileDB, TrackGenreDB, LocalFileDB
 from typing import Optional
-from response_models import MusicFile, SearchQuery, TrackDetails, Playlist, MusicFileEntry, try_parse_int
+from response_models import MusicFile, SearchQuery, TrackDetails, Playlist, MusicFileEntry, try_parse_int, PlaylistItem
 from sqlalchemy import text, or_, func
 import time
 import urllib
 import logging
 from repositories.playlist import PlaylistRepository
+from lib.normalize import normalize_title
 
 def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
     return MusicFile(
@@ -327,3 +328,50 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         # This would require a more complex query - you might want to implement
         # this as a background job that periodically checks for differences
         pass
+    
+    def search_by_playlist_item(self, item: PlaylistItem) -> Optional[MusicFileDB]:
+        if item.music_file_id:
+            query = query.filter(MusicFileDB.id == item.music_file_id)
+            result = query.first()
+            if result:
+                return result
+        
+        if item.local_path:
+            file_part = item.local_path.split("/")[-1]
+            matches = (
+                self.session.query(MusicFileDB)
+                .join(LocalFileDB)
+                .filter(LocalFileDB.path.like(f"%{file_part}%"))
+                .all()
+            )
+            
+            for m in matches:
+                if normalize_title(m.title) == normalize_title(item.title):
+                    return m
+
+        matches = (
+            self.session.query(MusicFileDB)
+            .filter(
+                func.lower(MusicFileDB.title) == normalize_title(item.title)
+            )
+            .all()
+        )
+
+        for music_file in matches:
+            score = 0
+
+            if music_file.get_artist().lower() == item.artist.lower():
+                score += 10
+            elif normalize_title(music_file.get_artist().lower()) == normalize_title(item.artist.lower()):
+                score += 5
+            
+            if (music_file.album and item.album) and (music_file.album.lower() == item.album.lower()):
+                score += 10
+            elif (music_file.album and item.album) and normalize_title(music_file.album.lower()) == normalize_title(item.album.lower()):
+                score += 5
+            
+            music_file._score = score  # Use a temporary attribute (not persisted)
+        
+        matches = sorted(matches, key=lambda x: getattr(x, "_score", 0), reverse=True)
+        
+        return matches[0] if matches else None
