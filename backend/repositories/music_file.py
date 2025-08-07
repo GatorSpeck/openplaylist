@@ -128,7 +128,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         album = album.lower() if album else None
 
         if not include_missing:
-            query = query.filter(MusicFileDB.missing == False)
+            query = query.join(LocalFileDB).filter(LocalFileDB.missing == False)
 
         if title:
             if exact:
@@ -146,10 +146,12 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             else:
                 query = query.filter(func.lower(MusicFileDB.album).ilike(f"%{album}%"))
         if genre:
-            query = query.filter(func.lower(MusicFileDB.genres).any(genre))
-        
+            query = query.join(TrackGenreDB).filter(func.lower(TrackGenreDB.genre) == genre)
+
         if path:
-            query = query.filter(MusicFileDB.path == path)
+            query = query.join(LocalFileDB).filter(LocalFileDB.path == path)
+        
+        logging.info(f"SQL: {query}")
 
         results = (
             query
