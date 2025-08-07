@@ -9,6 +9,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth, CacheFileHandler
 from fastapi import HTTPException, Depends
 from repositories.plex_repository import normalize_title
+import urllib
 
 from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz
 from repositories.requests_cache_session import requests_cache_session
@@ -261,11 +262,13 @@ class SpotifyRepository(RemotePlaylistRepository):
             except Exception as e:
                 logging.error(f"Error fetching track by URI {item.spotify_uri}: {e}")
                 return None
-            
-        query = f"artist:{item.artist} track:{item.title}"
-        if item.album:
-            query += f" album:{item.album}"
         
+        query = {"artist": item.artist, "title": item.title}
+        if item.album:
+            query["album"] = item.album
+            
+        query = urllib.parse.urlencode(query)
+
         results = None
         if self.redis_session:
             cached_result = self.redis_session.get(query)
@@ -443,6 +446,8 @@ class SpotifyRepository(RemotePlaylistRepository):
             track = self.fetch_media_item(item)
             if track:
                 track_uris.append(track["uri"])
+            else:
+                logging.warning(f"Track not found for item: {item.to_string(normalize=True)}")
         
         if track_uris:
             # Add in batches of 100 (Spotify limit)

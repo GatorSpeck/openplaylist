@@ -221,11 +221,13 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
 
         for t in tracks:
             logging.debug(f"Searching for {t.title} by {t.artist}")
-            existing_files = self.filter(title=t.title, artist=t.artist, exact=True)
-            if existing_files:
-                results.append(existing_files[0])
+            match = self.search_by_playlist_item(PlaylistItem(title=t.title, artist=t.artist))
+            if match:
+                logging.debug(f"Found match for {t.title} by {t.artist}: {match.id}")
+                results.append(to_music_file(match))
             else:
-                results.append(t)
+                # Return None or a placeholder to maintain array indexing
+                results.append(None)
 
         return results
     
@@ -331,7 +333,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
     
     def search_by_playlist_item(self, item: PlaylistItem) -> Optional[MusicFileDB]:
         if item.music_file_id:
-            query = query.filter(MusicFileDB.id == item.music_file_id)
+            query = self.session.query(MusicFileDB).filter(MusicFileDB.id == item.music_file_id)
             result = query.first()
             if result:
                 return result
