@@ -726,7 +726,16 @@ def sync_playlist(
 
 def merge_sync_plans(plan1, plan2):
     """Merge two sync plans (lists of SyncChange instances) into a unified plan"""
-    return plan1 + plan2
+    changes_seen = set()
+    for change in plan1:
+        changes_seen.add(change.item.to_string())
+
+    for change in plan2:
+        if change.item.to_string() in changes_seen:
+            continue
+        plan1.append(change)
+        
+    return plan1
 
 @router.put("/{playlist_id}/update-entry")
 def update_entry_details(
