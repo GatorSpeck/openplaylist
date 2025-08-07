@@ -13,11 +13,9 @@ describe('PlaylistEntryStub', () => {
     const stub = new PlaylistEntryStub({
       id: 123,
       order: 5,
-      entry_type: 'lastfm'
     });
     expect(stub.id).toBe(123);
     expect(stub.order).toBe(5);
-    expect(stub.entry_type).toBe('lastfm');
   });
 });
 
@@ -60,7 +58,6 @@ describe('PlaylistEntry', () => {
     const entry = new PlaylistEntry({
       id: 123,
       order: 5,
-      entry_type: 'lastfm',
       title: 'Test Title',
       artist: 'Test Artist',
       album: 'Test Album'
@@ -68,7 +65,6 @@ describe('PlaylistEntry', () => {
     
     expect(entry.id).toBe(123);
     expect(entry.order).toBe(5);
-    expect(entry.entry_type).toBe('lastfm');
     expect(entry.details.title).toBe('Test Title');
     expect(entry.details.artist).toBe('Test Artist');
     expect(entry.details.album).toBe('Test Album');
@@ -175,26 +171,6 @@ describe('PlaylistEntry', () => {
     
     expect(albumEntry.getTracks()).toEqual([{ title: 'Track 1' }, { title: 'Track 2' }]);
     expect(trackEntry.getTracks()).toEqual([]);
-  });
-
-  test('entry type checker methods work correctly', () => {
-    const musicFileEntry = new PlaylistEntry({ entry_type: 'music_file' });
-    const lastFmEntry = new PlaylistEntry({ entry_type: 'lastfm' });
-    const requestedEntry = new PlaylistEntry({ entry_type: 'requested' });
-    const albumEntry = new PlaylistEntry({ entry_type: 'album' });
-    
-    expect(musicFileEntry.isMusicFile()).toBe(true);
-    expect(lastFmEntry.isMusicFile()).toBe(false);
-    
-    expect(lastFmEntry.isLastFM()).toBe(true);
-    expect(musicFileEntry.isLastFM()).toBe(false);
-    
-    expect(requestedEntry.isRequestedTrack()).toBe(true);
-    expect(musicFileEntry.isRequestedTrack()).toBe(false);
-    
-    expect(requestedEntry.isEditable()).toBe(true);
-    expect(lastFmEntry.isEditable()).toBe(true);
-    expect(musicFileEntry.isEditable()).toBe(false);
   });
 
   test('toRequestedTrack converts entry to requested track type', () => {

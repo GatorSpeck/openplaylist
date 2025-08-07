@@ -155,11 +155,35 @@ export class PlaylistRepository {
         );
     }
 
-    async replaceTrack(id: number, existingTrackID: number, newTrack: PlaylistEntry) {
+    async unlinkTrack(id: number, existingTrackID: number, newTrack: PlaylistEntry) {
         console.log(`Replacing track: ${existingTrackID} with new track`);
-        await axios.put(`/api/playlists/${id}/replace`, {
-            existing_track_id: existingTrackID,
-            new_track: newTrack
+        await axios.put(`/api/playlists/${id}/links`, {
+            track_id: existingTrackID,
+            updates: {
+                // Clear all external links to "unlink" the track
+                last_fm_url: null,
+                spotify_uri: null,
+                youtube_url: null,
+                mbid: null,
+                plex_rating_key: null,
+                local_path: null
+            }
+        });
+    }
+
+    async updateLinks(id: number, existingTrackID: number, newTrack: PlaylistEntry) {
+        console.log(`Updating links for track: ${existingTrackID} with new track data`);
+
+        let updates = {};
+        if (newTrack.details.last_fm_url) updates['last_fm_url'] = newTrack.details.last_fm_url;
+        if (newTrack.details.spotify_uri) updates['spotify_uri'] = newTrack.details.spotify_uri;
+        if (newTrack.details.youtube_url) updates['youtube_url'] = newTrack.details.youtube_url;
+        if (newTrack.details.mbid) updates['mbid'] = newTrack.details.mbid;
+        if (newTrack.details.plex_rating_key) updates['plex_rating_key'] = newTrack.details.plex_rating_key;
+
+        await axios.put(`/api/playlists/${id}/links`, {
+            track_id: existingTrackID,
+            updates: updates
         });
     }
 

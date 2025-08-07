@@ -3,7 +3,7 @@ from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
 from repositories.playlist import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
 from fastapi import Query, APIRouter, Depends, Body, File, UploadFile
-from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, ReplaceTrackRequest, MusicFileEntry, RequestedAlbumEntry, Album, RequestedTrackEntry, TrackDetails, PlaylistEntryStub, SyncTarget
+from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, LinkChangeRequest, MusicFileEntry, RequestedAlbumEntry, Album, TrackDetails, PlaylistEntryStub, SyncTarget
 import json
 from repositories.playlist import PlaylistRepository
 from repositories.music_file import MusicFileRepository
@@ -14,7 +14,7 @@ from fastapi.exceptions import HTTPException
 from dependencies import get_music_file_repository, get_playlist_repository, get_plex_repository
 from typing import Optional, List
 from database import Database
-from models import PlaylistDB
+from models import PlaylistDB, PlaylistEntryDB, MusicFileEntryDB
 import pathlib
 import os
 from repositories.requests_cache_session import requests_cache_session
@@ -194,14 +194,14 @@ def delete_playlist(playlist_id: int):
     finally:
         db.close()
     return {"detail": "Playlist deleted successfully"}
-
-@router.put("/{playlist_id}/replace")
-def replace_track(playlist_id: int, details: ReplaceTrackRequest = Body(...), repo: PlaylistRepository = Depends(get_playlist_repository)):
+    
+@router.put("/{playlist_id}/links")
+def update_links(playlist_id: int, details: LinkChangeRequest = Body(...), repo: PlaylistRepository = Depends(get_playlist_repository)):
     try:
-        repo.replace_track(playlist_id, details.existing_track_id, details.new_track)
+        repo.update_links(playlist_id, details)
     except Exception as e:
-        logging.error(f"Failed to replace track: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to replace track")
+        logging.error(f"Failed to update links: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update links")
 
 @router.get("/{playlist_id}/export", response_class=StreamingResponse)
 def export_playlist(playlist_id: int, type: str = Query("m3u"), repo: PlaylistRepository = Depends(get_playlist_repository)):
@@ -401,8 +401,7 @@ async def import_json_playlist(
 
                         logging.info(f"Adding requested track {details.artist} - {details.title}")
 
-                        entries.append(RequestedTrackEntry(
-                            entry_type="requested",
+                        entries.append(MusicFileEntry(
                             details=details,
                         ))
             
@@ -532,7 +531,8 @@ def sync_playlist(
                 remote_repo = create_remote_repository(
                     service=target.service,
                     session=db,
-                    config=config
+                    config=config,
+                    music_file_repo=get_music_file_repository(db)
                 )
 
                 if remote_repo is None:
@@ -726,4 +726,51 @@ def sync_playlist(
 
 def merge_sync_plans(plan1, plan2):
     """Merge two sync plans (lists of SyncChange instances) into a unified plan"""
-    return plan1 + plan2
+    changes_seen = set()
+    for change in plan1:
+        changes_seen.add(change.item.to_string())
+
+    for change in plan2:
+        if change.item.to_string() in changes_seen:
+            continue
+        plan1.append(change)
+        
+    return plan1
+
+@router.put("/{playlist_id}/update-entry")
+def update_entry_details(
+    playlist_id: int, 
+    update_request: dict = Body(...),
+    repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    """Update specific fields of a playlist entry"""
+    try:
+        track_id = update_request.get('track_id')
+        updates = update_request.get('updates', {})
+        
+        if not track_id:
+            raise HTTPException(status_code=400, detail="track_id is required")
+        
+        # Find the playlist entry
+        entry = repo.session.query(PlaylistEntryDB).filter(
+            PlaylistEntryDB.playlist_id == playlist_id,
+            PlaylistEntryDB.id == track_id
+        ).first()
+        
+        if not entry:
+            raise HTTPException(status_code=404, detail="Entry not found")
+        
+        # Update other entry-level fields as needed
+        updatable_fields = ['notes']  # Add other entry-level fields here as needed
+        for field in updatable_fields:
+            if field in updates:
+                setattr(entry, field, updates[field])
+                logging.info(f"Updated {field} for playlist entry {entry.id}: {updates[field]}")
+        
+        repo.session.commit()
+        
+        return {"message": "Entry updated successfully"}
+        
+    except Exception as e:
+        logging.error(f"Failed to update entry: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update entry")

@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from repositories.music_file import MusicFileRepository
 from repositories.playlist import PlaylistRepository
 from models import Base, MusicFileDB, TrackGenreDB
-from response_models import MusicFile, LastFMTrack, RequestedTrack, RequestedTrackEntry, Playlist, MusicFileEntry
+from response_models import MusicFile, Playlist, MusicFileEntry
 
 @pytest.fixture
 def engine():

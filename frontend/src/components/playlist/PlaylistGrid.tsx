@@ -677,10 +677,12 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const unMatchTrack = (track: PlaylistEntry) => {
     // convert this music track to a RequestedTrack
     let newTrack = track;
-    track.entry_type = "requested";
+    newTrack.getDetails().path = null;
+    newTrack.getDetails().size = null;
+    newTrack.getDetails().kind = null;
 
     // Update backend
-    playlistRepository.replaceTrack(playlistID, track.id, newTrack);
+    playlistRepository.unlinkTrack(playlistID, track.id, newTrack);
 
     // Update local state
     pushToHistory(entries);
@@ -693,8 +695,6 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const matchTrack = async (track: PlaylistEntry) => {
     try {
       setPlaylistLoading(true);
-
-      console.log(track);
       
       // Search for potential matches based on track info
       const searchQuery = `${track.getArtist()} ${track.getTitle()}`;
@@ -721,55 +721,6 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       });
     } finally {
       setPlaylistLoading(false);
-    }
-  };
-
-  const replaceTrackWithMatch = async (selectedMatch: PlaylistEntry) => {
-    try {
-      if (!trackToMatch) return;
-      
-      // Get the track index in the playlist
-      const trackIndex = entries.findIndex(entry => entry.order === trackToMatch.order);
-      if (trackIndex === -1) return;
-      
-      // Create the new track entry
-      const newTrack = {
-        ...mapToTrackModel(selectedMatch),
-        id: trackToMatch.id,
-        order: trackToMatch.order,
-        music_file_id: selectedMatch.id,
-        entry_type: 'music_file',
-        details: selectedMatch.details
-      };
-      
-      // Update backend
-      console.log(trackToMatch.id);
-      if (!trackToMatch.id) {
-        console.error('No track ID found for track to match');
-        return;
-      }
-      await playlistRepository.replaceTrack(playlistID, trackToMatch.id, newTrack);
-      
-      // Update local state
-      pushToHistory(entries);
-      const newEntries = [...entries];
-      newEntries[trackIndex] = newTrack;
-      setEntries(newEntries);
-      
-      setMatchModalOpen(false);
-      
-      setSnackbar({
-        open: true,
-        message: `Entry "${trackToMatch.getTitle()}" matched to "${selectedMatch.getTitle()}"`,
-        severity: 'success'
-      });
-    } catch (error) {
-      console.error('Error replacing entry:', error);
-      setSnackbar({
-        open: true,
-        message: `Error replacing entry: ${error.message}`,
-        severity: 'error'
-      });
     }
   };
 
@@ -810,7 +761,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         return;
       }
 
-      await playlistRepository.replaceTrack(playlistID, albumToMatch.id, newAlbum);
+      await playlistRepository.updateLinks(playlistID, albumToMatch.id, newAlbum);
       
       // Update local state
       pushToHistory(entries);
@@ -955,7 +906,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       let updatedItem = editedItem;
       
       // Update backend
-      await playlistRepository.replaceTrack(playlistID, updatedItem.id, updatedItem);
+      await playlistRepository.unlinkTrack(playlistID, updatedItem.id, updatedItem);
       
       // Update local state
       pushToHistory(entries);
@@ -1145,10 +1096,20 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         />
       )}
 
-      {showTrackDetails && (
+      {showTrackDetails && selectedTrack && (
         <TrackDetailsModal
           entry={selectedTrack}
+          playlistId={playlistID}
           onClose={() => setShowTrackDetails(false)}
+          onEntryUpdated={(updatedEntry) => {
+            // Update the entry in your playlist state
+            const newEntries = [...entries];
+            const entryIndex = entries.findIndex(e => e.id === updatedEntry.id);
+            if (entryIndex !== -1) {
+              newEntries[entryIndex] = updatedEntry;
+              setEntries(newEntries);
+            }
+          }}
         />
       )}
 
@@ -1195,7 +1156,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           onClose={() => setMatchModalOpen(false)}
           track={trackToMatch}
           initialMatches={matchingTracks.map(track => new PlaylistEntry(track))}
-          onMatchSelect={replaceTrackWithMatch}
+          onMatchSelect={linkTrackWithMatch}
           setSnackbar={setSnackbar}
         />
       )}

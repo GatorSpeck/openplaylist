@@ -60,6 +60,10 @@ def create_snapshot(playlist: PlaylistDB) -> PlaylistSnapshot:
             album=e.details.album,
             title=e.details.title,
             local_path=e.details.path,
+            spotify_uri=e.details.spotify_uri,
+            youtube_url=e.details.youtube_url,
+            plex_rating_key=e.details.plex_rating_key,
+            music_file_id=e.details.id
         )
 
         result.add_item(new_item)
@@ -101,7 +105,9 @@ class RemotePlaylistRepository(ABC):
                 title=item.get("title"),
                 local_path=item.get("local_path", None),
                 spotify_uri=item.get("spotify_uri", None),
-                youtube_music_uri=item.get("youtube_music_uri", None)
+                youtube_url=item.get("youtube_url", None),
+                plex_rating_key=item.get("plex_rating_key", None),
+                music_file_id=item.get("music_file_id", None)
             )
 
             result.add_item(i)
@@ -134,8 +140,12 @@ class RemotePlaylistRepository(ABC):
                 record["local_path"] = item.local_path
             if item.spotify_uri:
                 record["spotify_uri"] = item.spotify_uri
-            if item.youtube_music_uri:
-                record["youtube_music_uri"] = item.youtube_music_uri
+            if item.youtube_url:
+                record["youtube_url"] = item.youtube_url
+            if item.plex_rating_key:
+                record["plex_rating_key"] = item.plex_rating_key
+            if item.music_file_id:
+                record["music_file_id"] = item.music_file_id
 
             result.contents.append(record)
         

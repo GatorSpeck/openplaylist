@@ -9,7 +9,8 @@ from repositories.youtube_repository import YouTubeMusicRepository
 def create_remote_repository(
     service: str,
     session: Session,
-    config: Optional[Dict[str, str]] = None
+    config: Optional[Dict[str, str]] = None,
+    music_file_repo=None
 ) -> RemotePlaylistRepository:
     """
     Factory function to create a remote repository based on service type
@@ -25,10 +26,10 @@ def create_remote_repository(
     config = config or {}
     
     if service == 'plex':
-        return PlexRepository(session, config)
+        return PlexRepository(session, config, music_file_repo=music_file_repo)
     elif service == 'spotify':
-        return SpotifyRepository(session, config)
+        return SpotifyRepository(session, config, music_file_repo=music_file_repo)
     elif service == 'youtube':
-        return YouTubeMusicRepository(session, config)
+        return YouTubeMusicRepository(session, config, music_file_repo=music_file_repo)
     else:
         raise ValueError(f"Unsupported service type: {service}")
