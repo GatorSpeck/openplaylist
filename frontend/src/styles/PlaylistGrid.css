@@ -364,3 +364,9 @@
 .odd-row {
   background-color: var(--odd-row-bg, #f5f5f5);
 }
+
+.playlist-grid-row.long-pressing {
+  background-color: rgba(0, 0, 0, 0.1);
+  transform: scale(0.98);
+  transition: all 0.1s ease;
+}
