@@ -821,7 +821,6 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             self.session.commit()
                     
     def insert_entry(self, playlist_id: int, entry, new_index: int = -1):
-        logging.info(f"Adding entry {entry} to playlist {playlist_id} at index {new_index}")
         def get_insert_location():
             query = (
                 self.session.query(PlaylistEntryDB)

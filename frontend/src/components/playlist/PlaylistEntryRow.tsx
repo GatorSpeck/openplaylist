@@ -143,6 +143,11 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
     </div>
   ) : entry.getTitle();
 
+  const handleMenuClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onContextMenu(e);
+  };
+
   return (
     <div 
       ref={ref}
@@ -182,6 +187,13 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
       </div>
       <div className="grid-cell truncate-text" overflow="auto">
         <span>{contents}</span>
+        {isMobile && (<button 
+          className="mobile-menu-button"
+          onClick={handleMenuClick}
+          aria-label="More options"
+        >
+          ⋮
+        </button>)}
       </div>
     </div>
   );

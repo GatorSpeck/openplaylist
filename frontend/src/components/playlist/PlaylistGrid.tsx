@@ -942,7 +942,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       </div>
       <div className="playlist-controls">
         {historyEnabled && historyControls}
-        <button onClick={() => setPlaylistModalVisible(true)}>
+        <button className="playlist-options" onClick={() => setPlaylistModalVisible(true)}>
           ...
         </button>
         <div className="filter-container">
