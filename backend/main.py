@@ -45,7 +45,10 @@ class TimingMiddleware(BaseHTTPMiddleware):
         # Get query parameters as dict
         params = dict(request.query_params)
 
-        logging.info(
+        do_logging = request.url.path != "/api/health"
+
+        if do_logging:
+            logging.info(
                 f"{request.method} {request.url.path} "
                 f"params={params}"
             )
@@ -58,12 +61,13 @@ class TimingMiddleware(BaseHTTPMiddleware):
             raise e
         finally:
             duration = time.time() - start_time
-            logging.info(
-                f"{request.method} {request.url.path} "
-                f"params={params} "
-                f"status={status_code} "
-                f"duration={duration:.3f}s"
-            )
+            if do_logging:
+                logging.info(
+                    f"{request.method} {request.url.path} "
+                    f"params={params} "
+                    f"status={status_code} "
+                    f"duration={duration:.3f}s"
+                )
             
         return response
 
