@@ -150,8 +150,6 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
 
         if path:
             query = query.join(LocalFileDB).filter(LocalFileDB.path == path)
-        
-        logging.info(f"SQL: {query}")
 
         results = (
             query
@@ -218,7 +216,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
 
         self.session.commit()
     
-    def find_local_files(self, tracks: list[TrackDetails]):
+    def find_local_files(self, tracks: list[MusicFile]) -> list[Optional[MusicFile]]:
         results = []
 
         for t in tracks:
@@ -226,14 +224,22 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             match = self.search_by_playlist_item(PlaylistItem(title=t.title, artist=t.artist))
             if match:
                 logging.debug(f"Found match for {t.title} by {t.artist}: {match.id}")
+
+                # enrich match with whatever external details we have
+                match.last_fm_url = t.last_fm_url
+                match.spotify_uri = t.spotify_uri
+                match.youtube_url = t.youtube_url
+                match.mbid = t.mbid
+                match.plex_rating_key = t.plex_rating_key
+
                 results.append(to_music_file(match))
             else:
                 # Return None or a placeholder to maintain array indexing
                 results.append(None)
 
         return results
-    
-    def contains(self, tracks: list[TrackDetails]):
+
+    def contains(self, tracks: list[MusicFile]) -> list[dict]:
         filters = or_([MusicFileDB.title == track.title and MusicFileDB.artist == track.artist for track in tracks])
         existing_tracks = self.session.query(MusicFileDB).filter(filters).all()
 

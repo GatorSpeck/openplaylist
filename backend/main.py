@@ -226,7 +226,7 @@ def scan_directory(directory: str, full=False):
 
             last_modified_time = datetime.fromtimestamp(os.path.getmtime(full_path))
             existing_file = (
-                db.query(MusicFileDB).filter(MusicFileDB.path == full_path).first()
+                db.query(MusicFileDB).join(LocalFileDB).filter(LocalFileDB.path == full_path).first()
             )
 
             found_existing_file = False
@@ -297,7 +297,7 @@ def scan_directory(directory: str, full=False):
             if existing_file:
                 scan_results.files_updated += 1
 
-                existing_file.last_modified = last_modified_time
+                # existing_file.last_modified = last_modified_time
                 existing_file.title = metadata.title
                 existing_file.artist = metadata.artist
                 existing_file.album = metadata.album
@@ -305,11 +305,8 @@ def scan_directory(directory: str, full=False):
                 existing_file.year = year
                 existing_file.length = metadata.length
                 existing_file.publisher = metadata.publisher
-                existing_file.kind = metadata.kind
-                existing_file.last_scanned = datetime.now()
                 existing_file.exact_release_date = exact_release_date
                 existing_file.release_year = release_year
-                existing_file.size = file_size
                 existing_file.rating = metadata.rating
                 existing_file.genres = [
                     TrackGenreDB(parent_type="music_file", genre=genre)
@@ -354,12 +351,16 @@ def scan_directory(directory: str, full=False):
                 # Initially sync the main metadata from file metadata
                 this_track.sync_from_file_metadata()
                 
-                db.add(this_track)
+                try:
+                    db.add(this_track)
 
-                if album is not None:
-                    db.flush()
-                    album.tracks.append(AlbumTrackDB(linked_track_id=this_track.id, order=len(album.tracks)))
-            
+                    if album is not None:
+                        db.flush()
+                        album.tracks.append(AlbumTrackDB(linked_track_id=this_track.id, order=len(album.tracks)))
+                except Exception as e:
+                    logging.error(f"Failed to add track {this_track.id} to album {album.id}: {e}", exc_info=True)
+                    raise
+
             ops += 1
             if ops > 100:
                 db.commit()
@@ -382,6 +383,9 @@ def purge_data():
 
 @router.get("/scan")
 def scan(background_tasks: BackgroundTasks):
+    if scan_results.in_progress:
+        raise HTTPException(status_code=409, detail="Scan already in progress")
+    
     background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), full=False)
     background_tasks.add_task(prune_music_files)
 
@@ -389,6 +393,9 @@ def scan(background_tasks: BackgroundTasks):
 
 @router.get("/fullscan")
 def full_scan(background_tasks: BackgroundTasks):
+    if scan_results.in_progress:
+        raise HTTPException(status_code=409, detail="Scan already in progress")
+
     background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), full=True)
     background_tasks.add_task(prune_music_files)
 
@@ -475,7 +482,7 @@ async def get_stats():
     )
 
 @router.post("/library/findlocals")
-def find_local_files(tracks: List[TrackDetails], repo: MusicFileRepository = Depends(get_music_file_repository)):
+def find_local_files(tracks: List[MusicFile], repo: MusicFileRepository = Depends(get_music_file_repository)):
     return repo.find_local_files(tracks)
 
 @router.get("/lastfm", response_model=List[MusicFile])

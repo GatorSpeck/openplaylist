@@ -353,7 +353,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           // Update snackbar with progress
           setSnackbar({
             open: true,
-            message: `Scanning: ${response.progress}% - ${response.files_indexed} files indexed, ${response.files_updated} updated, ${response.files_missing} missing`,
+            message: `Scanning: ${response.progress}% - ${response.files_indexed} new files indexed, ${response.files_updated} updated, ${response.files_missing} missing`,
             severity: 'info'
           });
 

@@ -398,6 +398,13 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                     # If it exists, use its ID
                     entries[idx].music_file_id = existing_tracks[key].id
 
+                    # enrich match with whatever external details we have
+                    existing_tracks[key].last_fm_url = entry.details.last_fm_url or existing_tracks[key].last_fm_url
+                    existing_tracks[key].spotify_uri = entry.details.spotify_uri or existing_tracks[key].spotify_uri
+                    existing_tracks[key].youtube_url = entry.details.youtube_url or existing_tracks[key].youtube_url
+                    existing_tracks[key].mbid = entry.details.mbid or existing_tracks[key].mbid
+                    existing_tracks[key].plex_rating_key = entry.details.plex_rating_key or existing_tracks[key].plex_rating_key
+
         # Bulk create albums and their tracks
         if album_entries:
             albums_to_add = []

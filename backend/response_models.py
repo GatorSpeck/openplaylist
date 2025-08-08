@@ -181,7 +181,12 @@ class MusicFile(MusicEntity, TrackDetails, LocalTrackDetails, ExternalTrackDetai
             release_year=self.release_year,
             track_number=self.track_number,
             disc_number=self.disc_number,
-            comments=self.comments
+            comments=self.comments,
+            last_fm_url=self.last_fm_url,
+            spotify_uri=self.spotify_uri,
+            youtube_url=self.youtube_url,
+            mbid=self.mbid,
+            plex_rating_key=self.plex_rating_key
         )
         
         # Add local file if path exists
