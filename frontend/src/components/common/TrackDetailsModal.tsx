@@ -466,8 +466,8 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content">
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
         <h2>Entry Details</h2>
         <div className="track-details">
           <p><strong>ID:</strong> {entry.id}</p>
