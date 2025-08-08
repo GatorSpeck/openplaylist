@@ -386,8 +386,11 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 if key not in existing_tracks:
                     # If the track doesn't exist, create a new one
                     music_file = entry.to_db()
+                    music_file.id = None
+
                     self.session.add(music_file)
                     self.session.flush()
+                    
                     existing_tracks[key] = music_file
 
                     entries[idx].music_file_id = music_file.id

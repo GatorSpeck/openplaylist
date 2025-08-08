@@ -21,9 +21,28 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Upgrade schema."""    
     print("Migrating external source data back to music_files table...")
-    
+
+    # add columns
+    op.add_column('music_files', sa.Column('last_fm_url', sa.String(1024), nullable=True))
+    op.add_column('music_files', sa.Column('spotify_uri', sa.String(1024), nullable=True))
+    op.add_column('music_files', sa.Column('youtube_url', sa.String(1024), nullable=True))
+    op.add_column('music_files', sa.Column('mbid', sa.String(1024), nullable=True))
+    op.add_column('music_files', sa.Column('plex_rating_key', sa.String(1024), nullable=True))
+
+    # move data
+    conn = op.get_bind()
+    conn.execute(sa.text("""
+        UPDATE music_files
+        SET last_fm_url = (SELECT url FROM external_sources WHERE music_file_id = music_files.id AND source_type = 'lastfm'),
+            spotify_uri = (SELECT external_id FROM external_sources WHERE music_file_id = music_files.id AND source_type = 'spotify'),
+            youtube_url = (SELECT url FROM external_sources WHERE music_file_id = music_files.id AND source_type = 'youtube'),
+            mbid = (SELECT external_id FROM external_sources WHERE music_file_id = music_files.id AND source_type = 'musicbrainz'),
+            plex_rating_key = (SELECT external_id FROM external_sources WHERE music_file_id = music_files.id AND source_type = 'plex')
+    """))
+
     print("Dropping external_sources table...")
-    op.drop_index('external_sources_music_file_type_idx', table_name='external_sources')
+    # Don't drop the index separately - just drop the table
+    # The index will be dropped automatically when the table is dropped
     op.drop_table('external_sources')
     
     print("Migration completed!")

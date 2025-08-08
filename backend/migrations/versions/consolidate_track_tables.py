@@ -201,15 +201,25 @@ def upgrade() -> None:
     # Bulk create external sources for lastfm tracks
     conn.execute(text("""
         INSERT INTO external_sources (source_type, external_id, url, music_file_id)
-        SELECT 'lastfm', url, url, id
-        FROM lastfm_tracks 
-        WHERE url IS NOT NULL AND url != ''
+        SELECT 'lastfm', lt.url, lt.url, mf.id
+        FROM lastfm_tracks lt
+        INNER JOIN music_files mf ON (
+            lt.title = mf.title 
+            AND lt.artist = mf.artist 
+            AND COALESCE(lt.album, '') = COALESCE(mf.album, '')
+        )
+        WHERE lt.url IS NOT NULL AND lt.url != ''
         
         UNION ALL
         
-        SELECT 'musicbrainz', mbid, NULL, id
-        FROM lastfm_tracks 
-        WHERE mbid IS NOT NULL AND mbid != ''
+        SELECT 'musicbrainz', lt.mbid, NULL, mf.id
+        FROM lastfm_tracks lt  
+        INNER JOIN music_files mf ON (
+            lt.title = mf.title 
+            AND lt.artist = mf.artist 
+            AND COALESCE(lt.album, '') = COALESCE(mf.album, '')
+        )
+        WHERE lt.mbid IS NOT NULL AND lt.mbid != ''
     """))
     
     # Step 5: Bulk migrate requested_tracks (without notes - notes go to playlist entries)
@@ -239,8 +249,10 @@ def upgrade() -> None:
     
     # Step 7: Replace music_files table
     print("Replacing music_files table...")
+    conn.execute(text("SET FOREIGN_KEY_CHECKS = 0"))
     op.drop_table('music_files')
     op.rename_table('music_files_new', 'music_files')
+    conn.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
     
     # Step 8: Bulk update playlist entries
     print("Updating playlist entries...")
@@ -289,13 +301,56 @@ def upgrade() -> None:
         WHERE parent_type = 'requested' AND requested_track_id IS NOT NULL
     """))
     
-    # Step 10: Clean up
-    print("Cleaning up old tables...")
+    # Step 10: Clean up foreign key references MORE THOROUGHLY
+    print("Cleaning up foreign key references...")
     
+    # First, let's see what foreign keys exist
+    conn.execute(text("SET FOREIGN_KEY_CHECKS = 0"))
+    
+    # Update album_tracks references - be more explicit about the join
+    print("Updating album_tracks linked_track_id references...")
+    conn.execute(text("""
+        UPDATE album_tracks at
+        SET linked_track_id = NULL
+        WHERE linked_track_id IN (
+            SELECT id FROM lastfm_tracks
+            UNION
+            SELECT id FROM requested_tracks
+        )
+    """))
+    
+    # Update any playlist_entries.details_id that might point to old tracks
+    print("Updating playlist_entries details_id references...")
+    conn.execute(text("""
+        UPDATE playlist_entries pe
+        SET details_id = NULL
+        WHERE details_id IN (
+            SELECT id FROM lastfm_tracks
+            UNION  
+            SELECT id FROM requested_tracks
+        )
+    """))
+    
+    # Clean up any remaining references in base_elements
+    print("Cleaning up base_elements references...")
+    conn.execute(text("""
+        DELETE FROM base_elements 
+        WHERE id IN (
+            SELECT id FROM lastfm_tracks
+            UNION
+            SELECT id FROM requested_tracks
+        )
+        AND entry_type IN ('lastfm_track', 'requested_track')
+    """))
+    
+    print("Dropping old tables...")
     op.drop_table('lastfm_entries')
-    op.drop_table('requested_entries')
+    op.drop_table('requested_entries') 
     op.drop_table('lastfm_tracks')
     op.drop_table('requested_tracks')
+    
+    # Re-enable foreign key checks
+    conn.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
     
     # Recreate track_genres without old columns
     print("Recreating track_genres table...")
