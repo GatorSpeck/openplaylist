@@ -418,7 +418,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
         {currentValue ? (
           <p>
             <strong>{label}:</strong> 
-            {sourceType === 'youtube_url' || sourceType === 'last_fm_url' ? (
+            {sourceType === 'youtube_url' || sourceType === 'last_fm_url' || sourceType === 'spotify_uri'  ? (
               <a href={currentValue} target="_blank" rel="noopener noreferrer">
                 {currentValue}
               </a>
@@ -464,6 +464,17 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
       </div>
     );
   };
+
+  let spotifyUrlToUse = entry.details.spotify_uri || '';
+  if (spotifyUrlToUse.length) {
+    const components = spotifyUrlToUse.split(":");
+    spotifyUrlToUse = `https://open.spotify.com/track/${components[components.length - 1]}`;
+  }
+
+  let youtubeUrlToUse = entry.details.youtube_url || '';
+  if (youtubeUrlToUse.length) {
+    youtubeUrlToUse = `https://www.youtube.com/watch?v=${youtubeUrlToUse}`;
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -555,14 +566,14 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
             {renderExternalSourceSection(
               'spotify_uri',
               'Spotify',
-              entry.details.spotify_uri,
+              spotifyUrlToUse,
               'Enter Spotify URI (spotify:track:...)'
             )}
             
             {renderExternalSourceSection(
               'youtube_url',
               'YouTube',
-              entry.details.youtube_url,
+              youtubeUrlToUse,
               'Enter YouTube URL'
             )}
             
