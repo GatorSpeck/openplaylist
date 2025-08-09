@@ -596,14 +596,14 @@ def sync_playlist(
                     # remove sync changes with a source of remote
                     sync_plan = [
                         change for change in sync_plan
-                        if change.action != 'add' or change.target != 'remote'
+                        if change.action != 'add' or change.source != 'remote'
                     ]
                 
                 if not target.receiveEntryRemovals:
                     # remove sync changes with a source of remote
                     sync_plan = [
                         change for change in sync_plan
-                        if change.action != 'remove' or change.target != 'remote'
+                        if change.action != 'remove' or change.source != 'remote'
                     ]
                 
                 # Create or merge into unified plan
