@@ -1,9 +1,11 @@
 # OpenPlaylist
 
 ## Overview
-OpenPlaylist is a music playlist management portal, that indexes your local music files and allows you to organize them into playlists, which can be synced to Plex or exported in various formats.
+OpenPlaylist is a music playlist management portal that indexes your local music files and allows you to organize them into playlists.
 
-In addition to local music, your playlists can be augmented with search results from Last.FM, and suggestions from Last.FM and OpenAI.
+Playlists can be synced with Plex, Spotify, and Youtube - or exported in various formats.
+
+In addition to local music, your playlists can be augmented with search results from Last.FM, as well as suggestions from Last.FM and OpenAI.
 
 ## Additional Features
 - **Advanced Playlist Management**
