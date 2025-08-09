@@ -37,6 +37,52 @@ from pydantic import BaseModel
 import sys
 from routes import router
 from routes.spotify_router import spotify_router
+import asyncio
+from fastapi.responses import StreamingResponse
+from typing import AsyncGenerator
+import queue  # Add this import for thread-safe queue
+from collections import deque
+import threading
+
+class LogHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.log_buffer = deque(maxlen=1000)  # Keep last 1000 log entries
+        self.subscribers = set()
+
+    def emit(self, record):
+        try:
+            log_entry = {
+                'timestamp': record.created,
+                'level': record.levelname,
+                'name': record.name,
+                'filename': record.filename,
+                'lineno': record.lineno,
+                'message': record.getMessage()
+            }
+            
+            self.log_buffer.append(log_entry)
+            # Notify subscribers - use thread-safe approach
+            dead_subscribers = set()
+            for subscriber_queue in list(self.subscribers):
+                try:
+                    # Use put_nowait to avoid blocking
+                    subscriber_queue.put_nowait(log_entry)
+                except queue.Full:
+                    # Queue is full, mark for removal
+                    dead_subscribers.add(subscriber_queue)
+                except Exception:
+                    # Subscriber is dead, mark for removal
+                    dead_subscribers.add(subscriber_queue)
+                
+            # Remove dead subscribers
+            for dead_sub in dead_subscribers:
+                self.subscribers.discard(dead_sub)
+                    
+        except Exception as e:
+            # Don't let logging errors break the application
+            pass
+
 
 class TimingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable):
@@ -45,7 +91,7 @@ class TimingMiddleware(BaseHTTPMiddleware):
         # Get query parameters as dict
         params = dict(request.query_params)
 
-        do_logging = request.url.path != "/api/health"
+        do_logging = request.url.path not in ("/api/health", "/api/logs/recent", "/api/scan/progress")
 
         if do_logging:
             logging.info(
@@ -86,6 +132,12 @@ logging.basicConfig(
     format='%(asctime)s.%(msecs)03d - %(levelname)s - %(name)s:%(filename)s:%(lineno)d - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+
+# Create global log handler instance
+log_handler = LogHandler()
+
+# Add the custom handler to the root logger
+logging.getLogger().addHandler(log_handler)
 
 ALLOW_ORIGINS = [origin.strip() for origin in os.getenv("ALLOW_ORIGINS", "http://localhost:80").split(",")]
 
@@ -377,6 +429,27 @@ def scan_directory(directory: str, full=False):
     db.close()
 
     scan_results.in_progress = False
+
+@router.get("/logs/recent")
+def get_recent_logs(level: Optional[str] = None, since: Optional[float] = None):
+    """Get recent log entries, optionally filtered by level and timestamp"""
+    with log_handler.lock:
+        logs = list(log_handler.log_buffer)
+    
+    # Filter by timestamp first if since is provided
+    if since:
+        logs = [log for log in logs if log['timestamp'] > since]
+    
+    # Filter by level if specified
+    if level:
+        level_upper = level.upper()
+        logs = [log for log in logs if log['level'] == level_upper]
+    
+    return {
+        "logs": logs, 
+        "timestamp": time.time(),
+        "count": len(logs)
+    }
 
 @router.get("/purge")
 def purge_data():

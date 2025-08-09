@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Tabs, Tab, Box, 
-         CircularProgress, Typography, Card, CardContent, Avatar, Paper } from '@mui/material';
+         CircularProgress, Typography, Card, CardContent, Avatar, Paper, 
+         FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel } from '@mui/material';
 import { MusicNote as SpotifyIcon } from '@mui/icons-material';
 import PathSelector from './PathSelector';
+import LogsPanel from './LogsPanel';
 import axios from 'axios';
 
 function TabPanel(props) {
@@ -213,7 +215,7 @@ const SettingsModal = ({ open, onClose }) => {
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
       <DialogTitle>Settings</DialogTitle>
       <Tabs value={activeTab} onChange={handleTabChange} centered>
         <Tab label="Music Paths" />
@@ -222,6 +224,7 @@ const SettingsModal = ({ open, onClose }) => {
         <Tab label="OpenAI" />
         <Tab label="Redis" />
         <Tab label="Spotify" />
+        <Tab label="Logs" />
       </Tabs>
       
       <DialogContent>
@@ -262,13 +265,23 @@ const SettingsModal = ({ open, onClose }) => {
           </Box>
           <SpotifyConnectionPanel />
         </TabPanel>
+
+        <TabPanel value={activeTab} index={6}>
+          <LogsPanel />
+        </TabPanel>
       </DialogContent>
       
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button onClick={saveSettings} variant="contained" color="primary">
-          Save
-        </Button>
+        <Button onClick={onClose}>Close</Button>
+        {activeTab !== 6 && (
+          <Button 
+            onClick={saveSettings} 
+            variant="contained" 
+            disabled={isLoading}
+          >
+            {isLoading ? <CircularProgress size={20} /> : 'Save'}
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );
