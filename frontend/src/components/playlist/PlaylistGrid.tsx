@@ -831,13 +831,13 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   const handleContextMenu = (e, track: PlaylistEntry) => {
     e.preventDefault();
-  
+
     const isAlbum = track.entry_type === 'requested_album' || track.entry_type === 'album';
     const isMusicFile = track.entry_type === 'music_file';
     const isRequestedTrack = track.entry_type === 'requested' || track.entry_type === 'lastfm';
     const canEdit = isRequestedTrack || (track.entry_type === 'requested_album');  // Track can be edited if it's a requested track or album
     const isHidden = track.isHidden();
-  
+
     const options = [
       { label: 'Details', onClick: () => handleShowDetails(track) },
       canEdit ? { label: 'Edit Details', onClick: () => handleEditItem(track) } : null,
@@ -850,10 +850,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       // Add hide/unhide options
       isHidden 
         ? { label: 'Unhide', onClick: () => unhideEntry(track.id) }
-        : { label: 'Hide', onClick: () => playlistRepository.hideEntries(playlistID, [track.id], true).then(() => {
-            // Refresh the view
-            fetchPlaylistDetails(true);
-          }) },
+        : { label: 'Hide', onClick: () => hideEntry(track.id) },
       { label: 'Remove', onClick: () => removeSongsFromPlaylist([track.order]) },
       { label: 'Remove by Artist', onClick: () => onRemoveByArtist(track.getArtist()) },
       { label: 'Remove by Album', onClick: () => onRemoveByAlbum(track.getAlbum()) },
@@ -862,7 +859,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       isMusicFile ? { label: 'Unmatch Track', onClick: () => unMatchTrack(track) } : null,
       isAlbum ? { label: 'Match Album on Last.fm', onClick: () => matchAlbum(track) } : null
     ].filter(Boolean);
-  
+
     setContextMenu({
       visible: true,
       x: e.clientX,
@@ -983,6 +980,51 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     }
   };
 
+  // Add function to hide a single entry
+  const hideEntry = async (entryId: number) => {
+    try {
+      // Optimistically update local state first
+      pushToHistory(entries);
+      const newEntries = entries.map(entry => 
+        entry.id === entryId 
+          ? { ...entry, is_hidden: true, date_hidden: new Date().toISOString() }
+          : entry
+      );
+      
+      // If not showing hidden entries, filter them out
+      if (!showHidden) {
+        setEntries(newEntries.filter(entry => !entry.is_hidden));
+        setTotalCount(prevCount => prevCount - 1);
+      } else {
+        setEntries(newEntries);
+      }
+      
+      // Update backend asynchronously
+      await playlistRepository.hideEntries(playlistID, [entryId], true);
+      
+      setSnackbar({
+        open: true,
+        message: 'Entry hidden',
+        severity: 'success'
+      });
+      
+    } catch (error) {
+      console.error('Error hiding entry:', error);
+      
+      // Revert the optimistic update on error
+      setEntries(entries);
+      if (!showHidden) {
+        setTotalCount(prevCount => prevCount + 1);
+      }
+      
+      setSnackbar({
+        open: true,
+        message: `Error hiding entry: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  };
+
   // Add function to hide selected entries
   const hideSelectedTracks = async () => {
     const length = selectedEntries.length;
@@ -993,9 +1035,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     }
 
     try {
-      await playlistRepository.hideEntries(playlistID, selectedEntries, true);
-      
-      // Update local state
+      // Optimistically update local state first
       pushToHistory(entries);
       const newEntries = entries.map(entry => 
         selectedEntries.includes(entry.id) 
@@ -1013,6 +1053,9 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       
       clearTrackSelection();
       
+      // Update backend asynchronously
+      await playlistRepository.hideEntries(playlistID, selectedEntries, true);
+      
       setSnackbar({
         open: true,
         message: `Hidden ${length} entries`,
@@ -1021,6 +1064,13 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       
     } catch (error) {
       console.error('Error hiding entries:', error);
+      
+      // Revert the optimistic update on error
+      setEntries(entries);
+      if (!showHidden) {
+        setTotalCount(prevCount => prevCount + length);
+      }
+      
       setSnackbar({
         open: true,
         message: `Error hiding entries: ${error.message}`,
@@ -1032,9 +1082,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   // Add function to unhide entries
   const unhideEntry = async (entryId: number) => {
     try {
-      await playlistRepository.hideEntries(playlistID, [entryId], false);
-      
-      // Update local state
+      // Optimistically update local state first
       pushToHistory(entries);
       const newEntries = entries.map(entry => 
         entry.id === entryId 
@@ -1042,6 +1090,9 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           : entry
       );
       setEntries(newEntries);
+      
+      // Update backend asynchronously
+      await playlistRepository.hideEntries(playlistID, [entryId], false);
       
       setSnackbar({
         open: true,
@@ -1051,6 +1102,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       
     } catch (error) {
       console.error('Error unhiding entry:', error);
+      
+      // Revert the optimistic update on error
+      setEntries(entries);
+      
       setSnackbar({
         open: true,
         message: `Error unhiding entry: ${error.message}`,
