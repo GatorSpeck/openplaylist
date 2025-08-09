@@ -3,6 +3,7 @@ export class PlaylistEntryStub {
     this.id = entryData.id || null;
     this.order = entryData.order || 0;
     this.entry_type = entryData.entry_type || 'music_file';
+    this.notes = entryData.notes || null;  // Add this line
   }
 }
 
@@ -21,7 +22,7 @@ export class EntryDetails {
     this.missing = details.missing || false;
     this.track_number = details.track_number || null;
     this.disc_number = details.disc_number || null;
-    this.url = details.url || null; // TODO
+    this.url = details.url || null;
     this.art_url = details.art_url || null;
     this.last_fm_url = details.last_fm_url || null;
     this.notes = details.notes || null;
@@ -29,6 +30,12 @@ export class EntryDetails {
     this.size = details.size || null;
     this.last_scanned = details.last_scanned || null;
     this.first_scanned = details.first_scanned || null;
+    // Add missing external source fields
+    this.spotify_uri = details.spotify_uri || null;
+    this.youtube_url = details.youtube_url || null;
+    this.mbid = details.mbid || null;
+    this.plex_rating_key = details.plex_rating_key || null;
+    this.rating = details.rating || null;
 
     // For album types, handle tracks
     this.tracks = details.tracks ? details.tracks : null;
@@ -67,15 +74,27 @@ class PlaylistEntry extends PlaylistEntryStub {
     
     // Type-specific IDs
     this.music_file_id = entryData.music_file_id || null;
+    if (!this.music_file_id && entryData.entry_type === 'music_file') {
+      this.music_file_id = entryData.id || null; // Fallback to id if not provided
+    }
+
     this.lastfm_track_id = entryData.lastfm_track_id || null;
     this.requested_track_id = entryData.requested_track_id || null;
     this.requested_album_id = entryData.requested_album_id || null;
     this.album_id = entryData.album_id || null;
     this.playlist_id = entryData.playlist_id || null;
     
+    // Make sure notes is available at the entry level too
+    this.notes = entryData.notes || null;
+    
     // Track details - handles both direct properties and nested details object
     const detailsToUse = entryData.details || entryData;
     this.details = new EntryDetails(detailsToUse);
+    
+    // If notes isn't in details but is at the entry level, add it to details
+    if (this.notes && !this.details.notes) {
+      this.details.notes = this.notes;
+    }
   }
 
   getEntryType() {
@@ -108,6 +127,14 @@ class PlaylistEntry extends PlaylistEntryStub {
 
   getArtUrl() {
     return this.details.art_url || null;
+  }
+
+  getTracks() {
+    if (!this.isAlbum()) {
+      return [];
+    }
+    
+    return this.details?.tracks || [];
   }
 
   /**
@@ -147,7 +174,6 @@ class PlaylistEntry extends PlaylistEntryStub {
    * @returns {PlaylistEntry} New entry with requested track type
    */
   toRequestedTrack() {
-    console.log(this);
     return new PlaylistEntry({
       ...this,
       entry_type: 'requested',
@@ -164,6 +190,10 @@ class PlaylistEntry extends PlaylistEntryStub {
     });
   }
 
+  getDetails() {
+    return this.details;
+  }
+
   /**
    * Convert this entry to a format suitable for API requests
    * @returns {Object} Entry data ready for API
@@ -172,7 +202,8 @@ class PlaylistEntry extends PlaylistEntryStub {
     const baseEntry = {
       id: this.id,
       entry_type: this.entry_type,
-      order: this.order
+      order: this.order,
+      notes: this.notes  // Add this line
     };
 
     // Add type-specific IDs
@@ -191,28 +222,44 @@ class PlaylistEntry extends PlaylistEntryStub {
     }
 
     // Add details for entries that need them
-    if (this.isRequestedTrack() || this.isLastFM() || this.isAlbum()) {
+    if (this.isRequestedTrack() || this.isLastFM() || this.isAlbum() || this.isMusicFile()) {
       baseEntry.details = {
-        title: this.title,
-        artist: this.artist,
-        album: this.album,
-        album_artist: this.album_artist,
-        year: this.year,
-        length: this.length,
-        publisher: this.publisher
+        title: this.getTitle(),
+        artist: this.getArtist(),
+        album: this.getAlbum(),
+        album_artist: this.getAlbumArtist(),
+        year: this.details.year,
+        length: this.details.length,
+        publisher: this.details.publisher,
+        genres: this.details.genres || [],
+        // Include all metadata fields
+        notes: this.details.notes,
+        comments: this.details.comments,
+        track_number: this.details.track_number,
+        disc_number: this.details.disc_number,
+        rating: this.details.rating,
+        // Include external source fields
+        last_fm_url: this.details.last_fm_url,
+        spotify_uri: this.details.spotify_uri,
+        youtube_url: this.details.youtube_url,
+        mbid: this.details.mbid,
+        plex_rating_key: this.details.plex_rating_key,
+        // Include local file fields if present
+        path: this.details.path,
+        kind: this.details.kind,
+        size: this.details.size,
+        missing: this.details.missing,
+        first_scanned: this.details.first_scanned,
+        last_scanned: this.details.last_scanned
       };
 
-      if (this.url) {
-        baseEntry.details.url = this.url;
+      if (this.details.url) {
+        baseEntry.details.url = this.details.url;
       }
 
-      if (this.isAlbum() && this.tracks) {
-        baseEntry.details.tracks = this.tracks;
-        baseEntry.details.art_url = this.art_url;
-      }
-
-      if (this.genres && this.genres.length) {
-        baseEntry.details.genres = this.genres;
+      if (this.isAlbum() && this.details.tracks) {
+        baseEntry.details.tracks = this.details.tracks;
+        baseEntry.details.art_url = this.details.art_url;
       }
     }
 

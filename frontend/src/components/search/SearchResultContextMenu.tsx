@@ -46,7 +46,7 @@ const SearchResultContextMenu = ({ x, y, track, onClose, onFilterByAlbum, onFilt
         }
       });
 
-      const search_results = response.data.map((track) => ({...track, entry_type: 'lastfm'}));
+      const search_results = response.data.map((track) => ({...track}));
 
       setSimilarTracks(search_results);
       setPosition({ x, y });

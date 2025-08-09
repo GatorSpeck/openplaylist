@@ -7,6 +7,7 @@
 # Database files
 *.sqlite3
 *.db
+*.db-journal
 
 # Python cache
 __pycache__/
@@ -28,3 +29,6 @@ compose.yml
 
 **/config.json
 !healthcheck.sh
+
+# YT Music creds
+oauth.json

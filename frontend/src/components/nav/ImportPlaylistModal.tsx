@@ -9,6 +9,8 @@ const ImportPlaylistModal = ({ open, onClose, onPlaylistImported }) => {
   const [error, setError] = useState('');
   const [importSource, setImportSource] = useState('file');
   const [spotifyPlaylistId, setSpotifyPlaylistId] = useState('');
+  const [plexPlaylistName, setPlexPlaylistName] = useState('');
+  const [youtubePlaylistId, setYoutubePlaylistId] = useState('');
 
   const handleFileChange = (e) => {
     setSelectedFile(e.target.files[0]);
@@ -21,8 +23,23 @@ const ImportPlaylistModal = ({ open, onClose, onPlaylistImported }) => {
     // Reset fields when changing sources
     if (e.target.value === 'spotify') {
       setSelectedFile(null);
-    } else {
+      setPlexPlaylistName('');
+      setYoutubePlaylistId('');
+    }
+    else if (e.target.value === 'plex') {
+      setSelectedFile(null);
       setSpotifyPlaylistId('');
+      setYoutubePlaylistId('');
+    }
+    else if (e.target.value === 'youtube') {
+      setSelectedFile(null);
+      setSpotifyPlaylistId('');
+      setPlexPlaylistName('');
+    }
+    else {
+      setSpotifyPlaylistId('');
+      setPlexPlaylistName('');
+      setYoutubePlaylistId('');
     }
   };
 
@@ -96,7 +113,127 @@ const ImportPlaylistModal = ({ open, onClose, onPlaylistImported }) => {
         setIsLoading(false);
       }
     }
+    else if (importSource === 'plex') {
+      // Plex import validation
+      if (!plexPlaylistName.trim()) {
+        setError('Please enter a Plex playlist name');
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const response = await axios.post(
+          `/api/plex/import`,
+          { remote_playlist_name: plexPlaylistName.trim(), playlist_name: playlistName.trim() },
+        );
+        
+        if (onPlaylistImported) {
+          onPlaylistImported(response.data);
+        }
+        onClose();
+      } catch (error) {
+        console.error('Error importing playlist from Plex:', error);
+        setError(error.response?.data?.detail || 'Failed to import playlist from Plex');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    else if (importSource === 'youtube') {
+      // YouTube Music import validation
+      if (!youtubePlaylistId.trim()) {
+        setError('Please enter a YouTube Music playlist ID');
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const id = encodeURIComponent(youtubePlaylistId.trim());
+        const response = await axios.post(
+          `/api/youtube/import`,
+          { playlist_id: id, playlist_name: playlistName },
+        );
+        
+        if (onPlaylistImported) {
+          onPlaylistImported(response.data);
+        }
+        onClose();
+      } catch (error) {
+        console.error('Error importing playlist from YouTube Music:', error);
+        setError(error.response?.data?.detail || 'Failed to import playlist from YouTube Music');
+      } finally {
+        setIsLoading(false);
+      }
+    }
   };
+
+  let importForm = null;
+  if (importSource === "file") {
+    importForm = (
+      <div className="form-group">
+        <label htmlFor="file-upload">Select File:</label>
+        <input
+          id="file-upload"
+          type="file"
+          accept=".json,.m3u"
+          onChange={handleFileChange}
+        />
+        <small className="helper-text">
+          Accepts JSON or M3U format files
+        </small>
+      </div>
+    );
+  }
+  else if (importSource === "spotify") {
+    importForm = (
+      <div className="form-group">
+        <label htmlFor="spotify-id">Spotify Playlist ID:</label>
+        <input
+          id="spotify-id"
+          type="text"
+          value={spotifyPlaylistId}
+          onChange={(e) => setSpotifyPlaylistId(e.target.value)}
+          placeholder="e.g. 37i9dQZEVXcQ9COmYvdajy"
+        />
+        <small className="helper-text">
+          Enter the Spotify playlist ID (found in the URL or Share link)
+        </small>
+      </div>
+    );
+  }
+  else if (importSource === "plex") {
+    importForm = (
+      <div className="form-group">
+        <label htmlFor="plex-id">Plex Playlist Name:</label>
+        <input
+          id="plex-id"
+          type="text"
+          value={plexPlaylistName}
+          onChange={(e) => setPlexPlaylistName(e.target.value)}
+          placeholder="e.g. My Favorite Songs"
+        />
+        <small className="helper-text">
+          Enter the Plex playlist name
+        </small>
+      </div>
+    );
+  }
+  else if (importSource === "youtube") {
+    importForm = (
+      <div className="form-group">
+        <label htmlFor="youtube-id">YouTube Music Playlist ID:</label>
+        <input
+          id="youtube-id"
+          type="text"
+          value={youtubePlaylistId}
+          onChange={(e) => setYoutubePlaylistId(e.target.value)}
+          placeholder="e.g. PLrAl6w_5dWWDk7WS_CL5lBNxFMlsJ1Y_n"
+        />
+        <small className="helper-text">
+          Enter the YouTube Music playlist ID (found in the URL after "list=")
+        </small>
+      </div>
+    );
+  }
 
   return (
     <Modal
@@ -125,37 +262,12 @@ const ImportPlaylistModal = ({ open, onClose, onPlaylistImported }) => {
           >
             <option value="file">File (JSON/M3U)</option>
             <option value="spotify">Spotify Playlist</option>
+            <option value="plex">Plex Playlist</option>
+            <option value="youtube">YouTube Music Playlist</option>
           </select>
         </div>
-        
-        {importSource === 'file' ? (
-          <div className="form-group">
-            <label htmlFor="file-upload">Select File:</label>
-            <input
-              id="file-upload"
-              type="file"
-              accept=".json,.m3u"
-              onChange={handleFileChange}
-            />
-            <small className="helper-text">
-              Accepts JSON or M3U format files
-            </small>
-          </div>
-        ) : (
-          <div className="form-group">
-            <label htmlFor="spotify-id">Spotify Playlist ID:</label>
-            <input
-              id="spotify-id"
-              type="text"
-              value={spotifyPlaylistId}
-              onChange={(e) => setSpotifyPlaylistId(e.target.value)}
-              placeholder="e.g. 37i9dQZEVXcQ9COmYvdajy"
-            />
-            <small className="helper-text">
-              Enter the Spotify playlist ID (found in the URL or Share link)
-            </small>
-          </div>
-        )}
+
+        {importForm}
         
         {error && <div className="error-message">{error}</div>}
         

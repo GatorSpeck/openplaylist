@@ -29,6 +29,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL}
       - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
       - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+      - SPOTIFY_REDIRECT_URI=${SPOTIFY_REDIRECT_URI}
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
       - DB_TYPE=${DB_TYPE}
@@ -37,6 +38,9 @@ services:
       - DB_NAME=${DB_NAME}
       - DB_USER=${MARIADB_USER}
       - DB_PASSWORD=${MARIADB_PASSWORD}
+      - YTMUSIC_CLIENT_ID=${YTMUSIC_CLIENT_ID}
+      - YTMUSIC_CLIENT_SECRET=${YTMUSIC_CLIENT_SECRET}
+      - YTMUSIC_OAUTH_PATH=${YTMUSIC_OAUTH_PATH}
     healthcheck:
       test: ["CMD", "/app/healthcheck.sh"]
       interval: 10s

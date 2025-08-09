@@ -102,7 +102,7 @@ export class LastFMRepository {
 
             return response.data.map((track) => {
                 let result = new PlaylistEntry(track);
-                result.entry_type = 'lastfm';
+                result.entry_type = 'music_file';
                 return result;
             });
         } catch (error) {

@@ -160,11 +160,22 @@ def test_reorder(test_db, playlist_repo, sample_playlist, sample_music_file):
             details=MusicFile.from_orm(f)
         )
         initial_entries.append(entry)
+    
+    requested_album_entry = RequestedAlbumEntry(
+        entry_type="requested_album",
+        details=Album(
+            id=1,
+            title="Test Album",
+            artist="Test Artist",
+        )
+    )
+
+    initial_entries.append(requested_album_entry)
 
     playlist_repo.add_entries(sample_playlist.id, initial_entries)
 
     result = playlist_repo.get_with_entries(sample_playlist.id)
-    assert len(result.entries) == 10
+    assert len(result.entries) == 11
     assert [e.details.title for e in result.entries] == [e.details.title for e in initial_entries]
     
     # Reorder entries
@@ -191,6 +202,13 @@ def test_reorder(test_db, playlist_repo, sample_playlist, sample_music_file):
     result = playlist_repo.get_with_entries(sample_playlist.id)
     logging.info(list([e.details.title for e in result.entries]))
     assert [e.details.title for e in result.entries[0:5]] == ["Test Song 0", "Test Song 1", "Test Song 2", "Test Song 4", "Test Song 3"]
+
+    playlist_repo.reorder_entries(sample_playlist.id, [10], 3)
+    result = playlist_repo.get_with_entries(sample_playlist.id)
+    
+    assert result.entries[3].entry_type == "requested_album"
+    assert result.entries[3].details.title == "Test Album"
+    assert result.entries[3].details.artist == "Test Artist"
 
 def test_sparse_ordering(test_db, playlist_repo, sample_playlist, sample_music_file):
     initial_entries = []
@@ -281,10 +299,11 @@ def test_add_album_entry(test_db, playlist_repo, sample_playlist):
     tracks = [{"title": f"Test Song {i}", "artist": "Artist"} for i in range(5)]
 
     album = Album(
+        id=123,
         title="Test Album",
         artist="Test Artist",
         art_url="/test/album_art.jpg",
-        tracks = [{"order": i, "linked_track": track} for i, track in enumerate(tracks)]
+        tracks = [{"album_id": 123, "order": i, "linked_track": track} for i, track in enumerate(tracks)]
     )
 
     entry = RequestedAlbumEntry(
@@ -392,9 +411,10 @@ def test_remove_from_playlist(test_db, playlist_repo, sample_playlist):
 def test_match_album_entry(test_db, playlist_repo, sample_playlist):
     # Create a simple requested album entry (like a user manually entered album)
     initial_album = Album(
+        id=1,
         title="Initial Album",
         artist="Initial Artist",
-        tracks=[AlbumTrack(order=0, linked_track={"title": "Initial Track", "artist": "Initial Artist"})]
+        tracks=[AlbumTrack(album_id=1, order=0, linked_track={"title": "Initial Track", "artist": "Initial Artist"})]
     )
 
     initial_entry = RequestedAlbumEntry(
@@ -414,13 +434,14 @@ def test_match_album_entry(test_db, playlist_repo, sample_playlist):
     
     # Create a "matched" album from Last.fm with more complete metadata
     matched_album = Album(
+        id=123,
         title="Matched Album Title",
         artist="Matched Artist",
         art_url="https://lastfm.com/album_art.jpg",
         last_fm_url="https://lastfm.com/album/123",
         tracks=[
-            AlbumTrack(order=0, linked_track={"title": "Track 1", "artist": "Matched Artist"}),
-            AlbumTrack(order=1, linked_track={"title": "Track 2", "artist": "Matched Artist"})
+            AlbumTrack(album_id=123, order=0, linked_track={"title": "Track 1", "artist": "Matched Artist"}),
+            AlbumTrack(album_id=123, order=1, linked_track={"title": "Track 2", "artist": "Matched Artist"})
         ]
     )
     
@@ -447,3 +468,104 @@ def test_match_album_entry(test_db, playlist_repo, sample_playlist):
     assert len(updated_result.entries[0].details.tracks) == 2
     assert updated_result.entries[0].details.tracks[0].linked_track.title == "Track 1"
     assert updated_result.entries[0].details.tracks[1].linked_track.title == "Track 2"
+
+def test_check_for_duplicates(test_db, playlist_repo, sample_playlist):
+    # Create initial entries
+    initial_entries = []
+    for i in range(3):
+        f = add_music_file(test_db, f"Test Song {i}")
+        entry = MusicFileEntry(
+            entry_type="music_file",
+            music_file_id=f.id,
+            details=MusicFile.from_orm(f)
+        )
+        initial_entries.append(entry)
+    
+    # Add initial entries to the playlist
+    playlist_repo.add_entries(sample_playlist.id, initial_entries)
+    
+    # Try adding same songs (duplicates)
+    duplicate_entries = []
+    for i in range(2):  # Only check first 2 songs as duplicates
+        f = test_db.query(MusicFileDB).filter(MusicFileDB.title == f"Test Song {i}").first()
+        entry = MusicFileEntry(
+            entry_type="music_file",
+            music_file_id=f.id,
+            details=MusicFile.from_orm(f)
+        )
+        duplicate_entries.append(entry)
+    
+    # Add a new non-duplicate song
+    new_song = add_music_file(test_db, "New Test Song")
+    new_entry = MusicFileEntry(
+        entry_type="music_file",
+        music_file_id=new_song.id,
+        details=MusicFile.from_orm(new_song)
+    )
+    duplicate_entries.append(new_entry)
+    
+    # Check for duplicates
+    duplicates = playlist_repo.check_for_duplicates(sample_playlist.id, duplicate_entries)
+    
+    # Should find 2 duplicates (the first two songs)
+    assert len(duplicates) == 2
+    assert duplicates[0].details.title == "Test Song 0"
+    assert duplicates[1].details.title == "Test Song 1"
+    
+    # Test with a requested album
+    album = Album(
+        id=123,
+        title="Test Album",
+        artist="Test Artist",
+        tracks=[
+            AlbumTrack(album_id=123, order=0, linked_track={"title": "Album Track 1", "artist": "Test Artist"}),
+            AlbumTrack(album_id=123, order=1, linked_track={"title": "Album Track 2", "artist": "Test Artist"})
+        ]
+    )
+    
+    album_entry = RequestedAlbumEntry(
+        entry_type="requested_album",
+        details=album
+    )
+    
+    # Add album to playlist
+    playlist_repo.add_entries(sample_playlist.id, [album_entry])
+    
+    # Create duplicate album with same title/artist
+    dupe_album = Album(
+        id=456,
+        title="Test Album",  # Same title
+        artist="Test Artist",  # Same artist
+        tracks=[
+            AlbumTrack(album_id=456, order=0, linked_track={"title": "Different Track", "artist": "Test Artist"})
+        ]
+    )
+    
+    dupe_album_entry = RequestedAlbumEntry(
+        entry_type="requested_album",
+        details=dupe_album
+    )
+    
+    # Check if duplicate album is detected
+    album_duplicates = playlist_repo.check_for_duplicates(sample_playlist.id, [dupe_album_entry])
+    assert len(album_duplicates) == 1
+    assert album_duplicates[0].details.title == "Test Album"
+    
+    # Test with a different album (should not be duplicate)
+    unique_album = Album(
+        id=789,
+        title="Unique Album",
+        artist="Different Artist",
+        tracks=[
+            AlbumTrack(album_id=789, order=0, linked_track={"title": "Unique Track", "artist": "Different Artist"})
+        ]
+    )
+    
+    unique_album_entry = RequestedAlbumEntry(
+        entry_type="requested_album",
+        details=unique_album
+    )
+    
+    # Check if non-duplicate album is correctly not detected
+    no_duplicates = playlist_repo.check_for_duplicates(sample_playlist.id, [unique_album_entry])
+    assert len(no_duplicates) == 0

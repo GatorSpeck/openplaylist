@@ -1,17 +1,18 @@
 from .base import BaseRepository
-from models import MusicFileDB, TrackGenreDB
+from models import MusicFileDB, TrackGenreDB, LocalFileDB
 from typing import Optional
-from response_models import MusicFile, SearchQuery, RequestedTrack, TrackDetails, Playlist, MusicFileEntry, try_parse_int
+from response_models import MusicFile, SearchQuery, TrackDetails, Playlist, MusicFileEntry, try_parse_int, PlaylistItem
 from sqlalchemy import text, or_, func
 import time
 import urllib
 import logging
 from repositories.playlist import PlaylistRepository
+from lib.normalize import normalize_title
 
 def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
     return MusicFile(
         id=music_file_db.id,
-        path=music_file_db.path,
+        path=music_file_db.path,  # Uses the property
         title=music_file_db.title,
         artist=music_file_db.artist,
         album_artist=music_file_db.album_artist,
@@ -19,12 +20,24 @@ def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
         year=music_file_db.year,
         length=music_file_db.length,
         publisher=music_file_db.publisher,
-        kind=music_file_db.kind,
+        kind=music_file_db.kind,  # Uses the property
         genres=[g.genre for g in music_file_db.genres] or [],
-        last_scanned=music_file_db.last_scanned,
-        missing=music_file_db.missing,
+        last_scanned=music_file_db.last_scanned,  # Uses the property
+        missing=music_file_db.missing,  # Uses the property
         track_number=try_parse_int(music_file_db.track_number),
         disc_number=try_parse_int(music_file_db.disc_number),
+        size=music_file_db.size,  # Uses the property
+        first_scanned=music_file_db.first_scanned,  # Uses the property
+        last_fm_url=music_file_db.last_fm_url,  # Uses the property
+        spotify_uri=music_file_db.spotify_uri,  # Uses the property
+        youtube_url=music_file_db.youtube_url,  # Uses the property
+        mbid=music_file_db.mbid,  # Uses the property
+        plex_rating_key=music_file_db.plex_rating_key,  # Uses the property
+        comments=music_file_db.comments,
+        rating=music_file_db.rating,
+        exact_release_date=music_file_db.exact_release_date,
+        release_year=music_file_db.release_year,
+        playlists=[]
     )
 
 
@@ -43,19 +56,19 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         scoring = """
             CASE
                 -- Exact title match (highest priority)
-                WHEN lower(title) = lower(:token) THEN 100
+                WHEN lower(file_title) = lower(:token) THEN 100
                 -- Title starts with token
-                WHEN lower(title) LIKE lower(:token || '%') THEN 75
+                WHEN lower(file_title) LIKE lower(:token || '%') THEN 75
                 -- Title contains token
-                WHEN lower(title) LIKE lower('%' || :token || '%') THEN 50
+                WHEN lower(file_title) LIKE lower('%' || :token || '%') THEN 50
                 -- Artist exact match
-                WHEN lower(artist) = lower(:token) THEN 40
+                WHEN lower(file_artist) = lower(:token) THEN 40
                 -- Artist contains token
-                WHEN lower(artist) LIKE lower('%' || :token || '%') THEN 30
+                WHEN lower(file_artist) LIKE lower('%' || :token || '%') THEN 30
                 -- Album exact match
-                WHEN lower(album) = lower(:token) THEN 20
+                WHEN lower(file_album) = lower(:token) THEN 20
                 -- Album contains token
-                WHEN lower(album) LIKE lower('%' || :token || '%') THEN 10
+                WHEN lower(file_album) LIKE lower('%' || :token || '%') THEN 10
                 ELSE 0
             END
         """
@@ -66,7 +79,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         )
 
         # Build query with scoring
-        query = self.session.query(MusicFileDB, text(f"({score_sum}) as relevance"))
+        query = self.session.query(LocalFileDB, text(f"({score_sum}) as relevance"))
 
         # Add token parameters
         for i, token in enumerate(tokens):
@@ -75,16 +88,16 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             # Filter to only include results matching at least one token
             query = query.filter(
                 or_(
-                    MusicFileDB.title.ilike(f"%{token}%"),
-                    MusicFileDB.artist.ilike(f"%{token}%"),
-                    MusicFileDB.album.ilike(f"%{token}%"),
+                    LocalFileDB.file_title.ilike(f"%{token}%"),
+                    LocalFileDB.file_artist.ilike(f"%{token}%"),
+                    LocalFileDB.file_album.ilike(f"%{token}%"),
                 )
             )
 
         # Order by relevance score
         results = (
             query.order_by(text("relevance DESC"))
-                .order_by(MusicFileDB.artist, MusicFileDB.album, MusicFileDB.title)
+                .order_by(LocalFileDB.file_artist, LocalFileDB.file_album, LocalFileDB.file_title)
                 .limit(query_package.limit).offset(query_package.offset).all()
         )
 
@@ -92,8 +105,9 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             f"Search query: {search_query} returned {len(results)} results in {time.time() - start_time:.2f} seconds"
         )
 
-        # Extract just the MusicFileDB objects from results
-        return [to_music_file(r.MusicFileDB) for r in results]
+        # Extract just the LocalFileDB objects from results (first element of each tuple)
+        local_files = [result[0] for result in results]
+        return [MusicFile.from_local_file(local_file) for local_file in local_files]
 
     def filter(
         self,
@@ -114,7 +128,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         album = album.lower() if album else None
 
         if not include_missing:
-            query = query.filter(MusicFileDB.missing == False)
+            query = query.join(LocalFileDB).filter(LocalFileDB.missing == False)
 
         if title:
             if exact:
@@ -132,10 +146,10 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             else:
                 query = query.filter(func.lower(MusicFileDB.album).ilike(f"%{album}%"))
         if genre:
-            query = query.filter(func.lower(MusicFileDB.genres).any(genre))
-        
+            query = query.join(TrackGenreDB).filter(func.lower(TrackGenreDB.genre) == genre)
+
         if path:
-            query = query.filter(MusicFileDB.path == path)
+            query = query.join(LocalFileDB).filter(LocalFileDB.path == path)
 
         results = (
             query
@@ -202,20 +216,30 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
 
         self.session.commit()
     
-    def find_local_files(self, tracks: list[TrackDetails]):
+    def find_local_files(self, tracks: list[MusicFile]) -> list[Optional[MusicFile]]:
         results = []
 
         for t in tracks:
             logging.debug(f"Searching for {t.title} by {t.artist}")
-            existing_files = self.filter(title=t.title, artist=t.artist, exact=True)
-            if existing_files:
-                results.append(existing_files[0])
+            match = self.search_by_playlist_item(PlaylistItem(title=t.title, artist=t.artist))
+            if match:
+                logging.debug(f"Found match for {t.title} by {t.artist}: {match.id}")
+
+                # enrich match with whatever external details we have
+                match.last_fm_url = t.last_fm_url
+                match.spotify_uri = t.spotify_uri
+                match.youtube_url = t.youtube_url
+                match.mbid = t.mbid
+                match.plex_rating_key = t.plex_rating_key
+
+                results.append(to_music_file(match))
             else:
-                results.append(t)
+                # Return None or a placeholder to maintain array indexing
+                results.append(None)
 
         return results
-    
-    def contains(self, tracks: list[TrackDetails]):
+
+    def contains(self, tracks: list[MusicFile]) -> list[dict]:
         filters = or_([MusicFileDB.title == track.title and MusicFileDB.artist == track.artist for track in tracks])
         existing_tracks = self.session.query(MusicFileDB).filter(filters).all()
 
@@ -294,3 +318,70 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         except Exception as e:
             logging.error(f"Failed to dump library to playlist: {e}")
             raise e
+    
+    def sync_metadata_from_file(self, music_file_id: int):
+        """Sync metadata from file tags to the music file record"""
+        music_file = self.session.query(MusicFileDB).get(music_file_id)
+        if music_file:
+            music_file.sync_from_file_metadata()
+            self.session.commit()
+    
+    def get_metadata_differences(self, music_file_id: int) -> dict:
+        """Get differences between current metadata and file metadata"""
+        music_file = self.session.query(MusicFileDB).get(music_file_id)
+        if music_file:
+            return music_file.get_file_metadata_differences()
+        return {}
+    
+    def get_files_with_metadata_differences(self, limit: int = 50, offset: int = 0):
+        """Get files where the current metadata differs from file metadata"""
+        # This would require a more complex query - you might want to implement
+        # this as a background job that periodically checks for differences
+        pass
+    
+    def search_by_playlist_item(self, item: PlaylistItem) -> Optional[MusicFileDB]:
+        if item.music_file_id:
+            query = self.session.query(MusicFileDB).filter(MusicFileDB.id == item.music_file_id)
+            result = query.first()
+            if result:
+                return result
+        
+        if item.local_path:
+            file_part = item.local_path.split("/")[-1]
+            matches = (
+                self.session.query(MusicFileDB)
+                .join(LocalFileDB)
+                .filter(LocalFileDB.path.like(f"%{file_part}%"))
+                .all()
+            )
+            
+            for m in matches:
+                if normalize_title(m.title) == normalize_title(item.title):
+                    return m
+
+        matches = (
+            self.session.query(MusicFileDB)
+            .filter(
+                func.lower(MusicFileDB.title) == normalize_title(item.title)
+            )
+            .all()
+        )
+
+        for music_file in matches:
+            score = 0
+
+            if music_file.get_artist().lower() == item.artist.lower():
+                score += 10
+            elif normalize_title(music_file.get_artist().lower()) == normalize_title(item.artist.lower()):
+                score += 5
+            
+            if (music_file.album and item.album) and (music_file.album.lower() == item.album.lower()):
+                score += 10
+            elif (music_file.album and item.album) and normalize_title(music_file.album.lower()) == normalize_title(item.album.lower()):
+                score += 5
+            
+            music_file._score = score  # Use a temporary attribute (not persisted)
+        
+        matches = sorted(matches, key=lambda x: getattr(x, "_score", 0), reverse=True)
+        
+        return matches[0] if matches else None

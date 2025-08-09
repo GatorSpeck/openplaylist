@@ -2,23 +2,26 @@ from fastapi import APIRouter
 from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
 from repositories.playlist import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
-from plexapi.server import PlexServer
-from plexapi.playlist import Playlist as PlexPlaylist
 from fastapi import Query, APIRouter, Depends, Body, File, UploadFile
-from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, ReplaceTrackRequest, MusicFileEntry, RequestedAlbumEntry, Album, RequestedTrackEntry, TrackDetails
+from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, LinkChangeRequest, MusicFileEntry, RequestedAlbumEntry, Album, TrackDetails, PlaylistEntryStub, SyncTarget
 import json
 from repositories.playlist import PlaylistRepository
 from repositories.music_file import MusicFileRepository
 from repositories.last_fm_repository import get_last_fm_repo
+from repositories.plex_repository import PlexRepository
 import logging
 from fastapi.exceptions import HTTPException
-from dependencies import get_music_file_repository, get_playlist_repository
+from dependencies import get_music_file_repository, get_playlist_repository, get_plex_repository
 from typing import Optional, List
 from database import Database
-from models import PlaylistDB
+from models import PlaylistDB, PlaylistEntryDB, MusicFileEntryDB
 import pathlib
 import os
 from repositories.requests_cache_session import requests_cache_session
+from pydantic import BaseModel
+from typing import Dict, Optional, List, Union, Any
+from repositories.remote_repository_factory import create_remote_repository
+from repositories.remote_playlist_repository import SyncChange, create_snapshot
 
 router = APIRouter()
 
@@ -57,6 +60,19 @@ async def get_playlist(
         raise HTTPException(status_code=500, detail="Failed to get playlist")
     finally:
         db.close()
+
+@router.post("/{playlist_id}/checkdups", response_model=List[PlaylistEntry])
+async def check_duplicates(
+    playlist_id: int,
+    entries: List[PlaylistEntry],
+    repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    try:
+        duplicates = repo.check_for_duplicates(playlist_id, entries)
+        return duplicates
+    except Exception as e:
+        logging.error(f"Failed to check duplicates: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to check duplicates")
 
 @router.get("/{playlist_id}/entries", response_model=PlaylistEntriesResponse)
 async def get_playlist_entries(
@@ -118,7 +134,7 @@ def add_to_playlist(
 @router.post("/{playlist_id}/remove")
 def remove_from_playlist(
     playlist_id: int,
-    entries: List[PlaylistEntry],
+    entries: List[PlaylistEntryStub],
     undo: Optional[bool] = False,
     repo: PlaylistRepository = Depends(get_playlist_repository),
 ):
@@ -178,14 +194,14 @@ def delete_playlist(playlist_id: int):
     finally:
         db.close()
     return {"detail": "Playlist deleted successfully"}
-
-@router.put("/{playlist_id}/replace")
-def replace_track(playlist_id: int, details: ReplaceTrackRequest = Body(...), repo: PlaylistRepository = Depends(get_playlist_repository)):
+    
+@router.put("/{playlist_id}/links")
+def update_links(playlist_id: int, details: LinkChangeRequest = Body(...), repo: PlaylistRepository = Depends(get_playlist_repository)):
     try:
-        repo.replace_track(playlist_id, details.existing_track_id, details.new_track)
+        repo.update_links(playlist_id, details)
     except Exception as e:
-        logging.error(f"Failed to replace track: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to replace track")
+        logging.error(f"Failed to update links: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update links")
 
 @router.get("/{playlist_id}/export", response_class=StreamingResponse)
 def export_playlist(playlist_id: int, type: str = Query("m3u"), repo: PlaylistRepository = Depends(get_playlist_repository)):
@@ -229,60 +245,6 @@ def get_playlists_by_track(track_id: int, repo: PlaylistRepository = Depends(get
     except Exception as e:
         logging.error(f"Failed to get playlists by track: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get playlists by track")
-
-@router.get("/{playlist_id}/synctoplex")
-def sync_playlist_to_plex(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
-    try:
-        M3U_SOURCE = os.getenv("PLEX_M3U_DROP_SOURCE", None)
-        M3U_TARGET = os.getenv("PLEX_M3U_DROP_TARGET", None)
-    
-        if not M3U_SOURCE or not M3U_TARGET:
-            raise HTTPException(status_code=500, detail="Plex drop path not configured")
-        
-        MAP_SOURCE = os.getenv("PLEX_MAP_SOURCE")
-        MAP_TARGET = os.getenv("PLEX_MAP_TARGET")
-
-        if MAP_SOURCE and MAP_TARGET:
-            logging.info(f"Mapping track paths: source = {MAP_SOURCE}, target = {MAP_TARGET}")
-
-        m3u_content = repo.export_to_m3u(
-            playlist_id, mapping_source=MAP_SOURCE, mapping_target=MAP_TARGET
-        )
-
-        playlist = repo.get_by_id(playlist_id)
-
-        m3u_path = pathlib.Path(M3U_SOURCE) / f"{playlist.name}.m3u"
-
-        logging.info(f"Writing playlist to {m3u_path}")
-        with open(m3u_path, "w") as f:
-            while True:
-                try:
-                    chunk = next(m3u_content)
-                except StopIteration:
-                    break
-                
-                if not chunk:
-                    break
-                f.write(chunk)
-        
-        logging.info("Done updating M3U file")
-
-        plex_endpoint = os.getenv("PLEX_ENDPOINT")
-        plex_token = os.getenv("PLEX_TOKEN")
-        plex_library = os.getenv("PLEX_LIBRARY")
-
-        server = PlexServer(plex_endpoint, token=plex_token)
-
-        if M3U_SOURCE and M3U_TARGET:
-            logging.info(f"Mapping m3u path: source = {M3U_SOURCE}, target = {M3U_TARGET}")
-            endpoint = str(m3u_path).replace(M3U_SOURCE, M3U_TARGET)
-        
-        logging.info(f"Syncing playlist to Plex: m3u path sent to Plex = {endpoint}")
-
-        PlexPlaylist.create(server, playlist.name, section=server.library.section(plex_library), m3ufilepath=endpoint)
-    except Exception as e:
-        logging.error(f"Failed to sync playlist to Plex: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to sync playlist to Plex")
 
 @router.put("/reorderpinned/{playlist_id}")
 def reorder_pinned_tracks(playlist_id: int, new_order: List[int], repo: PlaylistRepository = Depends(get_playlist_repository)):
@@ -439,8 +401,7 @@ async def import_json_playlist(
 
                         logging.info(f"Adding requested track {details.artist} - {details.title}")
 
-                        entries.append(RequestedTrackEntry(
-                            entry_type="requested",
+                        entries.append(MusicFileEntry(
                             details=details,
                         ))
             
@@ -462,3 +423,354 @@ async def import_json_playlist(
             repo.delete(created_playlist.id)
         
         raise HTTPException(status_code=500, detail=f"Failed to import playlist: {str(e)}")
+
+@router.get("/{playlist_id}/syncconfig", response_model=List[SyncTarget])
+def get_playlist_sync_config(playlist_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
+    """Get sync targets for a playlist"""
+    try:
+        return repo.get_sync_targets(playlist_id)
+    except Exception as e:
+        logging.error(f"Failed to get sync targets: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get sync targets")
+
+@router.post("/{playlist_id}/syncconfig", response_model=SyncTarget)
+def create_sync_target(playlist_id: int, target: SyncTarget, repo: PlaylistRepository = Depends(get_playlist_repository)):
+    """Create a new sync target for a playlist"""
+    try:
+        return repo.create_sync_target(playlist_id, target)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logging.error(f"Failed to create sync target: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to create sync target")
+
+@router.put("/{playlist_id}/syncconfig/{target_id}", response_model=SyncTarget)
+def update_sync_target(playlist_id: int, target_id: int, target: SyncTarget, repo: PlaylistRepository = Depends(get_playlist_repository)):
+    """Update an existing sync target"""
+    try:
+        # Ensure the target ID matches the path parameter
+        if target.id is not None and target.id != target_id:
+            raise HTTPException(status_code=400, detail="Target ID mismatch")
+        
+        # Set the ID from the path parameter
+        target.id = target_id
+        
+        return repo.update_sync_target(playlist_id, target)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logging.error(f"Failed to update sync target: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update sync target")
+
+@router.delete("/{playlist_id}/syncconfig/{target_id}", response_model=dict)
+def delete_sync_target(playlist_id: int, target_id: int, repo: PlaylistRepository = Depends(get_playlist_repository)):
+    """Delete a sync target"""
+    try:
+        repo.delete_sync_target(playlist_id, target_id)
+        return {"success": True, "detail": "Sync target deleted successfully"}
+    except Exception as e:
+        logging.error(f"Failed to delete sync target: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to delete sync target")
+
+@router.get("/{playlist_id}/sync")
+def sync_playlist(
+    playlist_id: int,
+    repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    """
+    Sync a playlist with configured remote targets using a unified sync plan
+    
+    Args:
+        playlist_id: The ID of the playlist to sync
+    """
+    try:
+        # Get all enabled sync targets for this playlist
+        sync_targets = repo.get_sync_targets(playlist_id)
+        
+        if not sync_targets:
+            raise HTTPException(status_code=404, detail="No sync targets configured for this playlist")
+        
+        # Just get enabled targets
+        sync_targets = [target for target in sync_targets if target.enabled]
+        if not sync_targets:
+            raise HTTPException(status_code=404, detail="No enabled sync targets found for this playlist")
+        
+        # Initialize success and error counters
+        results = {
+            "success": [],
+            "failed": []
+        }
+        
+        db = Database.get_session()
+        
+        # Step 1: Initialize all remote repositories and collect current snapshots
+        remote_repos = {}
+        current_snapshots = {}
+        old_snapshots = {}
+
+        # Step 2: Get the current local snapshot
+        playlist = repo.get_by_id(playlist_id)
+        if not playlist:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+    
+        local_snapshot = create_snapshot(playlist)
+        
+        for target in sync_targets:
+            try:
+                # Parse the config
+                config = target.config
+                
+                # Get the target name if available
+                target_name = config.get('playlist_name', None)
+                if not target_name and target.service == 'plex':
+                    # Use playlist name as fallback for Plex
+                    playlist = repo.get_by_id(playlist_id)
+                    target_name = playlist.name
+                
+                # Create the appropriate repository
+                remote_repo = create_remote_repository(
+                    service=target.service,
+                    session=db,
+                    config=config,
+                    music_file_repo=get_music_file_repository(db)
+                )
+
+                if remote_repo is None:
+                    raise Exception(f"Unsupported service: {target.service}")
+                
+                # Store the repository and target name for later use
+                remote_repos[target.id] = {
+                    'repo': remote_repo,
+                    'target': target,
+                    'target_name': target_name or f"{target.service}_playlist"
+                }
+                
+                # Get current and old snapshots for unified planning
+                old_snapshots[target.id] = remote_repo.get_current_snapshot(target_name or f"{target.service}_playlist")
+                current_snapshots[target.id] = remote_repo.get_playlist_snapshot(target_name or f"{target.service}_playlist")
+
+                if not current_snapshots[target.id]:
+                    # remote playlist doesn't exist - let's create it
+                    logging.info(f"Creating new remote playlist for {target.service} target {target.id}")
+
+                    remote_repo.create_playlist(target_name or f"{target.service}_playlist", local_snapshot)
+
+                logging.info(f"Initialized {target.service} repository for target {target.id}")
+                
+            except Exception as e:
+                logging.error(f"Failed to initialize {target.service} target {target.id}: {e}", exc_info=True)
+                results["failed"].append({
+                    "service": target.service,
+                    "target_id": target.id,
+                    "error": f"Failed to initialize: {str(e)}"
+                })
+        
+        # If no repositories were successfully initialized, return early
+        if not remote_repos:
+            raise HTTPException(status_code=500, detail="Failed to initialize any remote repositories")
+        
+        # Step 3: Create individual sync plans and combine into unified plan
+        individual_plans = {}
+        unified_plan = None
+        
+        for target_id, repo_info in remote_repos.items():
+            try:
+                remote_repo = repo_info['repo']
+                target = repo_info['target']
+                target_name = repo_info['target_name']
+                
+                # Create sync plan for this target
+                sync_plan = remote_repo.create_sync_plan(
+                    old_remote_snapshot=old_snapshots.get(target_id),
+                    new_remote_snapshot=current_snapshots.get(target_id),
+                    new_local_snapshot=local_snapshot,
+                    sync_target=target
+                )
+                
+                individual_plans[target_id] = {
+                    'plan': sync_plan,
+                    'repo_info': repo_info
+                }
+
+                if not target.receiveEntryAdds:
+                    # remove sync changes with a source of remote
+                    sync_plan = [
+                        change for change in sync_plan
+                        if change.action != 'add' or change.target != 'remote'
+                    ]
+                
+                if not target.receiveEntryRemovals:
+                    # remove sync changes with a source of remote
+                    sync_plan = [
+                        change for change in sync_plan
+                        if change.action != 'remove' or change.target != 'remote'
+                    ]
+                
+                # Create or merge into unified plan
+                if unified_plan is None:
+                    # Use the first plan as the base unified plan
+                    unified_plan = sync_plan
+                else:
+                    # Merge this plan with the unified plan
+                    unified_plan = merge_sync_plans(unified_plan, sync_plan)
+                
+                logging.info(f"Created sync plan for {target.service} target {target_id}")
+                
+            except Exception as e:
+                logging.error(f"Failed to create sync plan for target {target_id}: {e}", exc_info=True)
+                results["failed"].append({
+                    "service": repo_info['target'].service,
+                    "target_id": target_id,
+                    "error": f"Failed to create sync plan: {str(e)}"
+                })
+        
+        # If we don't have a unified plan, we can't proceed
+        if unified_plan is None:
+            raise HTTPException(status_code=500, detail="Failed to create any sync plans")
+    
+        for change in unified_plan:
+            logging.info(f"Processing change: {change.action} {change.item.to_string()} (source: {change.source}, reason: {change.reason})")
+
+            # apply local changes first, only if the change is not from a remote source
+            if change.source != "local":
+                if change.action == 'add':
+                    logging.info(f"Adding {change.item.to_string()} to local playlist")
+                    result = repo.add_music_file(playlist_id, change.item, normalize=True)
+                    if not result:
+                        logging.info(f"Could not find music file for {change.item.to_string()}, adding as requested track")
+                        repo.add_requested_track(playlist_id, change.item)
+
+                if change.action == 'remove':
+                    logging.info(f"Removing {change.item.to_string()} from local playlist")
+                    repo.remove_music_file(playlist_id, change.item)
+
+            # Step 4: Apply the unified sync plan to each target
+            for target_id, plan_info in individual_plans.items():
+                try:
+                    repo_info = plan_info['repo_info']
+                    remote_repo = repo_info['repo']
+                    target = repo_info['target']
+                    target_name = repo_info['target_name']
+
+                    logging.info(f"Syncing with target: {target_name}")
+
+                    this_snapshot = current_snapshots[target_id]
+
+                    if target.receiveEntryAdds and change.action == "add":
+                        # check if the item is already in the remote snapshot
+                        if (not this_snapshot) or (not this_snapshot.has(change.item)):
+                            remote_repo.add_items(target_name, [change.item])
+
+                    if target.receiveEntryRemovals and change.action == "remove":
+                        # Apply remote removes
+                        if (not this_snapshot) or current_snapshots[target_id].has(change.item):
+                            remote_repo.remove_items(target_name, [change.item])
+                
+                except Exception as e:
+                    logging.error(f"Failed to apply sync plan for target {target_id}: {e}", exc_info=True)
+                    results["failed"].append({
+                        "service": repo_info['target'].service,
+                        "target_id": target_id,
+                        "error": f"Failed to apply sync plan: {str(e)}"
+                    })
+                    
+        # write all remote snapshots
+        for target_id, plan_info in individual_plans.items():
+            try:
+                repo_info = plan_info['repo_info']
+                remote_repo = repo_info['repo']
+                target_name = repo_info['target_name']
+
+                # Get the new snapshot after applying changes
+                new_snapshot = remote_repo.get_playlist_snapshot(target_name)
+                if new_snapshot:
+                    remote_repo.write_snapshot(new_snapshot)
+                    results["success"].append({
+                        "service": repo_info['target'].service,
+                        "target_id": target_id,
+                        "target_name": target_name
+                    })
+            except Exception as e:
+                logging.error(f"Failed to write snapshot for target {target_id}: {e}", exc_info=True)
+                results["failed"].append({
+                    "service": repo_info['target'].service,
+                    "target_id": target_id,
+                    "error": f"Failed to write snapshot: {str(e)}"
+                })
+        
+        # write local snapshot
+        new_local_snapshot = create_snapshot(playlist)
+        first_repo = next(iter(remote_repos.values()))['repo']
+        first_repo.write_snapshot(new_local_snapshot)
+        
+        return {
+            "status": "success" if not results["failed"] else "partial",
+            "synced": results["success"],
+            "failed": results["failed"],
+            "summary": {
+                "total_targets": len(sync_targets),
+                "successful": len(results["success"]),
+                "failed": len(results["failed"])
+            }
+        }
+    
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logging.error(f"Failed to sync playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to sync playlist")
+    finally:
+        if 'db' in locals():
+            db.close()
+
+def merge_sync_plans(plan1, plan2):
+    """Merge two sync plans (lists of SyncChange instances) into a unified plan"""
+    changes_seen = set()
+    for change in plan1:
+        changes_seen.add(change.item.to_string())
+
+    for change in plan2:
+        if change.item.to_string() in changes_seen:
+            continue
+        plan1.append(change)
+        
+    return plan1
+
+@router.put("/{playlist_id}/update-entry")
+def update_entry_details(
+    playlist_id: int, 
+    update_request: dict = Body(...),
+    repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    """Update specific fields of a playlist entry"""
+    try:
+        track_id = update_request.get('track_id')
+        updates = update_request.get('updates', {})
+        
+        if not track_id:
+            raise HTTPException(status_code=400, detail="track_id is required")
+        
+        # Find the playlist entry
+        entry = repo.session.query(PlaylistEntryDB).filter(
+            PlaylistEntryDB.playlist_id == playlist_id,
+            PlaylistEntryDB.id == track_id
+        ).first()
+        
+        if not entry:
+            raise HTTPException(status_code=404, detail="Entry not found")
+        
+        # Update other entry-level fields as needed
+        updatable_fields = ['notes']  # Add other entry-level fields here as needed
+        for field in updatable_fields:
+            if field in updates:
+                setattr(entry, field, updates[field])
+                logging.info(f"Updated {field} for playlist entry {entry.id}: {updates[field]}")
+        
+        repo.session.commit()
+        
+        return {"message": "Entry updated successfully"}
+        
+    except Exception as e:
+        logging.error(f"Failed to update entry: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update entry")

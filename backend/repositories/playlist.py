@@ -2,17 +2,15 @@ from .base import BaseRepository
 from models import (
     PlaylistDB,
     PlaylistEntryDB,
-    LastFMEntryDB,
-    LastFMTrackDB,
     MusicFileEntryDB,
-    RequestedTrackEntryDB,
-    RequestedTrackDB,
     MusicFileDB,
     TrackGenreDB,
     BaseNode,
     AlbumDB,
     AlbumTrackDB,
-    RequestedAlbumEntryDB
+    RequestedAlbumEntryDB,
+    SyncTargetDB,
+    LocalFileDB
 )
 from response_models import (
     Playlist,
@@ -20,11 +18,16 @@ from response_models import (
     PlaylistEntryBase,
     MusicFileEntry,
     NestedPlaylistEntry,
-    LastFMEntry,
-    RequestedTrackEntry,
     AlbumEntry,
     RequestedAlbumEntry,
-    PlaylistEntriesResponse
+    PlaylistEntriesResponse,
+    LinkChangeRequest,
+    AlbumTrack,
+    Album,
+    SearchQuery,
+    SyncTarget,
+    TrackDetails,
+    MusicFile
 )
 from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 from sqlalchemy import select, tuple_, and_, func, or_, case
@@ -32,9 +35,10 @@ from typing import List, Optional
 import warnings
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel
 from enum import IntEnum
+from lib.normalize import normalize_title
 
 import dotenv
 dotenv.load_dotenv(override=True)
@@ -42,21 +46,22 @@ dotenv.load_dotenv(override=True)
 import logging
 logger = logging.getLogger(__name__)
 
-def playlist_orm_to_response(playlist: PlaylistEntryDB, order: Optional[int] = None, details: bool = True):
-    if playlist.entry_type == "music_file":
-        result = MusicFileEntry.from_orm(playlist, details=details)
-    elif playlist.entry_type == "nested_playlist":
-        result = NestedPlaylistEntry.from_orm(playlist, details=details)
-    elif playlist.entry_type == "lastfm":
-        result = LastFMEntry.from_orm(playlist, details=details)
-    elif playlist.entry_type == "requested":
-        result = RequestedTrackEntry.from_orm(playlist, details=details)
-    elif playlist.entry_type == "album":
-        result = AlbumEntry.from_orm(playlist, details=details)
-    elif playlist.entry_type == "requested_album":
-        result = RequestedAlbumEntry.from_orm(playlist, details=details)
-    else:
-        raise ValueError(f"Unknown entry type: {playlist.entry_type}")
+def playlist_orm_to_response(playlist_entry: PlaylistEntryDB, order: Optional[int] = None, details: bool = True) -> PlaylistEntry:
+    try:
+        if playlist_entry.entry_type == "music_file":
+            result = MusicFileEntry.from_orm(playlist_entry, details=details)
+        elif playlist_entry.entry_type == "nested_playlist":
+            result = NestedPlaylistEntry.from_orm(playlist_entry, details=details)
+        elif playlist_entry.entry_type == "album":
+            result = AlbumEntry.from_orm(playlist_entry, details=details)
+        elif playlist_entry.entry_type == "requested_album":
+            result = RequestedAlbumEntry.from_orm(playlist_entry, details=details)
+        else:
+            raise ValueError(f"Unknown entry type: {playlist_entry.entry_type}")
+    except Exception as e:
+        logging.error(f"Error converting playlist entry: {e}")
+        logging.error(f"Playlist entry data: {playlist_entry.__dict__}")
+        raise
     
     if order is not None:
         result.order = order
@@ -104,6 +109,7 @@ class PlaylistSortDirection(IntEnum):
 
 class PlaylistFilter(BaseModel):
     filter: Optional[str] = None  # overall filter for string fields
+    criteria: Optional[SearchQuery] = None  # specific criteria for filtering
     sortCriteria: PlaylistSortCriteria = PlaylistSortCriteria.ORDER
     sortDirection: PlaylistSortDirection = PlaylistSortDirection.ASC
     limit: Optional[int] = None
@@ -131,15 +137,11 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             # Add detail loaders for each type separately
             loader_options.extend([
                 selectinload(PlaylistDB.entries.of_type(MusicFileEntryDB)).selectinload(MusicFileEntryDB.details).selectinload(MusicFileDB.genres),
-                selectinload(PlaylistDB.entries.of_type(RequestedTrackEntryDB)).selectinload(RequestedTrackEntryDB.details),
-                selectinload(PlaylistDB.entries.of_type(LastFMEntryDB)).selectinload(LastFMEntryDB.details),
                 selectinload(PlaylistDB.entries.of_type(RequestedAlbumEntryDB)).selectinload(RequestedAlbumEntryDB.details)
             ])
         else:
             loader_options.extend([
                 selectinload(PlaylistDB.entries.of_type(MusicFileEntryDB)),
-                selectinload(PlaylistDB.entries.of_type(RequestedTrackEntryDB)),
-                selectinload(PlaylistDB.entries.of_type(LastFMEntryDB)),
                 selectinload(PlaylistDB.entries.of_type(RequestedAlbumEntryDB))
             ])
         
@@ -150,6 +152,136 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
     
     def get_count(self, playlist_id: int):
         return {"count": self.session.query(PlaylistEntryDB).filter(PlaylistEntryDB.playlist_id == playlist_id).count()}
+
+    def update_links(self, playlist_id: int, details: LinkChangeRequest):
+        """Update track links using the new music_files column structure"""
+        # Find the playlist entry - could be by entry ID or by music file ID
+        entry = None
+        
+        # First try to find by playlist entry ID (for already linked entries)
+        entry = self.session.query(PlaylistEntryDB).filter(
+            PlaylistEntryDB.playlist_id == playlist_id,
+            PlaylistEntryDB.id == details.track_id
+        ).first()
+        
+        # If not found, try to find by music file ID (for unlinked entries)
+        if entry is None:
+            entry = self.session.query(MusicFileEntryDB).filter(
+                MusicFileEntryDB.playlist_id == playlist_id,
+                MusicFileEntryDB.music_file_id == details.track_id
+            ).first()
+
+        if entry is None:
+            raise ValueError(f"Track with ID {details.track_id} not found in playlist {playlist_id}")
+
+        update_local_path_link = False
+
+        # Only handle music file entries for linking
+        if isinstance(entry, MusicFileEntryDB):
+            update_local_path_link = True
+
+        # Get or create the music file record
+        music_file = entry.details
+        if music_file is None:
+            raise ValueError(f"No music file details found for entry {details.track_id}")
+
+        # Handle local file linking/unlinking - only if explicitly provided
+        if update_local_path_link and 'local_path' in details.updates:
+            local_path = details.updates['local_path']
+            if local_path is None:
+                # Unlink local file - ONLY remove the relationship, preserve LocalFileDB record
+                if music_file.local_file:
+                    # Store reference to the local file before unlinking
+                    local_file_to_preserve = music_file.local_file
+                    
+                    # Break the relationship in both directions
+                    music_file.local_file = None
+                    local_file_to_preserve.music_file_id = None
+                    
+                    logging.info(f"Unlinked local file {local_file_to_preserve.path} from music file {music_file.id}")
+            else:
+                # Link to local file - find the local file by path
+                local_file = self.session.query(LocalFileDB).filter(
+                    LocalFileDB.path == local_path
+                ).first()
+                
+                if local_file is None:
+                    raise ValueError(f"Local file not found: {local_path}")
+                
+                # Check if this local file is already linked to another music file
+                if local_file.music_file_id is not None:
+                    # Unlink from the existing music file first
+                    existing_music_file = self.session.query(MusicFileDB).filter(
+                        MusicFileDB.id == local_file.music_file_id
+                    ).first()
+                    
+                    if existing_music_file:
+                        existing_music_file.local_file = None
+                        logging.info(f"Unlinked local file {local_file.path} from existing music file {existing_music_file.id}")
+                
+                # Now check if the current music file already has a local file linked
+                if music_file.local_file is not None:
+                    # Unlink the current local file
+                    current_local_file = music_file.local_file
+                    current_local_file.music_file_id = None
+                    music_file.local_file = None
+                    logging.info(f"Unlinked existing local file {current_local_file.path} from music file {music_file.id}")
+                
+                # Now establish the new link
+                music_file.local_file = local_file
+                local_file.music_file_id = music_file.id
+                
+                # Sync metadata from the local file to the music file record
+                music_file.sync_from_file_metadata()
+                
+                logging.info(f"Linked local file {local_file.path} to music file {music_file.id} and synced metadata")
+
+        # Handle external source linking/unlinking - directly update music_files columns
+        external_source_mappings = {
+            'last_fm_url': 'last_fm_url',
+            'spotify_uri': 'spotify_uri', 
+            'youtube_url': 'youtube_url',
+            'mbid': 'mbid',
+            'plex_rating_key': 'plex_rating_key'
+        }
+
+        for field_name, column_name in external_source_mappings.items():
+            # Only process if the field is explicitly provided in the updates
+            if field_name in details.updates:
+                field_value = details.updates[field_name]
+                
+                # Update the column directly on the music file
+                if field_value is not None and field_value.strip():
+                    setattr(music_file, column_name, field_value.strip())
+                    logging.info(f"Updated {column_name} to '{field_value.strip()}' for music file {music_file.id}")
+                else:
+                    # Set to None/empty to clear the field
+                    setattr(music_file, column_name, None)
+                    logging.info(f"Cleared {column_name} for music file {music_file.id}")
+
+        self.session.commit()
+    
+    def link_track_with_match(self, playlist_id: int, entry: PlaylistEntry):
+        # Get the existing entry in the playlist
+        existing_entry = self.session.query(PlaylistEntryDB).filter(
+            PlaylistEntryDB.playlist_id == playlist_id,
+            PlaylistEntryDB.id == entry.id
+        ).first()
+
+        if existing_entry is None:
+            raise ValueError(f"Track with ID {entry.id} not found in playlist {playlist_id}")
+
+        # Update the existing entry with the new details
+        if isinstance(existing_entry, MusicFileEntryDB):
+            existing_entry.music_file_id = entry.music_file_id
+            existing_entry.details = entry.details.to_db()
+        elif isinstance(existing_entry, RequestedAlbumEntryDB):
+            existing_entry.requested_album_id = entry.requested_album_id
+            existing_entry.details = entry.details.to_db()
+        else:
+            raise ValueError(f"Unsupported entry type: {type(existing_entry)}")
+
+        self.session.commit()
     
     def get_without_details(self, playlist_id: int) -> Optional[Playlist]:
         query = self._get_playlist_query(playlist_id, details=False)
@@ -187,7 +319,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         # Now load the full entries with details in one efficient query
         poly_entity = with_polymorphic(
             PlaylistEntryDB,
-            [MusicFileEntryDB, RequestedTrackEntryDB, LastFMEntryDB, RequestedAlbumEntryDB]
+            [MusicFileEntryDB, RequestedAlbumEntryDB]
         )
         
         full_entries = (
@@ -197,8 +329,6 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             .options(
                 # Load details for each type
                 selectinload(poly_entity.MusicFileEntryDB.details).selectinload(MusicFileDB.genres),
-                selectinload(poly_entity.RequestedTrackEntryDB.details),
-                selectinload(poly_entity.LastFMEntryDB.details),
                 selectinload(poly_entity.RequestedAlbumEntryDB.details)
             )
         ).all()
@@ -235,52 +365,45 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
     def create_entry_dependencies(self, entries: List[PlaylistEntryBase]):
         # Group entries by type for bulk processing
-        lastfm_entries = []
         requested_entries = []
         album_entries = []
         
         for entry_idx, entry in enumerate(entries):
-            if entry.entry_type == "lastfm":
-                lastfm_entries.append((entry_idx, entry))
-            elif entry.entry_type == "requested":
-                requested_entries.append((entry_idx, entry))
-            elif entry.entry_type == "requested_album":
+            if entry.entry_type == "requested_album":
                 album_entries.append((entry_idx, entry))
+            else:
+                requested_entries.append((entry_idx, entry))
 
-        # Bulk process LastFM tracks
-        if lastfm_entries:
-            urls = [e.details.url for _, e in lastfm_entries]
-            existing_tracks = {
-                t.url: t for t in self.session.query(LastFMTrackDB)
-                .filter(LastFMTrackDB.url.in_(urls)).all()
-            }
-            
-            tracks_to_add = []
-            for idx, entry in lastfm_entries:
-                if entry.details.url not in existing_tracks:
-                    track = entry.to_db()
-                    self.session.add(track)
-                    self.session.flush()
-                    existing_tracks[entry.details.url] = track
-                entries[idx].lastfm_track_id = existing_tracks[entry.details.url].id
-
-        # Similar bulk processing for requested tracks
         if requested_entries:
-            track_keys = [(e.details.artist, e.details.title) for _, e in requested_entries]
+            track_keys = [(entry.details.title,entry.details.artist, entry.details.album) for _, entry in requested_entries]
             existing_tracks = {
-                (t.artist, t.title): t for t in self.session.query(RequestedTrackDB)
-                .filter(tuple_(RequestedTrackDB.artist, RequestedTrackDB.title).in_(track_keys)).all()
+                (t.title, t.artist, t.album): t for t in self.session.query(MusicFileDB)
+                .filter(tuple_(MusicFileDB.title, MusicFileDB.artist, MusicFileDB.album).in_(track_keys)).all()
             }
-            
-            tracks_to_add = []
+
             for idx, entry in requested_entries:
-                key = (entry.details.artist, entry.details.title)
+                key = (entry.details.title, entry.details.artist, entry.details.album)
                 if key not in existing_tracks:
-                    track = entry.to_db()
-                    self.session.add(track)
+                    # If the track doesn't exist, create a new one
+                    music_file = entry.to_db()
+                    music_file.id = None
+
+                    self.session.add(music_file)
                     self.session.flush()
-                    existing_tracks[key] = track
-                entries[idx].requested_track_id = existing_tracks[key].id
+                    
+                    existing_tracks[key] = music_file
+
+                    entries[idx].music_file_id = music_file.id
+                else:
+                    # If it exists, use its ID
+                    entries[idx].music_file_id = existing_tracks[key].id
+
+                    # enrich match with whatever external details we have
+                    existing_tracks[key].last_fm_url = entry.details.last_fm_url or existing_tracks[key].last_fm_url
+                    existing_tracks[key].spotify_uri = entry.details.spotify_uri or existing_tracks[key].spotify_uri
+                    existing_tracks[key].youtube_url = entry.details.youtube_url or existing_tracks[key].youtube_url
+                    existing_tracks[key].mbid = entry.details.mbid or existing_tracks[key].mbid
+                    existing_tracks[key].plex_rating_key = entry.details.plex_rating_key or existing_tracks[key].plex_rating_key
 
         # Bulk create albums and their tracks
         if album_entries:
@@ -289,12 +412,46 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             album_tracks_to_add = []
             
             for idx, entry in album_entries:
+                # Check if the album already exists
+                existing_album = self.session.query(AlbumDB).filter(
+                    AlbumDB.artist == entry.details.artist,
+                    AlbumDB.title == entry.details.title
+                ).first()
+
+                if existing_album:
+                    # If it exists, use its ID
+                    entries[idx].requested_album_id = existing_album.id
+
+                    # can update this album's metadata if we have it handy
+                    if not existing_album.last_fm_url:
+                        existing_album.last_fm_url = entry.details.last_fm_url
+                    
+                    if not existing_album.art_url:
+                        existing_album.art_url = entry.details.art_url
+                    
+                    if not existing_album.mbid:
+                        existing_album.mbid = entry.details.mbid
+                    
+                    if not existing_album.spotify_uri:
+                        existing_album.spotify_uri = entry.details.spotify_uri
+                    
+                    if not existing_album.youtube_url:
+                        existing_album.youtube_url = entry.details.youtube_url
+                    
+                    if not existing_album.plex_rating_key:
+                        existing_album.plex_rating_key = entry.details.plex_rating_key
+                    
+                    self.session.flush()
+
+                    continue
+
                 album = AlbumDB(
                     artist=entry.details.artist,
                     title=entry.details.title,
                     art_url=entry.details.art_url,
                     last_fm_url=entry.details.last_fm_url,
                 )
+                
                 # Add album to session to get its ID
                 self.session.add(album)
                 self.session.flush()
@@ -305,10 +462,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 if entry.details.tracks:
                     for i, track in enumerate(entry.details.tracks):
                         artist = track.linked_track.artist or track.linked_track.album_artist
-                        new_track = RequestedTrackDB(
+                        new_track = MusicFileDB(
                             artist=artist,
                             title=track.linked_track.title,
-                            entry_type="requested_track"
                         )
                         # Add track to session to get its ID
                         self.session.add(new_track)
@@ -329,7 +485,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
         return entries
 
-    def add_entries(self, playlist_id: int, entries: List[PlaylistEntryBase], undo=False) -> None:
+    def add_entries(self, playlist_id: int, entries: List[PlaylistEntry], undo=False) -> None:
         if undo:
             return self.undo_add_entries(playlist_id, entries)
         
@@ -365,7 +521,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             
             this_playlist.entries.extend(playlist_entries)
         
-        this_playlist.updated_at = func.now()
+        this_playlist.updated_at = datetime.now()
                 
         self.session.commit()
     
@@ -391,7 +547,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 self.session.delete(entry)
         
         playlist = self.session.get(PlaylistDB, playlist_id)
-        playlist.updated_at = func.now()
+        playlist.updated_at = datetime.now()
 
         self.session.commit()
         logger.info(f"Removed {count} entries from playlist {playlist_id}")
@@ -502,8 +658,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                     entries_to_move.append(playlist_entries[new_index + i])
             
             # Convert to response models
-            converted_entries = [playlist_orm_to_response(e, details=False) for e in entries_to_move]
-            
+            converted_entries = [playlist_orm_to_response(e, details=True) for e in entries_to_move]
+
             # Delete entries from their current positions
             for entry in entries_to_move:
                 self.session.delete(entry)
@@ -532,8 +688,139 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         # Commit outside of no_autoflush block
         self.session.commit()
 
-    def insert_entry(self, playlist_id: int, entry: PlaylistEntryBase, new_index: int = -1):
-        logging.info(f"Adding entry {entry} to playlist {playlist_id} at index {new_index}")
+    def add_requested_track(self, playlist_id: int, item):
+        if not isinstance(item, list):
+            item = [item]
+
+        items = [MusicFileEntry(
+            details=TrackDetails(
+                artist=i.artist,
+                title=i.title,
+                album=i.album
+            ),
+        ) for i in item]
+
+        # Add to session and commit
+        self.add_entries(playlist_id, items)
+        return items
+    
+    def add_music_file(self, playlist_id: int, item, normalize=False):
+        if not isinstance(item, list):
+            item = [item]
+        
+        music_files = []
+        for i in item:
+            # look up music file by path
+            # TODO: refactor to use music_file repo
+            matches = (
+                self.session.query(MusicFileDB)
+                .filter(
+                    func.lower(MusicFileDB.title) == normalize_title(i.title) if normalize 
+                    else func.lower(MusicFileDB.title) == func.lower(i.title)
+                )
+                .all()
+            )
+
+            for music_file in matches:
+                score = 0
+
+                if music_file.get_artist().lower() == i.artist.lower():
+                    score += 10
+                elif normalize_title(music_file.get_artist().lower()) == normalize_title(i.artist.lower()):
+                    score += 5
+                
+                if music_file.album and (music_file.album.lower() == i.album.lower()):
+                    score += 10
+                elif music_file.album and normalize_title(music_file.album.lower()) == normalize_title(i.album.lower()):
+                    score += 5
+                
+                music_file.score = score
+            
+            matches = sorted(matches, key=lambda x: x.score, reverse=True)
+            if not matches:
+                logging.warning(f"No matching music file found for {i.artist} - {i.album} - {i.title}")
+
+                requested_track = MusicFileEntry(
+                    details=MusicFile(
+                        artist=i.artist,
+                        title=i.title,
+                        album=i.album,
+                        spotify_uri=i.spotify_uri,
+                        youtube_url=i.youtube_url,
+                        plex_rating_key=i.plex_rating_key
+                    ),
+                )
+                
+                music_files.append(requested_track)
+                continue
+            
+            # enrich the first match with external details if they exist
+            matches[0].spotify_uri = i.spotify_uri
+            matches[0].youtube_url = i.youtube_url
+            matches[0].plex_rating_key = i.plex_rating_key
+            
+            # Create a new MusicFileEntryDB object
+            music_file_entry = MusicFileEntry(
+                music_file_id=matches[0].id,
+                details=MusicFile.from_orm(matches[0]),
+            )
+
+            music_files.append(music_file_entry)
+        
+        if not music_files:
+            return None
+        
+        logging.info(f"Matched {len(music_files)} music files to add to playlist {playlist_id}")
+
+        # Add to session and commit
+        self.add_entries(playlist_id, music_files)
+        return music_files
+
+    def remove_music_file(self, playlist_id: int, item, normalize=True):
+        # remove any music files in the playlist matching the item title/artist/album
+        if not isinstance(item, list):
+            item = [item]
+        
+        for i in item:
+            title_to_use = normalize_title(i.title) if normalize else i.title
+
+            # Find the music file entry in the playlist that matches the criteria
+            entries = (
+                self.session.query(MusicFileEntryDB)
+                .join(MusicFileDB, MusicFileEntryDB.music_file_id == MusicFileDB.id)
+                .filter(MusicFileEntryDB.playlist_id == playlist_id)
+                .filter(func.lower(MusicFileDB.title).startswith(func.lower(title_to_use)))
+                .all()
+            )
+
+            if not entries:
+                logging.warning(f"No matching music file entry found for {i.artist} - {i.album} - {i.title} in playlist {playlist_id}")
+                continue
+
+            for entry in entries:
+                score = 0
+                if entry.details.title.lower() == title_to_use.lower():
+                    score += 10
+                elif normalize_title(entry.details.title.lower()) == normalize_title(title_to_use.lower()):
+                    score += 5
+
+                if entry.details.artist.lower() == i.artist.lower():
+                    score += 10
+
+                if entry.details.album and (entry.details.album.lower() == i.album.lower()):
+                    score += 10
+                elif entry.details.album and normalize_title(entry.details.album.lower()) == normalize_title(i.album.lower()):
+                    score += 5
+
+                if score < 10:
+                    continue
+                
+                logging.info(f"Removing music file entry {entry.id} from playlist {playlist_id}")
+                self.session.delete(entry)
+
+            self.session.commit()
+                    
+    def insert_entry(self, playlist_id: int, entry, new_index: int = -1):
         def get_insert_location():
             query = (
                 self.session.query(PlaylistEntryDB)
@@ -572,10 +859,14 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             self.rebalance_playlist(playlist_id)
             new_loc = get_insert_location()
         
+        self.create_entry_dependencies([entry])
+    
         new_entry_db = entry.to_playlist(playlist_id)
         new_entry_db.order = new_loc
         logging.info(f"New entry order: {new_entry_db.order}")
         self.session.add(new_entry_db)  # Add to session
+        
+        return new_entry_db
 
     def reorder_entries(self, playlist_id: int, indices_to_reorder: List[int], new_index: int):
         logging.info(f"reordering {indices_to_reorder} to {new_index}")
@@ -600,21 +891,27 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             entries_to_move = [playlist_entries[i] for i in sorted(indices_to_reorder, reverse=True)]
             
             # Convert to response models
-            converted_entries = [playlist_orm_to_response(e, details=False) for e in entries_to_move]
+            converted_entries = [playlist_orm_to_response(e, details=True) for e in entries_to_move]
+
+            # Before deletion
+            album_ids = [getattr(entry, 'album_id', None) for entry in entries_to_move]
+            album_records = self.session.query(AlbumDB).filter(AlbumDB.id.in_(album_ids)).all()
+            logging.info(f"Albums before deletion: {album_ids}, Found records: {[a.id for a in album_records]}")
             
             # Delete original entries from database
-            logging.info("deleting moved entries")
             for entry in entries_to_move:
                 self.session.delete(entry)
             
             # Flush to ensure deletions take effect
             self.session.flush()
+
+            album_records_after = self.session.query(AlbumDB).filter(AlbumDB.id.in_(album_ids)).all()
+            logging.info(f"Albums after deletion: {[a.id for a in album_records_after]}")
             
             # Now remove from the in-memory list
             for i in sorted(indices_to_reorder, reverse=True):
                 playlist_entries.pop(i)
             
-            logging.info("re-inserting moved entries")
             # Insert entries at new position
             for e in converted_entries:
                 playlist_entries = self.insert_entry(playlist_id, e, new_index=new_index)
@@ -635,7 +932,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         for e in entries_to_remove:
             self.session.delete(e)
         
-        playlist.updated_at = func.now()
+        playlist.updated_at = datetime.now()
 
         self.session.commit()
     
@@ -646,80 +943,106 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         # Define the polymorphic entity
         poly_entity = with_polymorphic(
             PlaylistEntryDB,
-            [MusicFileEntryDB, RequestedTrackEntryDB, LastFMEntryDB, RequestedAlbumEntryDB]
+            [MusicFileEntryDB, RequestedAlbumEntryDB]
         )
 
         # Alias the detail tables for explicit joins
         music_file_details = aliased(MusicFileDB)
-        requested_track_details = aliased(RequestedTrackDB)
-        lastfm_details = aliased(LastFMTrackDB)
         requested_album_details = aliased(AlbumDB)
 
-        # Start the base query
         query = (
             self.session.query(poly_entity)
             .filter(poly_entity.playlist_id == playlist_id)
             # Join to each type of details table
-            .outerjoin(music_file_details, poly_entity.MusicFileEntryDB.details)
+            .outerjoin(music_file_details, poly_entity.MusicFileEntryDB.music_file_id == music_file_details.id)
+            .outerjoin(requested_album_details, poly_entity.RequestedAlbumEntryDB.album_id == requested_album_details.id)
             .options(
-                selectinload(poly_entity.MusicFileEntryDB.details).selectinload(MusicFileDB.genres)
+                selectinload(poly_entity.MusicFileEntryDB.details).selectinload(MusicFileDB.genres),
+                selectinload(poly_entity.RequestedAlbumEntryDB.details)
             )
-            .outerjoin(requested_track_details, poly_entity.RequestedTrackEntryDB.details)
-            .outerjoin(lastfm_details, poly_entity.LastFMEntryDB.details)
-            .outerjoin(requested_album_details, poly_entity.RequestedAlbumEntryDB.details)
         )
 
         # Apply text filter if provided
-        if filter.filter:
+        if filter.filter is not None:
             query = query.filter(
                 or_(
                     # MusicFileDB conditions
                     music_file_details.title.ilike(f"%{filter.filter}%"),
                     music_file_details.artist.ilike(f"%{filter.filter}%"),
                     music_file_details.album.ilike(f"%{filter.filter}%"),
-                    # RequestedTrackDB conditions
-                    requested_track_details.title.ilike(f"%{filter.filter}%"),
-                    requested_track_details.artist.ilike(f"%{filter.filter}%"),
-                    # LastFMTrackDB conditions
-                    lastfm_details.title.ilike(f"%{filter.filter}%"),
-                    lastfm_details.artist.ilike(f"%{filter.filter}%"),
                     # AlbumDB conditions
                     requested_album_details.title.ilike(f"%{filter.filter}%"),
                     requested_album_details.artist.ilike(f"%{filter.filter}%")
                 )
             )
+        elif filter.criteria is not None:
+            conditions = []
+            if filter.criteria.title:
+                title = filter.criteria.title
+                logging.info(f"Filtering by title: {title}")
+                conditions.append(
+                    or_(
+                        music_file_details.title.ilike(f"%{title}%"),
+                        requested_album_details.title.ilike(f"%{title}%")
+                    )
+                )
+            
+            if filter.criteria.artist:
+                artist = filter.criteria.artist
+                logging.info(f"Filtering by artist: {artist}")
+                conditions.append(
+                    or_(
+                        music_file_details.artist.ilike(f"%{artist}%"),
+                        requested_album_details.artist.ilike(f"%{artist}%")
+                    )
+                )
+
+            if filter.criteria.album:
+                album = filter.criteria.album
+                logging.info(f"Filtering by album: {album}")
+                conditions.append(
+                    or_(
+                        music_file_details.album.ilike(f"%{album}%"),
+                        requested_album_details.title.ilike(f"%{album}%"),
+                    )
+                )
+            
+            query = query.filter(
+                and_(
+                    *conditions
+                )
+            )
         
         # Apply sorting
-        if filter.sortCriteria == PlaylistSortCriteria.ORDER:
-            sort_column = poly_entity.order
-        elif filter.sortCriteria == PlaylistSortCriteria.TITLE:
+        if filter.sortCriteria == PlaylistSortCriteria.TITLE:
             sort_column = case(
                 (poly_entity.entry_type == "music_file", music_file_details.title),
-                (poly_entity.entry_type == "requested", requested_track_details.title),
-                (poly_entity.entry_type == "lastfm", lastfm_details.title),
                 (poly_entity.entry_type == "requested_album", requested_album_details.title),
                 else_=None
             )
         elif filter.sortCriteria == PlaylistSortCriteria.ARTIST:
             sort_column = case(
                 (poly_entity.entry_type == "music_file", music_file_details.artist),
-                (poly_entity.entry_type == "requested", requested_track_details.artist),
-                (poly_entity.entry_type == "lastfm", lastfm_details.artist),
                 (poly_entity.entry_type == "requested_album", requested_album_details.artist),
                 else_=None
             )
         elif filter.sortCriteria == PlaylistSortCriteria.ALBUM:
             sort_column = case(
                 (poly_entity.entry_type == "music_file", music_file_details.album),
+                (poly_entity.entry_type == "requested_album", requested_album_details.title),
                 else_=None
             )
+        else:
+            # default to order
+            sort_column = poly_entity.order
         
         # Handle sort direction
-        if sort_column is not None:
-            if filter.sortDirection == PlaylistSortDirection.ASC:
-                query = query.order_by(sort_column.asc())
-            elif filter.sortDirection == PlaylistSortDirection.DESC:
-                query = query.order_by(sort_column.desc())
+        if filter.sortDirection == PlaylistSortDirection.ASC:
+            query = query.order_by(sort_column.asc())
+        elif filter.sortDirection == PlaylistSortDirection.DESC:
+            query = query.order_by(sort_column.desc())
+        else:
+            query = query.order_by(sort_column.asc())
         
         if count_only:
             count = query.count()
@@ -733,12 +1056,11 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             query = query.limit(filter.limit)
         
         entries = query.all()
-
         offset_to_use = filter.offset or 0
 
         # convert to response models
-        entries = [playlist_orm_to_response(e, order=offset_to_use + i) for i, e in enumerate(entries)]
-        return PlaylistEntriesResponse(entries=entries)
+        converted_entries = [playlist_orm_to_response(e, order=offset_to_use + i) for i, e in enumerate(entries)]
+        return PlaylistEntriesResponse(entries=converted_entries)
 
     def get_details(self, playlist_id):
         query = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id)
@@ -747,12 +1069,72 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             return None
         
         return Playlist(id=playlist.id, name=playlist.name, entries=[])
-    
-    def _update_entity_details(self, orm_model, pydantic_model):
+
+    def _update_entity_details(self, orm_model: PlaylistEntryDB, pydantic_model: PlaylistEntryBase):
         """Update ORM model fields from a Pydantic model"""
-        for key, value in pydantic_model.dict().items():
-            if hasattr(orm_model, key):
-                setattr(orm_model, key, value)
+        if not pydantic_model.details:
+            logging.warning("No details provided in pydantic model")
+            return orm_model
+        
+        # Get the details object
+        details = orm_model.details
+        if not details:
+            logging.warning("No details object found in ORM model")
+            return orm_model
+        
+        # Convert pydantic model to dict, excluding None values and complex objects
+        update_data = pydantic_model.details.model_dump(exclude={'id'})
+        
+        # Handle special cases
+        for key, value in update_data.items():
+            if key == "tracks":
+                # Handle nested tracks for albums
+                if hasattr(details, 'tracks'):
+                    tracks_to_add = []
+                    for track_data in value:
+                        # Ensure album_id is set
+                        track_data["album_id"] = details.id
+                        linked_track = AlbumTrack.from_json(track_data).to_db()
+                        tracks_to_add.append(linked_track)
+                    
+                    # Clear existing tracks and add new ones
+                    details.tracks.clear()
+                    details.tracks.extend(tracks_to_add)
+                    logging.info(f"Updated tracks for album {details.id}")
+                continue
+            
+            if key == "genres":
+                # Handle genres specially for MusicFileDB
+                if hasattr(details, 'genres') and isinstance(value, list):
+                    # Clear existing genres
+                    for genre in details.genres:
+                        self.session.delete(genre)
+                    details.genres.clear()
+                    
+                    # Add new genres
+                    for genre_name in value:
+                        new_genre = TrackGenreDB(
+                            parent_type="music_file",
+                            music_file_id=details.id,
+                            genre=genre_name
+                        )
+                        details.genres.append(new_genre)
+                    logging.info(f"Updated genres for music file {details.id}")
+                continue
+            
+            # Handle regular fields
+            if hasattr(details, key):
+                current_value = getattr(details, key)
+                if current_value != value:
+                    logging.info(f"Updating {key} from {current_value} to {value}")
+                    setattr(details, key, value)
+            else:
+                logging.warning(f"Key {key} not found in details model {details.__class__.__name__}")
+        
+        # Flush changes to ensure they're applied
+        self.session.flush()
+        
+        logging.info(f"Updated {details} with {pydantic_model.details}")
         return orm_model
 
     def replace_track(self, playlist_id, existing_entry_id, new_entry: PlaylistEntryBase):
@@ -761,20 +1143,18 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         if existing_entry is None:
             return None
         
+        existing_is_track = existing_entry.entry_type in ("music_file", "requested")
+        new_is_track = new_entry.entry_type in ("music_file", "requested")
+        
         # Check if the new entry is of the same type
-        if existing_entry.entry_type == new_entry.entry_type:
+        if existing_is_track and new_is_track:
             # If the entry types are the same, we can just update the existing entry
-            self._update_entity_details(existing_entry.details, new_entry.details)
+            self._update_entity_details(existing_entry, new_entry)
+
             self.session.commit()
             return new_entry
                 
-        # register requested track if applicable
-        if new_entry.entry_type == "requested":
-            track = new_entry.to_db()
-            self.session.add(track)
-            self.session.flush()
-            new_entry.requested_track_id = track.id
-        elif new_entry.entry_type == "requested_album":
+        if new_entry.entry_type == "requested_album":
             album = new_entry.details.to_db()
             self.session.add(album)
             self.session.flush()
@@ -795,7 +1175,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         new_entry_db.order = original_order
 
         this_playlist = self.session.get(PlaylistDB, playlist_id)
-        this_playlist.updated_at = func.now()
+        this_playlist.updated_at = datetime.now()
         
         self.session.commit()
 
@@ -825,6 +1205,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         album_artists = set()
 
         for e in entries:
+            if not e.details.album:
+                continue
+
             artist_to_use = e.details.album_artist or e.details.artist
             album_artist = artist_to_use + " - " + e.details.album
             if album_artist in album_artists:
@@ -903,6 +1286,26 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         
         self.session.commit()
 
+    def check_for_duplicates(self, playlist_id, new_entries: List[PlaylistEntryBase]):
+        results = []
+
+        for entry in new_entries:
+            # search for existing entries with the same details
+            criteria = SearchQuery(artist=entry.get_artist(), album=entry.get_album())
+            if not entry.is_album():
+                criteria.title = entry.get_title()
+
+            filter = PlaylistFilter(criteria=criteria)
+            existing_entries = self.filter_playlist(playlist_id, filter)
+
+            for e in existing_entries.entries:
+                logging.info(f"Found dup: {e.details.to_json()}")
+
+            if existing_entries.entries:
+                results.append(entry)
+        
+        return results
+
     def rebalance_playlist(self, playlist_id):
         """Rebalance the order of entries in a playlist to ensure they are unique and sequential, leaving space for sparse ordering."""
         logging.info("rebalancing")
@@ -922,3 +1325,110 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         # logging.info(list([e.order for e in entries]))
         
         self.session.commit()
+
+    def get_sync_targets(self, playlist_id: int) -> List[SyncTarget]:
+        """Get all sync targets for a playlist"""
+        # Check if playlist exists
+        playlist = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
+        if not playlist:
+            raise ValueError(f"Playlist with ID {playlist_id} not found")
+        
+        # Get sync targets from the database
+        targets = self.session.query(SyncTargetDB).filter(SyncTargetDB.playlist_id == playlist_id).all()
+        
+        # Convert to Pydantic models
+        return [SyncTarget(
+            id=target.id,
+            service=target.service,
+            config=json.loads(target.config),
+            enabled=target.enabled,
+            sendEntryAdds=target.send_entry_adds,
+            sendEntryRemovals=target.send_entry_removals,
+            receiveEntryAdds=target.receive_entry_adds,
+            receiveEntryRemovals=target.receive_entry_removals
+        ) for target in targets]
+
+    def create_sync_target(self, playlist_id: int, target: SyncTarget) -> SyncTarget:
+        """Create a new sync target for a playlist"""
+        try:
+            # Check if playlist exists
+            playlist = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
+            if not playlist:
+                raise ValueError(f"Playlist with ID {playlist_id} not found")
+            
+            # Validate service
+            if target.service not in ['plex', 'spotify', 'youtube']:
+                raise ValueError(f"Invalid service: {target.service}")
+            
+            # Create new sync target
+            new_target = SyncTargetDB(
+                playlist_id=playlist_id,
+                service=target.service,
+                config=json.dumps(target.config),
+                enabled=target.enabled,
+                send_entry_adds=target.sendEntryAdds,
+                send_entry_removals=target.sendEntryRemovals,
+                receive_entry_adds=target.receiveEntryAdds,
+                receive_entry_removals=target.receiveEntryRemovals
+            )
+            
+            self.session.add(new_target)
+            self.session.commit()
+            
+            # Set the ID and return
+            target.id = new_target.id
+            return target
+        except Exception as e:
+            self.session.rollback()
+            raise e
+        finally:
+            self.session.close()
+
+    def update_sync_target(self, playlist_id: int, target: SyncTarget) -> SyncTarget:
+        """Update an existing sync target"""
+        try:
+            # Check if sync target exists and belongs to this playlist
+            db_target = self.session.query(SyncTargetDB).filter(
+                SyncTargetDB.id == target.id,
+                SyncTargetDB.playlist_id == playlist_id
+            ).first()
+            
+            if not db_target:
+                raise ValueError(f"Sync target with ID {target.id} not found for playlist {playlist_id}")
+            
+            # Update fields
+            db_target.service = target.service
+            db_target.config = json.dumps(target.config)
+            db_target.enabled = target.enabled
+            db_target.send_entry_adds = target.sendEntryAdds
+            db_target.send_entry_removals = target.sendEntryRemovals
+            db_target.receive_entry_adds = target.receiveEntryAdds
+            db_target.receive_entry_removals = target.receiveEntryRemovals
+
+            self.session.commit()
+            return target
+        except Exception as e:
+            self.session.rollback()
+            raise e
+        finally:
+            self.session.close()
+
+    def delete_sync_target(self, playlist_id: int, target_id: int) -> None:
+        """Delete a sync target"""
+        try:
+            # Check if sync target exists and belongs to this playlist
+            db_target = self.session.query(SyncTargetDB).filter(
+                SyncTargetDB.id == target_id,
+                SyncTargetDB.playlist_id == playlist_id
+            ).first()
+            
+            if not db_target:
+                raise ValueError(f"Sync target with ID {target_id} not found for playlist {playlist_id}")
+
+            self.session.delete(db_target)
+            self.session.commit()
+        except Exception as e:
+            self.session.rollback()
+            raise e
+        finally:
+            self.session.close()

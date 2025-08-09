@@ -1,7 +1,8 @@
 import urllib
+import urllib.parse
 from fastapi.exceptions import HTTPException
 import logging
-from response_models import LastFMTrack, Album, AlbumTrack, AlbumAndArtist
+from response_models import Album, AlbumTrack, AlbumAndArtist, Artist, AlbumSearchResult, MusicFile
 import os
 import warnings
 import json
@@ -24,7 +25,7 @@ def from_json(payload) -> Optional[Album]:
     tracks = []
     if "track" in payload.get("album", {}).get("tracks", {}):
         for i, track in enumerate(payload.get("album").get("tracks").get("track")):
-            linked_track = LastFMTrack(title=track.get("name"), artist=track.get("artist").get("name"), url=track.get("url"))
+            linked_track = MusicFile(title=track.get("name"), artist=track.get("artist").get("name"), last_fm_url=track.get("url"))
             tracks.append(AlbumTrack(order=i, linked_track=linked_track))
 
     return Album(
@@ -73,38 +74,185 @@ class last_fm_repository:
         
         similar_tracks = similar_data.get("similartracks", {}).get("track", [])
 
-        return [LastFMTrack(title=track.get("name", ""), artist=track.get("artist", {}).get("name", ""), url=track.get("url")) for track in similar_tracks]
+        return [MusicFile(title=track.get("name", ""), artist=track.get("artist", {}).get("name", ""), last_fm_url=track.get("url")) for track in similar_tracks]
 
-    def search_track(self, artist, title):
+    def search_track(self, title: Optional[str] = None, artist: Optional[str] = None, limit: int=10, page: int=1) -> List[MusicFile]:
         # URL encode parameters
-        encoded_title = urllib.parse.quote(title)
-        encoded_artist = urllib.parse.quote(artist)
+        encoded_title = urllib.parse.quote(title) if title else None
+        encoded_artist = urllib.parse.quote(artist) if artist else None
+
+        if not encoded_title and not encoded_artist:
+            raise HTTPException(status_code=400, detail="Either title or artist must be provided")
+        
+        if encoded_artist and not encoded_title:
+            # get list of top tracks
+            last_fm_artists = self.search_artist(encoded_artist, limit=1)
+            if not last_fm_artists:
+                logging.error(f"Artist not found: {encoded_artist}")
+                raise HTTPException(status_code=404, detail="Artist not found")
+            
+            url = f"http://ws.audioscrobbler.com/2.0/?method=artist.gettoptracks&api_key={self.api_key}&format=json&limit={limit}&page={page}&artist={encoded_artist}"
+            logging.info(url)
+
+            response = self.get_with_retries(url)
+            if response.status_code != 200:
+                logging.warning(f"Failed to fetch data from Last.FM: {response.status_code} {response.text}")
+                raise HTTPException(status_code=500, detail="Failed to fetch data from Last.FM")
+            
+            data = response.json()
+            tracks = data.get("toptracks", {}).get("track", [])
+            return [MusicFile(title=track.get("name", ""), artist=track.get("artist", {}).get("name", ""), last_fm_url=track.get("url")) for track in tracks]
+
+        base_url = f"http://ws.audioscrobbler.com/2.0/?method=track.search&track={encoded_title}&api_key={self.api_key}&format=json&limit={limit}&page={page}"
+
+        results = []
+
+        if encoded_artist:
+            # fetch artist first
+            last_fm_artists = self.search_artist(encoded_artist, limit=5)
+            for artist in last_fm_artists:
+                artist_name = urllib.parse.quote(artist.name)
+                url = base_url + f"&artist={artist_name}"
+
+                logging.info(url)
+                response = self.get_with_retries(url)
+
+                data = response.json()
+                tracks = data.get("results", {}).get("trackmatches", {}).get("track", [])
+
+                results.extend([MusicFile(title=track.get("name", ""), artist=track.get("artist", ""), url=track.get("url")) for track in tracks])
+        else:
+            # fetch without artist
+            url = base_url
+            logging.info(url)
+            response = self.get_with_retries(url)
+
+            data = response.json()
+            tracks = data.get("results", {}).get("trackmatches", {}).get("track", [])
+
+            results.extend([MusicFile(title=track.get("name", ""), artist=track.get("artist", ""), last_fm_url=track.get("url")) for track in tracks])
+
+        return results[:limit]
+    
+    def search_album_fallback(self, artist: Optional[str] = None, title: Optional[str] = None, limit: int = 10, page: int = 1) -> List[AlbumSearchResult]:
+        if not artist and not title:
+            raise HTTPException(status_code=400, detail="Either artist or title must be provided")
+        
+        # URL encode parameters
+        encoded_title = urllib.parse.quote(title) if title else None
+        encoded_artist = urllib.parse.quote(artist) if artist else None
 
         # Make request to Last.FM API
-        url = f"http://ws.audioscrobbler.com/2.0/?method=track.search&track={encoded_title}&artist={encoded_artist}&api_key={self.api_key}&format=json&limit=10"
+        url = f"http://ws.audioscrobbler.com/2.0/?method=album.search&api_key={self.api_key}&format=json&limit={limit}&album={encoded_title}&autocorrect=1"
+        logging.info(url)
+
         response = self.get_with_retries(url)
 
         if response.status_code != 200:
+            logging.warning(f"Failed to fetch data from Last.FM: {response.status_code} {response.text}")
             raise HTTPException(status_code=500, detail="Failed to fetch data from Last.FM")
 
         data = response.json()
-        tracks = data.get("results", {}).get("trackmatches", {}).get("track", [])
+        albums = data.get("results", {}).get("albummatches", {}).get("album", [])
 
-        logging.info(data)
+        results = []
 
-        return [LastFMTrack(title=track.get("name", ""), artist=track.get("artist", ""), url=track.get("url")) for track in tracks]
+        for match in albums:
+            score = 0
+            match_name = match.get("name")
+            match_artist = match.get("artist")
+            if match_name.lower() == title.lower() and match_artist.lower() == artist.lower():
+                score = 10
+            elif match_name.lower().startswith(title.lower()) and match_artist.lower() == artist.lower():
+                score = 5
+            elif match_artist.lower() == artist.lower():
+                score = 2
+            elif title.lower() in match_name.lower():
+                score = 1
+            
+            if score == 0:
+                continue
+            
+            match = AlbumSearchResult(
+                title=match.get("name"),
+                artist=match.get("artist"),
+                art_url=match.get("image")[-1].get("#text"),
+                last_fm_url=match.get("url"),
+                score=score
+            )
+
+            results.append(match)
+
+        results.sort(key=lambda x: x.score, reverse=True)
+
+        return results
     
-    def search_album(self, artist, title) -> List[Album]:
+    def search_album(self, artist: Optional[str] = None, title: Optional[str] = None, limit: int = 10, page: int = 1) -> List[Album]:
+        if not artist and not title:
+            raise HTTPException(status_code=400, detail="Either artist or title must be provided")
+        
+        if artist and not title:
+            last_fm_artists = self.search_artist(artist, limit=1)
+            if not last_fm_artists:
+                logging.error(f"Artist not found: {artist}")
+                raise HTTPException(status_code=404, detail="Artist not found")
+            artist = last_fm_artists[0]
+            
+            return self.get_artist_albums(artist_name=artist.name, artist_mbid=artist.mbid, limit=limit, page=page)
+        
+        if artist and title:
+            last_fm_artists = self.search_artist(artist, limit=10)
+            if not last_fm_artists:
+                logging.error(f"Artist not found: {artist}")
+                raise HTTPException(status_code=404, detail="Artist not found")
+            
+            results = []
+
+            for artist in last_fm_artists:
+                albums = self.get_artist_albums(artist_name=artist.name, artist_mbid=artist.mbid, limit=25, page=page)
+
+                album_matches = [a.to_json() for a in albums]
+
+                for album in album_matches:
+                    album_title = album.get("title")
+                    if album_title.lower() == title.lower():
+                        album["score"] = 10
+                    elif album_title.lower().startswith(title.lower()):
+                        album["score"] = 5
+                    elif title.lower() in album_title.lower():
+                        album["score"] = 2
+                    else:
+                        album["score"] = 0
+
+                    results.append(album)
+                
+                if results:
+                    break
+            
+            results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+            if not (results and results[0].get("score", 0) >= 5):
+                # try searching for album without artist
+                albums = self.search_album_fallback(artist=artist.name, title=title, limit=limit)
+
+                # insert results at beginning
+                results = [a.to_json() for a in albums] + results
+
+            return [Album(
+                title=album.get("title"),
+                artist=album.get("artist"),
+                art_url=album.get("art_url"),
+                last_fm_url=album.get("last_fm_url"),
+            ) for album in results][:limit]
+        
+        # else, we just have the title to work with
+
         # URL encode parameters
         encoded_title = urllib.parse.quote(title) if title else None
 
-        if not encoded_title:
-            raise ValueError("Title is required to search for albums")
-
         # Make request to Last.FM API
-        url = f"http://ws.audioscrobbler.com/2.0/?method=album.search&api_key={self.api_key}&format=json&limit=20"
-        if encoded_title:
-            url += f"&album={encoded_title}"
+        url = f"http://ws.audioscrobbler.com/2.0/?method=album.search&api_key={self.api_key}&format=json&limit={limit}&album={encoded_title}&autocorrect=1"
+        logging.info(url)
 
         response = self.get_with_retries(url)
 
@@ -176,7 +324,85 @@ class last_fm_repository:
         
             return {"image_url": image_url}
         else:
+            logging.warning(f"Failed to fetch data from Last.FM: {response.status_code} {response.text}")
             return {"image_url": None}
+    
+    def search_artist(self, artist: str, limit: int=10, page: int=1) -> List[Artist]:
+        if not artist:
+            logging.error("Artist name is empty")
+            raise HTTPException(status_code=400, detail="Artist name must be non-empty")
+        
+        # URL encode parameters
+        encoded_artist = urllib.parse.quote(artist)
+
+        # Make request to Last.FM API
+        url = f"http://ws.audioscrobbler.com/2.0/?method=artist.search&artist={encoded_artist}&api_key={self.api_key}&format=json&limit={limit}&page={page}"
+        logging.info(url)
+        response = self.get_with_retries(url)
+
+        if response.status_code != 200:
+            logging.warning(f"Failed to fetch data from Last.FM: {response.status_code} {response.text}")
+            raise HTTPException(status_code=500, detail="Failed to fetch data from Last.FM")
+
+        data = response.json()
+
+        artists = data.get("results", {}).get("artistmatches", {}).get("artist", [])
+
+        results = []
+
+        for match in artists:
+            match_name = match.get("name")
+            if match_name.lower() == artist.lower():
+                match["score"] = 10
+            elif match_name.lower().startswith(artist.lower()):
+                match["score"] = 5
+            elif artist.lower() in match_name.lower():
+                match["score"] = 2
+            else:
+                match["score"] = 0
+            
+            results.append(match)
+        
+        results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+        return [Artist(
+            name=match.get("name"),
+            url=match.get("url"),
+            mbid=match.get("mbid"),
+            albums=[]
+        ) for match in results]
+    
+    def get_artist_albums(self, artist_name: Optional[str], artist_mbid: Optional[str], limit: int=10, page: int=1) -> List[Album]:
+        if not artist_mbid and not artist_name:
+            logging.error("Artist Name or MBID required")
+            raise HTTPException(status_code=400, detail="Artist MBID must be non-empty")
+        
+        artist_name = urllib.parse.quote(artist_name) if artist_name else None
+        artist_mbid = urllib.parse.quote(artist_mbid) if artist_mbid else None
+
+        url = f"http://ws.audioscrobbler.com/2.0/?method=artist.gettopalbums&api_key={self.api_key}&format=json&limit={limit}&page={page}"
+        if artist_mbid:
+            url += f"&mbid={artist_mbid}"
+        elif artist_name:
+            url += f"&artist={artist_name}"
+
+        logging.info(url)
+        response = self.get_with_retries(url)
+
+        if response.status_code != 200:
+            logging.warning(f"Failed to fetch data from Last.FM: {response.status_code} {response.text}")
+            raise HTTPException(status_code=500, detail="Failed to fetch data from Last.FM")
+        
+        data = response.json()
+        albums = data.get("topalbums", {}).get("album", [])
+
+        return [Album(
+            title=album.get("name"),
+            artist=album.get("artist").get("name"),
+            art_url=album.get("image")[-1].get("#text"),
+            last_fm_url=album.get("url"),
+            mbid=album.get("mbid"),
+        ) for album in albums]
 
     def get_album_info(self, artist, album) -> Optional[Album]:
         if os.getenv("LASTFM_API_KEY") is None:
@@ -189,19 +415,24 @@ class last_fm_repository:
             try:
                 cached_info = self.redis_session.get(redis_tag)
                 if cached_info is not None:
-                    logging.error(cached_info)
+                    logging.debug(cached_info)
                     return from_json(json.loads(cached_info))
             except Exception as e:
                 logging.error(e)
                 pass
+
+        matches = self.search_album(artist=pair.artist, title=pair.album, limit=1)
+        if not matches:
+            return None
         
-        encoded_title = urllib.parse.quote(pair.album)
-        encoded_artist = urllib.parse.quote(pair.artist)
-        
-        logging.info(f"Fetching album info from Last.FM for {pair}")
-        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={encoded_artist}&album={encoded_title}&format=json&autocorrect=1"
+        match = matches[0]
+        encoded_match_title = urllib.parse.quote(match.title)
+        encoded_match_artist = urllib.parse.quote(match.artist)
+        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&artist={encoded_match_artist}&album={encoded_match_title}&format=json&autocorrect=1"
+        logging.info(url)
+
         response = self.get_with_retries(url)
-        
+    
         album_info = None
         if response.status_code == 200:
             album_info = response.json()
@@ -211,5 +442,8 @@ class last_fm_repository:
                 except Exception as e:
                     logging.error(e)
                     pass
+        else:
+            logging.warning(f"Failed to fetch data from Last.FM: {response.status_code} {response.text}")
+            raise HTTPException(status_code=500, detail="Failed to fetch data from Last.FM")
         
         return from_json(album_info) if album_info else None

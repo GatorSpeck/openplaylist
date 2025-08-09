@@ -23,18 +23,20 @@ from database import Database
 from models import *
 import urllib
 from response_models import *
-from dependencies import get_music_file_repository, get_playlist_repository
+from dependencies import get_music_file_repository, get_playlist_repository, get_plex_repository
 from repositories.music_file import MusicFileRepository
 from repositories.playlist import PlaylistRepository
 from repositories.open_ai_repository import open_ai_repository
 from repositories.last_fm_repository import last_fm_repository
+from repositories.plex_repository import PlexRepository
+from repositories.spotify_repository import get_spotify_repository
 from repositories.requests_cache_session import requests_cache_session
-from repositories.spotify_repository import get_spotify_repo
 from redis import Redis
 import json
 from pydantic import BaseModel
 import sys
 from routes import router
+from routes.spotify_router import spotify_router
 
 class TimingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable):
@@ -43,7 +45,10 @@ class TimingMiddleware(BaseHTTPMiddleware):
         # Get query parameters as dict
         params = dict(request.query_params)
 
-        logging.info(
+        do_logging = request.url.path != "/api/health"
+
+        if do_logging:
+            logging.info(
                 f"{request.method} {request.url.path} "
                 f"params={params}"
             )
@@ -56,12 +61,13 @@ class TimingMiddleware(BaseHTTPMiddleware):
             raise e
         finally:
             duration = time.time() - start_time
-            logging.info(
-                f"{request.method} {request.url.path} "
-                f"params={params} "
-                f"status={status_code} "
-                f"duration={duration:.3f}s"
-            )
+            if do_logging:
+                logging.info(
+                    f"{request.method} {request.url.path} "
+                    f"params={params} "
+                    f"status={status_code} "
+                    f"duration={duration:.3f}s"
+                )
             
         return response
 
@@ -224,7 +230,7 @@ def scan_directory(directory: str, full=False):
 
             last_modified_time = datetime.fromtimestamp(os.path.getmtime(full_path))
             existing_file = (
-                db.query(MusicFileDB).filter(MusicFileDB.path == full_path).first()
+                db.query(MusicFileDB).join(LocalFileDB).filter(LocalFileDB.path == full_path).first()
             )
 
             found_existing_file = False
@@ -295,7 +301,7 @@ def scan_directory(directory: str, full=False):
             if existing_file:
                 scan_results.files_updated += 1
 
-                existing_file.last_modified = last_modified_time
+                # existing_file.last_modified = last_modified_time
                 existing_file.title = metadata.title
                 existing_file.artist = metadata.artist
                 existing_file.album = metadata.album
@@ -303,11 +309,8 @@ def scan_directory(directory: str, full=False):
                 existing_file.year = year
                 existing_file.length = metadata.length
                 existing_file.publisher = metadata.publisher
-                existing_file.kind = metadata.kind
-                existing_file.last_scanned = datetime.now()
                 existing_file.exact_release_date = exact_release_date
                 existing_file.release_year = release_year
-                existing_file.size = file_size
                 existing_file.rating = metadata.rating
                 existing_file.genres = [
                     TrackGenreDB(parent_type="music_file", genre=genre)
@@ -322,12 +325,46 @@ def scan_directory(directory: str, full=False):
 
                 this_track = metadata.to_db()
 
-                db.add(this_track)
+                # Set up local file with file metadata
+                local_file = LocalFileDB(
+                    path=full_path,
+                    kind=metadata.kind,
+                    first_scanned=datetime.now(),
+                    last_scanned=datetime.now(),
+                    size=file_size,
+                    # Store file metadata
+                    file_title=metadata.title,
+                    file_artist=metadata.artist,
+                    file_album_artist=metadata.album_artist,
+                    file_album=metadata.album,
+                    file_year=year,
+                    file_length=metadata.length,
+                    file_publisher=metadata.publisher,
+                    file_rating=metadata.rating,
+                    file_comments=metadata.comments,
+                    file_track_number=metadata.track_number,
+                    file_disc_number=metadata.disc_number,
+                )
+                
+                # Add file genres
+                for genre in metadata.genres:
+                    local_file.file_genres.append(LocalFileGenreDB(genre=genre))
+                
+                this_track.local_file = local_file
+                
+                # Initially sync the main metadata from file metadata
+                this_track.sync_from_file_metadata()
+                
+                try:
+                    db.add(this_track)
 
-                if album is not None:
-                    db.flush()
-                    album.tracks.append(AlbumTrackDB(linked_track_id=this_track.id, order=len(album.tracks)))
-            
+                    if album is not None:
+                        db.flush()
+                        album.tracks.append(AlbumTrackDB(linked_track_id=this_track.id, order=len(album.tracks)))
+                except Exception as e:
+                    logging.error(f"Failed to add track {this_track.id} to album {album.id}: {e}", exc_info=True)
+                    raise
+
             ops += 1
             if ops > 100:
                 db.commit()
@@ -350,6 +387,9 @@ def purge_data():
 
 @router.get("/scan")
 def scan(background_tasks: BackgroundTasks):
+    if scan_results.in_progress:
+        raise HTTPException(status_code=409, detail="Scan already in progress")
+    
     background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), full=False)
     background_tasks.add_task(prune_music_files)
 
@@ -357,6 +397,9 @@ def scan(background_tasks: BackgroundTasks):
 
 @router.get("/fullscan")
 def full_scan(background_tasks: BackgroundTasks):
+    if scan_results.in_progress:
+        raise HTTPException(status_code=409, detail="Scan already in progress")
+
     background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), full=True)
     background_tasks.add_task(prune_music_files)
 
@@ -443,20 +486,20 @@ async def get_stats():
     )
 
 @router.post("/library/findlocals")
-def find_local_files(tracks: List[TrackDetails], repo: MusicFileRepository = Depends(get_music_file_repository)):
+def find_local_files(tracks: List[MusicFile], repo: MusicFileRepository = Depends(get_music_file_repository)):
     return repo.find_local_files(tracks)
 
-@router.get("/lastfm", response_model=List[LastFMTrack])
+@router.get("/lastfm", response_model=List[MusicFile])
 def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
     repo = last_fm_repository(api_key, requests_cache_session)
-    return repo.search_track(artist, title)
+    return repo.search_track(title=title, artist=artist)
 
 # get similar tracks using last.fm API
-@router.get("/lastfm/similar", response_model=List[LastFMTrack])
+@router.get("/lastfm/similar", response_model=List[MusicFile])
 def get_similar_tracks(title: str = Query(...), artist: str = Query(...)):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
@@ -490,7 +533,7 @@ def search_album(album: str = Query(...), artist: Optional[str] = Query(None), )
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
     repo = last_fm_repository(api_key, requests_cache_session)
-    return repo.search_album(artist, album)
+    return repo.search_album(artist=artist, title=album)
 
 # get similar tracks
 @router.get("/openai/similar")
@@ -572,27 +615,95 @@ def import_spotify_playlist(
     params: SpotifyImportParams,
     playlist_repo: PlaylistRepository = Depends(get_playlist_repository)
 ):
-    spotify_repo = get_spotify_repo(requests_cache_session)
+    spotify_repo = get_spotify_repository(requests_cache_session)
     if not spotify_repo:
         raise HTTPException(status_code=500, detail="Spotify API key not configured")
     
-    playlist = spotify_repo.get_playlist(params.playlist_id)
+    snapshot = spotify_repo.get_playlist_snapshot(params.playlist_id)
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="Playlist not found")
 
-    new_playlist = Playlist(name=params.playlist_name, description=playlist.description, entries=[])
-    for t in playlist.tracks:
-        track = RequestedTrackEntry(
-            entry_type="requested",
-            details=TrackDetails(
-                title=t.title,
-                artist=t.artist,
-                album=t.album,
-            )
+    new_playlist = Playlist(name=params.playlist_name, description=f"Imported from spotify playlist {params.playlist_id}", entries=[])
+
+    new_playlist = playlist_repo.create(new_playlist)
+
+    for e in snapshot.items:
+        playlist_repo.add_music_file(new_playlist.id, e, normalize=True)
+
+    return new_playlist
+
+@router.post("/plex/import")
+def import_plex_playlist(
+    params: PlexImportParams,
+    plex_repo: PlexRepository = Depends(get_plex_repository),
+    playlist_repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    new_playlist = Playlist(name=params.playlist_name, description=None, entries=[])
+    new_playlist = playlist_repo.create(new_playlist)
+
+    logging.info("Creating Plex playlist snapshot")
+    playlist = plex_repo.get_playlist_snapshot(params.remote_playlist_name)
+
+    logging.info("Populating new playlist")
+    playlist_repo.add_music_file(new_playlist.id, playlist.items)
+    
+    return new_playlist
+
+@router.post("/youtube/import")
+def import_youtube_playlist(
+    params: dict,
+    playlist_repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    """Import a playlist from YouTube Music"""
+    try:
+        from repositories.youtube_repository import YouTubeMusicRepository
+        
+        # Extract parameters
+        playlist_id = params.get("playlist_id")
+        playlist_name = params.get("playlist_name")
+        
+        if not playlist_id:
+            raise HTTPException(status_code=400, detail="YouTube playlist ID is required")
+        if not playlist_name:
+            raise HTTPException(status_code=400, detail="Playlist name is required")
+        
+        # Create YouTube Music repository
+        youtube_repo = YouTubeMusicRepository(
+            session=Database.get_session(),
+            config={"playlist_uri": playlist_id}
         )
-        new_playlist.entries.append(track)
+        
+        if not youtube_repo.is_authenticated():
+            raise HTTPException(status_code=401, detail="YouTube Music authentication required")
+        
+        # Get playlist snapshot
+        snapshot = youtube_repo.get_playlist_snapshot(playlist_name)
+        if not snapshot:
+            raise HTTPException(status_code=404, detail="YouTube playlist not found")
 
-    playlist_repo.create(new_playlist)
+        # Create new playlist
+        new_playlist = Playlist(
+            name=playlist_name, 
+            description=f"Imported from YouTube Music playlist {playlist_id}", 
+            entries=[]
+        )
+        new_playlist = playlist_repo.create(new_playlist)
 
-    return playlist
+        # Add tracks from snapshot
+        for item in snapshot.items:
+            # Try to find matching local track first
+            result = playlist_repo.add_music_file(new_playlist.id, item, normalize=True)
+            if not result:
+                # Add as requested track if not found locally
+                playlist_repo.add_requested_track(new_playlist.id, item)
+
+        return new_playlist
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error importing YouTube Music playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to import YouTube Music playlist: {str(e)}")
 
 class Directory(BaseModel):
     name: str
@@ -660,6 +771,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 app.include_router(router, prefix="/api")
+app.include_router(spotify_router, prefix="/api")
 
 host = os.getenv("HOST", "0.0.0.0")
 port = int(os.getenv("PORT", 3000))

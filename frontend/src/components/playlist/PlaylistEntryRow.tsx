@@ -29,6 +29,9 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
 }, ref) => {
   const [imageUrl, setImageUrl] = useState(null);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
+  const [isLongPressing, setIsLongPressing] = useState(false);
 
   useEffect(() => {
     const fetchAlbumArt = async () => {
@@ -45,18 +48,117 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
     fetchAlbumArt();
   }, [entry]);
 
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768 || 'ontouchstart' in window);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const triggerContextMenu = (e: any) => {
+    onContextMenu(e);
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
+    }
+  };
+
+  const startLongPress = (clientX: number, clientY: number) => {
+    console.log("Starting long press");
+    const timer = setTimeout(() => {
+      console.log("Long press triggered");
+      setIsLongPressing(true);
+      const contextEvent = {
+        preventDefault: () => {},
+        clientX,
+        clientY
+      };
+      triggerContextMenu(contextEvent);
+    }, 500);
+    
+    setLongPressTimer(timer);
+  };
+
+  const endLongPress = () => {
+    console.log("Ending long press");
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
+    setTimeout(() => setIsLongPressing(false), 100);
+  };
+
+  // Touch events for real mobile devices
+  const handleTouchStart = (e: React.TouchEvent) => {
+    console.log("Touch start");
+    const touch = e.touches[0];
+    startLongPress(touch.clientX, touch.clientY);
+  };
+
+  const handleTouchEnd = () => {
+    console.log("Touch end");
+    endLongPress();
+  };
+
+  // Mouse events for desktop simulation
+  const handleMouseDown = (e: React.MouseEvent) => {
+    console.log("Mouse down - simulating long press");
+    // Only simulate long press in responsive mode when not on actual mobile
+    if (isMobile && !('ontouchstart' in window)) {
+      startLongPress(e.clientX, e.clientY);
+    }
+  };
+
+  const handleMouseUp = () => {
+    console.log("Mouse up");
+    if (isMobile && !('ontouchstart' in window)) {
+      endLongPress();
+    }
+  };
+
+  const handleMouseLeave = () => {
+    // Cancel long press if mouse leaves the element
+    if (isMobile && !('ontouchstart' in window)) {
+      endLongPress();
+    }
+  };
+
+  let tracksDisplay = null;
+  if (entry.isAlbum()) {
+    if (entry.getTracks().length > 0) {
+      if (isExpanded) {
+        tracksDisplay = entry.getTracks().map(track => track.linked_track.title).join(', ');
+      }
+      else {
+        tracksDisplay = `(${entry.getTracks().length} tracks)`;
+      }
+    }
+  }
+
   const contents = entry.isAlbum() ? (
     <div onClick={() => setIsExpanded(!isExpanded)}>
-      {isExpanded ? entry.details?.tracks.map(track => track.linked_track.title).join(', ') : `(${entry.details?.tracks.length} tracks)`}
+      {tracksDisplay}
     </div>
   ) : entry.getTitle();
+
+  const handleMenuClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onContextMenu(e);
+  };
 
   return (
     <div 
       ref={ref}
-      className={`${className} ${isDragging ? 'dragging' : ''}`}
+      className={`${className} ${isDragging ? 'dragging' : ''} ${isLongPressing ? 'long-pressing' : ''}`}
       style={style}
       onContextMenu={onContextMenu}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseLeave}
       {...props}
     >
       {/* Apply dragHandleProps only to the first grid cell */}
@@ -85,6 +187,13 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
       </div>
       <div className="grid-cell truncate-text" overflow="auto">
         <span>{contents}</span>
+        {isMobile && (<button 
+          className="mobile-menu-button"
+          onClick={handleMenuClick}
+          aria-label="More options"
+        >
+          ⋮
+        </button>)}
       </div>
     </div>
   );
