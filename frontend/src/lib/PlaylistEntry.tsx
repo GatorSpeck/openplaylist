@@ -3,7 +3,9 @@ export class PlaylistEntryStub {
     this.id = entryData.id || null;
     this.order = entryData.order || 0;
     this.entry_type = entryData.entry_type || 'music_file';
-    this.notes = entryData.notes || null;  // Add this line
+    this.notes = entryData.notes || null;
+    this.is_hidden = entryData.is_hidden || false;  // Add this line
+    this.date_hidden = entryData.date_hidden || null;  // Add this line
   }
 }
 
@@ -203,7 +205,9 @@ class PlaylistEntry extends PlaylistEntryStub {
       id: this.id,
       entry_type: this.entry_type,
       order: this.order,
-      notes: this.notes  // Add this line
+      notes: this.notes,
+      is_hidden: this.is_hidden,  // Add this line
+      date_hidden: this.date_hidden  // Add this line
     };
 
     // Add type-specific IDs
@@ -303,6 +307,17 @@ class PlaylistEntry extends PlaylistEntryStub {
       return this.details.title || 'Unknown Album';
     }
     return this.details.album || 'Unknown Album';
+  }
+
+  // Add method to check if entry is hidden
+  isHidden() {
+    return this.is_hidden;
+  }
+
+  // Add method to get formatted hidden date
+  getHiddenDate() {
+    if (!this.date_hidden) return null;
+    return new Date(this.date_hidden).toLocaleString();
   }
 }
 

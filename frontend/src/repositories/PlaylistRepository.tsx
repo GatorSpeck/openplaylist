@@ -21,18 +21,48 @@ export class PlaylistRepository {
         }
     }
 
-    async getPlaylistEntries(playlistID: number, filter: PlaylistFilter) {
-        try {
-            const response = await axios.get(`/api/playlists/${playlistID}/entries`, {
-                params: {
-                    ...filter
-                }
-            });
+    // Update getPlaylistEntries to support include_hidden parameter
+    async getPlaylistEntries(playlistId: number, params: {
+        filter?: string;
+        sortCriteria?: string;
+        sortDirection?: string;
+        limit?: number;
+        offset?: number;
+        countOnly?: boolean;
+        includeHidden?: boolean;  // Add this parameter
+    } = {}) {
+        const queryParams = new URLSearchParams();
+        
+        if (params.filter) queryParams.append('filter', params.filter);
+        if (params.sortCriteria) queryParams.append('sort_criteria', params.sortCriteria);
+        if (params.sortDirection) queryParams.append('sort_direction', params.sortDirection);
+        if (params.limit) queryParams.append('limit', params.limit.toString());
+        if (params.offset) queryParams.append('offset', params.offset.toString());
+        if (params.countOnly) queryParams.append('count_only', params.countOnly.toString());
+        if (params.includeHidden) queryParams.append('include_hidden', params.includeHidden.toString());  // Add this line
 
-            return response.data;
-        } catch (error) {
-            console.error('Error fetching playlist entries:', error);
+        const response = await fetch(`/api/playlists/${playlistId}/filter?${queryParams}`);
+        return response.json();
+    }
+
+    // Add method to hide entries
+    async hideEntries(playlistId: number, entryIds: number[], hide: boolean = true) {
+        const response = await fetch(`/api/playlists/${playlistId}/hide`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                entry_ids: entryIds,
+                hide: hide
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to ${hide ? 'hide' : 'unhide'} entries`);
         }
+
+        return response.json();
     }
 
     // get playlist names and IDs

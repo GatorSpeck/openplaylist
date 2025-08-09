@@ -661,6 +661,14 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
               </div>
             )}
           </div>
+
+          {/* Hidden Information Section */}
+          {entry.isHidden() && (
+            <div className="detail-row">
+              <strong>Hidden:</strong>
+              <span>Yes (on {entry.getHiddenDate()})</span>
+            </div>
+          )}
         </div>
         <div className="modal-actions">
           <button onClick={onClose}>Close</button>

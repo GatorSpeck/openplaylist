@@ -30,8 +30,11 @@ import SelectPlaylistModal from './SelectPlaylistModal';
 import { setCookie, getCookie } from '../../lib/cookieUtils';
 import SyncConfig from './SyncConfig'; // Import the SyncConfig component
 
-const BatchActions = ({ selectedCount, onRemove, onClear }) => (
+const BatchActions = ({ selectedCount, onRemove, onClear, onHide }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
+    <button onClick={onHide}>
+      Hide {selectedCount} Selected Entries
+    </button>
     <button onClick={onRemove}>
       Remove {selectedCount} Selected Entries
     </button>
@@ -252,6 +255,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   const [syncConfigOpen, setSyncConfigOpen] = useState(false);
 
+  // Add new state for hidden entries
+  const [showHidden, setShowHidden] = useState(false);
+  const [hideByDefault, setHideByDefault] = useState(false); // For playlist preference
+
   // Apply debouncing to the filter
   useEffect(() => {
     // Set a timer to update the debounced filter after typing stops
@@ -271,7 +278,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       fetchPlaylistArtGrid();
       fetchPlaylistDetails(true);
     }
-  }, [playlistID, debouncedFilter, sortColumn, sortDirection, paramsInitialized]);
+  }, [playlistID, debouncedFilter, sortColumn, sortDirection, paramsInitialized, showHidden]); // Add showHidden here
 
   const fetchPlaylistArtGrid = async () => {
     try {
@@ -291,6 +298,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       if (isInitialLoad) {
         setPlaylistLoading(true);
         setInitialFetchComplete(false); // Reset flag for new initial loads
+        
         // Get basic playlist info for the name on initial load
         const playlistInfo = await playlistRepository.getPlaylistDetails(playlistID);
         setName(playlistInfo.name);
@@ -299,6 +307,9 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         setIsLoadingMore(true);
         const countResponse = await playlistRepository.getPlaylistEntries(playlistID, {
           filter: debouncedFilter,
+          sortCriteria: sortColumn,
+          sortDirection: sortDirection,
+          includeHidden: showHidden, // Add this line to count query
           countOnly: true
         });
 
@@ -335,7 +346,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         sortCriteria: sortColumn,
         sortDirection: sortDirection,
         limit: pageSize,
-        offset: offset
+        offset: offset,
+        includeHidden: showHidden  // This line was already correct
       };
       
       const response = await playlistRepository.getPlaylistEntries(playlistID, filterParams);
@@ -395,7 +407,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       setPlaylistLoading(false);
       setIsLoadingMore(false);
     }
-  }, [playlistID, debouncedFilter, sortColumn, sortDirection, pageSize, totalCount, entries.length]);
+  }, [playlistID, debouncedFilter, sortColumn, sortDirection, pageSize, totalCount, entries.length, showHidden]); // showHidden was already in dependencies
 
   const pushToHistory = (entries) => {
     const newHistory = history.slice(0, historyIndex + 1);
@@ -819,12 +831,13 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   const handleContextMenu = (e, track: PlaylistEntry) => {
     e.preventDefault();
-  
+
     const isAlbum = track.entry_type === 'requested_album' || track.entry_type === 'album';
     const isMusicFile = track.entry_type === 'music_file';
     const isRequestedTrack = track.entry_type === 'requested' || track.entry_type === 'lastfm';
     const canEdit = isRequestedTrack || (track.entry_type === 'requested_album');  // Track can be edited if it's a requested track or album
-  
+    const isHidden = track.isHidden();
+
     const options = [
       { label: 'Details', onClick: () => handleShowDetails(track) },
       canEdit ? { label: 'Edit Details', onClick: () => handleEditItem(track) } : null,
@@ -834,6 +847,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: (e) => findSimilarTracksWithOpenAI(e, track) } : null,
       { label: 'Search for Album', onClick: () => searchFor({"title": "", "album": track.getAlbum(), "artist": track.getArtist()}) },
       { label: 'Search for Artist', onClick: () => searchFor({"title": "", "album": "", "artist": track.getAlbumArtist()}) },
+      // Add hide/unhide options
+      isHidden 
+        ? { label: 'Unhide', onClick: () => unhideEntry(track.id) }
+        : { label: 'Hide', onClick: () => hideEntry(track.id) },
       { label: 'Remove', onClick: () => removeSongsFromPlaylist([track.order]) },
       { label: 'Remove by Artist', onClick: () => onRemoveByArtist(track.getArtist()) },
       { label: 'Remove by Album', onClick: () => onRemoveByAlbum(track.getAlbum()) },
@@ -842,14 +859,14 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       isMusicFile ? { label: 'Unmatch Track', onClick: () => unMatchTrack(track) } : null,
       isAlbum ? { label: 'Match Album on Last.fm', onClick: () => matchAlbum(track) } : null
     ].filter(Boolean);
-  
+
     setContextMenu({
       visible: true,
       x: e.clientX,
       y: e.clientY,
       options: options.filter(option => option !== null)
     });
-  }
+  };
 
   const listRef = useRef(null);
 
@@ -963,6 +980,156 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     }
   };
 
+  // Add function to hide a single entry
+  const hideEntry = async (entryId: number) => {
+    try {
+      // Optimistically update local state first
+      pushToHistory(entries);
+      const newEntries = entries.map(entry => 
+        entry.id === entryId 
+          ? { ...entry, is_hidden: true, date_hidden: new Date().toISOString() }
+          : entry
+      );
+      
+      // If not showing hidden entries, filter them out
+      if (!showHidden) {
+        setEntries(newEntries.filter(entry => !entry.is_hidden));
+        setTotalCount(prevCount => prevCount - 1);
+      } else {
+        setEntries(newEntries);
+      }
+      
+      // Update backend asynchronously
+      await playlistRepository.hideEntries(playlistID, [entryId], true);
+      
+      setSnackbar({
+        open: true,
+        message: 'Entry hidden',
+        severity: 'success'
+      });
+      
+    } catch (error) {
+      console.error('Error hiding entry:', error);
+      
+      // Revert the optimistic update on error
+      setEntries(entries);
+      if (!showHidden) {
+        setTotalCount(prevCount => prevCount + 1);
+      }
+      
+      setSnackbar({
+        open: true,
+        message: `Error hiding entry: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  };
+
+  // Add function to hide selected entries
+  const hideSelectedTracks = async () => {
+    const length = selectedEntries.length;
+    if (length === 0) return;
+    
+    if (!window.confirm(`Are you sure you want to hide ${length} entries?`)) {
+      return;
+    }
+
+    try {
+      // Optimistically update local state first
+      pushToHistory(entries);
+      const newEntries = entries.map(entry => 
+        selectedEntries.includes(entry.id) 
+          ? { ...entry, is_hidden: true, date_hidden: new Date().toISOString() }
+          : entry
+      );
+      
+      // If not showing hidden entries, filter them out
+      if (!showHidden) {
+        setEntries(newEntries.filter(entry => !entry.is_hidden));
+        setTotalCount(prevCount => prevCount - length);
+      } else {
+        setEntries(newEntries);
+      }
+      
+      clearTrackSelection();
+      
+      // Update backend asynchronously
+      await playlistRepository.hideEntries(playlistID, selectedEntries, true);
+      
+      setSnackbar({
+        open: true,
+        message: `Hidden ${length} entries`,
+        severity: 'success'
+      });
+      
+    } catch (error) {
+      console.error('Error hiding entries:', error);
+      
+      // Revert the optimistic update on error
+      setEntries(entries);
+      if (!showHidden) {
+        setTotalCount(prevCount => prevCount + length);
+      }
+      
+      setSnackbar({
+        open: true,
+        message: `Error hiding entries: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  };
+
+  // Add function to unhide entries
+  const unhideEntry = async (entryId: number) => {
+    try {
+      // Optimistically update local state first
+      pushToHistory(entries);
+      const newEntries = entries.map(entry => 
+        entry.id === entryId 
+          ? { ...entry, is_hidden: false, date_hidden: null }
+          : entry
+      );
+      setEntries(newEntries);
+      
+      // Update backend asynchronously
+      await playlistRepository.hideEntries(playlistID, [entryId], false);
+      
+      setSnackbar({
+        open: true,
+        message: 'Entry unhidden',
+        severity: 'success'
+      });
+      
+    } catch (error) {
+      console.error('Error unhiding entry:', error);
+      
+      // Revert the optimistic update on error
+      setEntries(entries);
+      
+      setSnackbar({
+        open: true,
+        message: `Error unhiding entry: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  };
+
+  // Update BatchActions to include hide option
+  const BatchActions = ({ selectedCount, onRemove, onClear, onHide }) => (
+    <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
+      <button onClick={onHide}>
+        Hide {selectedCount} Selected Entries
+      </button>
+      <button onClick={onRemove}>
+        Remove {selectedCount} Selected Entries
+      </button>
+      <button onClick={onClear}>
+        Clear Selection
+      </button>
+    </div>
+  );
+
+  // Update the render to include the show hidden checkbox and updated batch actions
   return (
     <div className="main-playlist-view">
       <div className="playlist-header">
@@ -983,7 +1150,6 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             value={filter}
             onChange={(e) => {
               setFilter(e.target.value);
-              // Direct cookie update isn't needed here as we handle it in useEffect with the debounced value
             }}
             className="filter-input"
           />
@@ -998,10 +1164,24 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
               Clear
             </button>
           )}
+          
+          {/* Add show hidden checkbox */}
+          <label className="show-hidden-label">
+            <input
+              type="checkbox"
+              checked={showHidden}
+              onChange={(e) => {
+                setShowHidden(e.target.checked);
+                // This will trigger a re-fetch via the useEffect
+              }}
+            />
+            Show Hidden
+          </label>
+
           <span className="filter-count">
             {totalCount} tracks {filter ? 
               (filter !== debouncedFilter ? '(filtering...)' : '(filtered)') 
-              : ''}
+              : ''} {showHidden ? '(including hidden)' : ''}
           </span>
         </div>
 
@@ -1009,6 +1189,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           selectedCount={selectedEntries.length}
           onRemove={removeSelectedTracks}
           onClear={clearTrackSelection}
+          onHide={hideSelectedTracks}  // Add this line
         />
       </div>
 
@@ -1098,6 +1279,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         selectedCount={selectedEntries.length}
         onRemove={removeSelectedTracks}
         onClear={clearTrackSelection}
+        onHide={hideSelectedTracks}  // Add this line
       />
 
       <SearchResultsGrid

@@ -354,7 +354,9 @@ class PlaylistEntryStub(BaseModel):
     id: Optional[int] = None
     order: Optional[int] = None
     date_added: Optional[datetime] = None
-    notes: Optional[str] = None  # Add this line
+    date_hidden: Optional[datetime] = None
+    is_hidden: Optional[bool] = False
+    notes: Optional[str] = None
 
 class PlaylistEntryBase(PlaylistEntryStub, ABC):
     entry_type: Optional[Literal["music_file", "nested_playlist", "album", "requested_album"]] = None  # TODO: consolidate album & requested_album
