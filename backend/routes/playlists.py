@@ -774,3 +774,52 @@ def update_entry_details(
     except Exception as e:
         logging.error(f"Failed to update entry: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update entry")
+
+@router.post("/{playlist_id}/hide")
+def hide_entries(
+    playlist_id: int,
+    request_data: dict = Body(...),  # Change this line
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+):
+    try:
+        # Extract data from the request body
+        entry_ids = request_data.get('entry_ids', [])
+        hide = request_data.get('hide', True)
+        
+        if not entry_ids:
+            raise HTTPException(status_code=400, detail="entry_ids is required")
+        
+        repo.hide_entries(playlist_id, entry_ids, hide)
+        return {"status": "success", "hidden": hide, "count": len(entry_ids)}
+    except Exception as e:
+        logging.error(f"Failed to hide entries: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to hide entries")
+
+# Update existing filter endpoint to support include_hidden parameter
+@router.get("/{playlist_id}/filter")
+def filter_playlist(
+    playlist_id: int,
+    filter: Optional[str] = None,
+    sort_criteria: Optional[str] = None,
+    sort_direction: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
+    include_hidden: Optional[bool] = False,  # Add this parameter
+    count_only: Optional[bool] = False,
+    repo: PlaylistRepository = Depends(get_playlist_repository)
+):
+    try:
+        playlist_filter = PlaylistFilter(
+            filter=filter,
+            sortCriteria=PlaylistSortCriteria[sort_criteria.upper()] if sort_criteria else PlaylistSortCriteria.ORDER,
+            sortDirection=PlaylistSortDirection[sort_direction.upper()] if sort_direction else PlaylistSortDirection.ASC,
+            limit=limit,
+            offset=offset,
+            include_hidden=include_hidden  # Add this line
+        )
+        
+        result = repo.filter_playlist(playlist_id, playlist_filter, count_only=count_only)
+        return result
+    except Exception as e:
+        logging.error(f"Failed to filter playlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to filter playlist")

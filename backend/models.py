@@ -358,6 +358,8 @@ class PlaylistEntryDB(Base):
     order = Column(Integer, index=True)
 
     date_added = Column(DateTime)  # date added to playlist
+    date_hidden = Column(DateTime, nullable=True)  # Add this field
+    is_hidden = Column(Boolean, default=False, nullable=False, index=True)  # Add this field
 
     playlist_id: Mapped[int] = mapped_column(ForeignKey("playlists.id"), index=True)
     playlist: Mapped["PlaylistDB"] = relationship("PlaylistDB", back_populates="entries")
@@ -368,7 +370,7 @@ class PlaylistEntryDB(Base):
     details = relationship(
         "BaseNode", 
         foreign_keys=[details_id],
-        cascade="save-update, merge, expunge"  # Make sure it doesn't include "delete"
+        cascade="save-update, merge, expunge"
     )
 
     __mapper_args__ = {"polymorphic_on": entry_type, "polymorphic_identity": "entry"}

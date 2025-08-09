@@ -143,22 +143,38 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
     </div>
   ) : entry.getTitle();
 
+  const contentsHidden = entry.isHidden() ? (
+    <s>{contents}</s>
+  ) : (
+    <span>{contents}</span>
+  );
+
   const handleMenuClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onContextMenu(e);
   };
 
+  // Add styling for hidden entries
+  const hiddenClass = entry.isHidden() ? 'hidden-entry' : '';
+
+  const artist = entry.isHidden() ? (
+    <s>{entry.getArtist()}</s>
+  ) : (
+    <span>{entry.getArtist()}</span>
+  );
+
+  const album = entry.isHidden() ? (
+    <s>{entry.getAlbum()}</s>
+  ) : (
+    <span>{entry.getAlbum()}</span>
+  );
+
   return (
-    <div 
+    <div
       ref={ref}
-      className={`${className} ${isDragging ? 'dragging' : ''} ${isLongPressing ? 'long-pressing' : ''}`}
+      className={`playlist-entry-row ${className} ${hiddenClass}`}
       style={style}
       onContextMenu={onContextMenu}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      onMouseDown={handleMouseDown}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseLeave}
       {...props}
     >
       {/* Apply dragHandleProps only to the first grid cell */}
@@ -181,12 +197,14 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
       
       <div className="grid-cell artist-cell">
         <div className="track-info">
-          <div className="artist truncate-text">{entry.getArtist()}</div>
-          <div className="album truncate-text" overflow="auto"><i>{entry.getAlbum()}</i></div>
+          <div className="artist truncate-text">
+            {artist}
+          </div>
+          <div className="album truncate-text" overflow="auto"><i>{album}</i></div>
         </div>
       </div>
       <div className="grid-cell truncate-text" overflow="auto">
-        <span>{contents}</span>
+        <span>{contentsHidden}</span>
         {isMobile && (<button 
           className="mobile-menu-button"
           onClick={handleMenuClick}

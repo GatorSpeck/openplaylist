@@ -415,3 +415,27 @@
     padding-right: 40px; /* Add space for the button */
   }
 }
+
+.hidden-entry {
+  opacity: 0.6;
+  background-color: #f0f0f0;
+}
+
+.hidden-indicator {
+  font-size: 0.8em;
+  color: #888;
+  margin-left: 10px;
+}
+
+.show-hidden-label {
+  margin-left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.9em;
+}
+
+.show-hidden-label input[type="checkbox"] {
+  margin: 0;
+}
+
