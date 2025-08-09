@@ -67,7 +67,8 @@ export class LastFMRepository {
             });
             return {
                 ...response.data,
-                entry_type: 'requested_album'
+                entry_type: 'requested_album',
+                last_fm_url: response.data.last_fm_url || null
             };
         } catch (error) {
             throw new Error('Failed to fetch album information');
@@ -82,6 +83,7 @@ export class LastFMRepository {
             return response.data.map((album) => {
                 let result = new PlaylistEntry(album);
                 result.entry_type = 'requested_album';
+                result.details.last_fm_url = album.last_fm_url || null;
                 return result;
             });
         } catch (error) {

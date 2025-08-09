@@ -205,6 +205,7 @@ export class PlaylistRepository {
         console.log(`Updating links for track: ${existingTrackID} with new track data`);
 
         let updates = {};
+        if (newTrack.details.art_url) updates['art_url'] = newTrack.details.art_url;
         if (newTrack.details.last_fm_url) updates['last_fm_url'] = newTrack.details.last_fm_url;
         if (newTrack.details.spotify_uri) updates['spotify_uri'] = newTrack.details.spotify_uri;
         if (newTrack.details.youtube_url) updates['youtube_url'] = newTrack.details.youtube_url;

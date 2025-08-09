@@ -22,12 +22,13 @@ const MatchAlbumModal = ({ isOpen, onClose, track, onMatchSelect, setSnackbar })
       }
 
       const results = await Promise.all(promises);
-      console.log(results);
 
       const searchResults = results[0] || [];
       const infoResults = [results[1]];
 
       const jointResults = infoResults.concat(searchResults);
+
+      // console.log(jointResults);
 
       if (!jointResults || results.length === 0) {
         setSnackbar({
