@@ -6,17 +6,30 @@ OpenPlaylist is a music playlist management portal, that indexes your local musi
 In addition to local music, your playlists can be augmented with search results from Last.FM, and suggestions from Last.FM and OpenAI.
 
 ## Additional Features
-- "Matching" external tracks with local files
-  - External search results are auto-matched with local files
-- Album art fetching via Last.FM
-- Export to Plex, .m3u, and JSON formats
-  - Import from .m3u, JSON, and Spotify
-- View track metadata
-  - e.g. ID3 tags, date added to playlist, other playlists this track is part of
-- Support for missing local files and un-matching/re-matching them later
-- Support for large playlists, with tens of thousands of entries
-  - Server-side sorting and filtering with lazy loading based on viewable playlist entries
-- Support for MariaDB
+- **Advanced Playlist Management**
+  - "Matching" tracks from external providers (e.g. Spotify, Youtube, Plex) with local files
+  - Drag-and-drop reordering within playlists
+  - Bulk selection and operations (add, remove, edit multiple tracks)
+  - Playlist pinning and custom ordering for quick access
+  - Smart pagination with server-side sorting and filtering for large playlists (tens of thousands of entries)
+
+- **Rich Track Metadata & Linking**
+  - Comprehensive track metadata (ID3 tags, file info, playlist associations)
+  - External service integration (Spotify, YouTube, Last.fm, MusicBrainz, Plex)
+  - Link tracks to multiple external sources
+
+- **Search & Discovery**
+  - Advanced search
+  - Find similar tracks using Last.FM or OpenAI integrations
+  - Album art fetch and display via Last.FM
+
+- **Import & Export**
+  - Export to .m3u and JSON formats
+  - Import from .m3u, JSON, Youtube, and Spotify playlists
+  - Flexible sync to/from external services:
+    - Plex
+    - Spotify
+    - Youtube
 
 ## Screenshots
 ### Basic Interface
@@ -92,7 +105,7 @@ ALLOW_ORIGINS=localhost  # for CORS
 ## SQLite support
 If you prefer to run using SQLite, simply omit the MariaDB section of your .env file, as well as the `openplaylist_db` section of your compose.yml.
 
-Note that this not recommended for large libraries and playlists. There is a migration tool included in `backend/scripts` that can help migrate an existing SQLite DB to a new MariaDB instance.
+Note that this not recommended for large libraries and playlists. There is a (flaky) migration tool included in `backend/scripts` that can help migrate an existing SQLite DB to a new MariaDB instance.
 
 ## Applying Migrations
 If there is a breaking DB change, migrations can be run manually (for now) -
