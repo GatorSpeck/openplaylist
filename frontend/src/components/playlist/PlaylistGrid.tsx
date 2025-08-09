@@ -151,29 +151,46 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     return 'asc';
   };
 
-  const getInitialFilter = (): string => {
-    // First check URL params
-    const filterParam = searchParams.get('filter');
-    if (filterParam) {
-      return filterParam;
-    }
-  };
-
-  // Replace your current parameter initialization with this useEffect
+  // Replace your current parameter initialization useEffect with this one
   useEffect(() => {
     // Process URL params and cookies only once at component initialization
     const initialSortColumn = getSortColumnFromParam(searchParams.get('sort'));
     const initialSortDirection = getSortDirectionFromParam(searchParams.get('dir'));
-    const initialFilter = getInitialFilter();
+    const initialFilter = searchParams.get('filter') || '';
     
     // Set the state values all at once
     setSortColumn(initialSortColumn);
     setSortDirection(initialSortDirection);
     setFilter(initialFilter);
     
+    // Update URL params to match the resolved values WITHOUT triggering navigation
+    // This ensures URL and state are in sync without causing a re-render
+    const newParams = new URLSearchParams(searchParams);
+    let urlNeedsUpdate = false;
+    
+    if (searchParams.get('sort') !== initialSortColumn) {
+      newParams.set('sort', initialSortColumn);
+      urlNeedsUpdate = true;
+    }
+    
+    if (searchParams.get('dir') !== initialSortDirection) {
+      newParams.set('dir', initialSortDirection);
+      urlNeedsUpdate = true;
+    }
+    
+    if (initialFilter && searchParams.get('filter') !== initialFilter) {
+      newParams.set('filter', initialFilter);
+      urlNeedsUpdate = true;
+    }
+    
+    // Only update URL if it needs updating, and do it silently
+    if (urlNeedsUpdate) {
+      setSearchParams(newParams, { replace: true });
+    }
+    
     // Mark parameters as initialized
     setParamsInitialized(true);
-  }, [playlistID]); // Only run when playlistID changes
+  }, [playlistID]); // Only run when playlistID changes, NOT when searchParams change
 
   // Update your state initialization to use cookies and URL params
   const [sortColumn, setSortColumn] = useState('');
@@ -265,10 +282,15 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     }
   }
 
+  // Add this state variable with your other state declarations
+  const [initialFetchComplete, setInitialFetchComplete] = useState(false);
+
+  // Update the fetchPlaylistDetails function
   const fetchPlaylistDetails = useCallback(async (isInitialLoad = false, targetPosition = null) => {
     try {
       if (isInitialLoad) {
         setPlaylistLoading(true);
+        setInitialFetchComplete(false); // Reset flag for new initial loads
         // Get basic playlist info for the name on initial load
         const playlistInfo = await playlistRepository.getPlaylistDetails(playlistID);
         setName(playlistInfo.name);
@@ -358,6 +380,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       // Update page based on the offset we fetched
       const newPage = Math.floor(offset / pageSize);
       setPage(newPage);
+      
+      if (isInitialLoad) {
+        setInitialFetchComplete(true); // Mark initial fetch as complete
+      }
       
       return { 
         fetchedRange: { start: offset, end: offset + mappedEntries.length - 1 }
@@ -611,7 +637,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     const newParams = new URLSearchParams(searchParams);
     newParams.set('sort', column.toString());
     newParams.set('dir', newDirection);
-    setSearchParams(newParams, { replace: true }); // Replace instead of push to avoid extra history entries
+    setSearchParams(newParams, { replace: true });
   };
 
   const searchFor = (newFilter: SearchFilter) => {
@@ -829,8 +855,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   // Replace loadMoreItems function with this smart pagination function
   const loadItemsForVisibleRange = useCallback(async (startIndex, stopIndex) => {
-    // If we're already loading data, skip this request
-    if (isLoadingMore) return;
+    // Don't load additional items until initial fetch is complete
+    if (!initialFetchComplete || isLoadingMore) return;
     
     // Calculate if there are any missing entries in the visible range
     const hasMissingEntriesInView = () => {
@@ -870,7 +896,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       fetchPlaylistDetails(false);
       return;
     }
-  }, [entries, isLoadingMore, totalCount, fetchPlaylistDetails]);
+  }, [entries, isLoadingMore, totalCount, fetchPlaylistDetails, initialFetchComplete]);
 
   const historyEnabled = false;
 
