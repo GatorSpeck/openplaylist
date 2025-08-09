@@ -858,9 +858,14 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     // Don't load additional items until initial fetch is complete
     if (!initialFetchComplete || isLoadingMore) return;
     
-    // Calculate if there are any missing entries in the visible range
+    // Expand the range slightly to account for fast scrolling
+    const bufferSize = 10;
+    const expandedStart = Math.max(0, startIndex - bufferSize);
+    const expandedStop = Math.min(totalCount - 1, stopIndex + bufferSize);
+    
+    // Calculate if there are any missing entries in the expanded visible range
     const hasMissingEntriesInView = () => {
-      for (let i = startIndex; i <= stopIndex; i++) {
+      for (let i = expandedStart; i <= expandedStop; i++) {
         if (i < entries.length && (!entries[i] || !entries[i].details || !entries[i].details.title)) {
           return true;
         }
@@ -870,8 +875,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     
     // Case 1: We have missing entries in the visible range
     if (hasMissingEntriesInView()) {
-      const midpoint = Math.floor((startIndex + stopIndex) / 2);
-      console.log(`Missing entries in visible range, fetching at position ${midpoint}`);
+      const midpoint = Math.floor((expandedStart + expandedStop) / 2);
+      console.log(`Missing entries in visible range ${expandedStart}-${expandedStop}, fetching at position ${midpoint}`);
       await fetchPlaylistDetails(false, midpoint);
       return;
     }
@@ -879,21 +884,21 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     // Case 2: User has jumped far beyond loaded data
     if (startIndex >= entries.length) {
       console.log(`Jumped to position beyond loaded data: ${startIndex}`);
-      fetchPlaylistDetails(false, startIndex);
+      await fetchPlaylistDetails(false, startIndex);
       return;
     }
     
     // Case 3: User is scrolling backwards to unloaded entries
-    if (startIndex < 20 && entries[0] === null) {
+    if (startIndex < 20 && entries.length > 0 && (!entries[0] || !entries[0].details)) {
       console.log(`Scrolling backwards to unloaded entries, fetching at position ${startIndex}`);
-      fetchPlaylistDetails(false, startIndex);
+      await fetchPlaylistDetails(false, startIndex);
       return;
     }
     
     // Case 4: We're approaching the end of loaded data - fetch the next batch
     if (stopIndex >= entries.length - 20 && entries.length < totalCount) {
       console.log(`Approaching end of loaded data, fetching next batch`);
-      fetchPlaylistDetails(false);
+      await fetchPlaylistDetails(false);
       return;
     }
   }, [entries, isLoadingMore, totalCount, fetchPlaylistDetails, initialFetchComplete]);
@@ -1067,15 +1072,16 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                         isDraggingOver: snapshot.isDraggingOver,
                         totalCount: totalCount
                       }}
-                      overscanCount={20} // Increased overscan for jumping around
+                      overscanCount={50} // Increased from 20 to handle fast scrolling better
                       onItemsRendered={({ visibleStartIndex, visibleStopIndex }) => {
                         // Store the visible range
                         setVisibleStartIndex(visibleStartIndex);
                         setVisibleStopIndex(visibleStopIndex);
                         
-                        // ALWAYS check if we need to load data for the current visible range
-                        // Don't just check for the end of the list
-                        loadItemsForVisibleRange(visibleStartIndex, visibleStopIndex);
+                        // Use requestAnimationFrame to ensure this runs after the render cycle
+                        requestAnimationFrame(() => {
+                          loadItemsForVisibleRange(visibleStartIndex, visibleStopIndex);
+                        });
                       }}
                     >
                       {Row}
