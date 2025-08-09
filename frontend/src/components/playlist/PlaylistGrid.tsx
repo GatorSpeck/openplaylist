@@ -1164,6 +1164,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             { label: 'Delete Playlist', action: onDeletePlaylist }
           ]}
           onClose={() => setPlaylistModalVisible(false)}
+          onBackdropClick={() => setPlaylistModalVisible(false)}
         />
       )}
 
