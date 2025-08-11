@@ -1202,39 +1202,99 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     <div className="main-playlist-view">
       <div className="playlist-header">
         <AlbumArtGrid
-          artList={albumArtList ? albumArtList.map(album => album.image_url) : []}
+          artList={
+            albumArtList ? albumArtList.map((album) => album.image_url) : []
+          }
         />
         <h2 className="playlist-name">{name}</h2>
       </div>
       <div className="playlist-controls">
         {historyEnabled && historyControls}
-        <button className="playlist-options" onClick={() => setPlaylistModalVisible(true)}>
+        <button
+          className="playlist-options"
+          onClick={() => setPlaylistModalVisible(true)}
+        >
           ...
         </button>
-        
+
+        <div className="filter-container">
+          <input
+            type="text"
+            placeholder="Filter playlist..."
+            value={filter}
+            onChange={(e) => {
+              setFilter(e.target.value);
+            }}
+            className="filter-input"
+          />
+
+          {filter && (
+            <button
+              className="clear-filter"
+              onClick={() => {
+                setFilter("");
+              }}
+            >
+              Clear
+            </button>
+          )}
+
+          <label className="show-hidden-label">
+            <input
+              type="checkbox"
+              checked={showHidden}
+              onChange={(e) => {
+                setShowHidden(e.target.checked);
+
+                // This will trigger a re-fetch via the useEffect
+              }}
+            />
+            Show Hidden
+          </label>
+
+          <span className="filter-count">
+            {totalCount} tracks{" "}
+            {filter
+              ? filter !== debouncedFilter
+                ? "(filtering...)"
+                : "(filtered)"
+              : ""}{" "}
+            {showHidden ? "(including hidden)" : ""}
+          </span>
+        </div>
+
+        <BatchActions
+          selectedCount={selectedEntries.length}
+          onRemove={removeSelectedTracks}
+          onClear={clearTrackSelection}
+          onHide={hideSelectedTracks} // Add this line
+        />
+
         {/* Add random order button */}
-        <button 
-          className={`random-button ${isRandomOrder ? 'active' : ''}`}
+        <button
+          className={`random-button ${isRandomOrder ? "active" : ""}`}
           onClick={() => {
             if (isRandomOrder) {
               // Return to original order
-              setSortColumn('order');
-              setSortDirection('asc');
+              setSortColumn("order");
+              setSortDirection("asc");
               setIsRandomOrder(false);
               setRandomSeed(null);
-              
+
               const newParams = new URLSearchParams(searchParams);
-              newParams.set('sort', 'order');
-              newParams.set('dir', 'asc');
-              newParams.delete('seed');
+              newParams.set("sort", "order");
+              newParams.set("dir", "asc");
+              newParams.delete("seed");
               setSearchParams(newParams, { replace: true });
             } else {
               shufflePlaylist();
             }
           }}
-          title={isRandomOrder ? "Return to original order" : "Shuffle playlist"}
+          title={
+            isRandomOrder ? "Return to original order" : "Shuffle playlist"
+          }
         >
-          {isRandomOrder ? "📋" : "🔀"} {isRandomOrder ? "Original" : "Shuffle"}
+          {isRandomOrder ? "🔁" : "🔀"} {isRandomOrder ? "Unshuffle" : "Shuffle"}
         </button>
       </div>
 
@@ -1242,21 +1302,27 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="playlist-grid-header-row">
             <div className="grid-cell">
-              <input 
-                type="checkbox" 
-                checked={allPlaylistEntriesSelected} 
-                onChange={toggleAllTracks} 
+              <input
+                type="checkbox"
+                checked={allPlaylistEntriesSelected}
+                onChange={toggleAllTracks}
               />
-              <span className="clickable" onClick={() => handleSort('order')}>
-                # {getSortIndicator('order')}
+              <span className="clickable" onClick={() => handleSort("order")}>
+                # {getSortIndicator("order")}
               </span>
             </div>
-            
-            <div className="grid-cell clickable" onClick={() => handleSort('artist')}>
-              Artist {getSortIndicator('artist')}
+
+            <div
+              className="grid-cell clickable"
+              onClick={() => handleSort("artist")}
+            >
+              Artist {getSortIndicator("artist")}
             </div>
-            <div className="grid-cell clickable" onClick={() => handleSort('title')}>
-              Song {getSortIndicator('title')}
+            <div
+              className="grid-cell clickable"
+              onClick={() => handleSort("title")}
+            >
+              Song {getSortIndicator("title")}
             </div>
           </div>
 
@@ -1277,10 +1343,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             )}
           >
             {(provided, snapshot) => (
-              <div 
-                className="playlist-grid-content" 
-                ref={provided.innerRef}
-              >
+              <div className="playlist-grid-content" ref={provided.innerRef}>
                 <AutoSizer>
                   {({ height, width }) => (
                     <List
@@ -1296,17 +1359,23 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                         sortColumn,
                         handleContextMenu: handleContextMenu,
                         isDraggingOver: snapshot.isDraggingOver,
-                        totalCount: totalCount
+                        totalCount: totalCount,
                       }}
                       overscanCount={50} // Increased from 20 to handle fast scrolling better
-                      onItemsRendered={({ visibleStartIndex, visibleStopIndex }) => {
+                      onItemsRendered={({
+                        visibleStartIndex,
+                        visibleStopIndex,
+                      }) => {
                         // Store the visible range
                         setVisibleStartIndex(visibleStartIndex);
                         setVisibleStopIndex(visibleStopIndex);
-                        
+
                         // Use requestAnimationFrame to ensure this runs after the render cycle
                         requestAnimationFrame(() => {
-                          loadItemsForVisibleRange(visibleStartIndex, visibleStopIndex);
+                          loadItemsForVisibleRange(
+                            visibleStartIndex,
+                            visibleStopIndex
+                          );
                         });
                       }}
                     >
@@ -1320,11 +1389,11 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         </DragDropContext>
       </div>
 
-      <BatchActions 
+      <BatchActions
         selectedCount={selectedEntries.length}
         onRemove={removeSelectedTracks}
         onClear={clearTrackSelection}
-        onHide={hideSelectedTracks}  // Add this line
+        onHide={hideSelectedTracks} // Add this line
       />
 
       <SearchResultsGrid
@@ -1345,7 +1414,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         />
       )}
 
-      {!!(similarTracks.length) && (
+      {!!similarTracks.length && (
         <SimilarTracksPopup
           x={position.x}
           y={position.y}
@@ -1363,7 +1432,9 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           onEntryUpdated={(updatedEntry) => {
             // Update the entry in your playlist state
             const newEntries = [...entries];
-            const entryIndex = entries.findIndex(e => e.id === updatedEntry.id);
+            const entryIndex = entries.findIndex(
+              (e) => e.id === updatedEntry.id
+            );
             if (entryIndex !== -1) {
               newEntries[entryIndex] = updatedEntry;
               setEntries(newEntries);
@@ -1384,11 +1455,22 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         <BaseModal
           title="Playlist Options"
           options={[
-            { label: 'Export to m3u', action: () => exportPlaylist(playlistID) },
-            { label: 'Export to JSON', action: () => exportPlaylistToJson(playlistID) },
-            { label: 'Sync Options', action: () => {setSyncConfigOpen(true)} },
-            { label: 'Sync Now', action: onSyncToPlex },
-            { label: 'Delete Playlist', action: onDeletePlaylist }
+            {
+              label: "Export to m3u",
+              action: () => exportPlaylist(playlistID),
+            },
+            {
+              label: "Export to JSON",
+              action: () => exportPlaylistToJson(playlistID),
+            },
+            {
+              label: "Sync Options",
+              action: () => {
+                setSyncConfigOpen(true);
+              },
+            },
+            { label: "Sync Now", action: onSyncToPlex },
+            { label: "Delete Playlist", action: onDeletePlaylist },
           ]}
           onClose={() => setPlaylistModalVisible(false)}
           onBackdropClick={() => setPlaylistModalVisible(false)}
@@ -1415,7 +1497,9 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           isOpen={matchModalOpen}
           onClose={() => setMatchModalOpen(false)}
           track={trackToMatch}
-          initialMatches={matchingTracks.map(track => new PlaylistEntry(track))}
+          initialMatches={matchingTracks.map(
+            (track) => new PlaylistEntry(track)
+          )}
           onMatchSelect={linkTrackWithMatch}
           setSnackbar={setSnackbar}
         />
