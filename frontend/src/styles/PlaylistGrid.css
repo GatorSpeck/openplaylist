@@ -445,12 +445,12 @@
 }
 
 .scrolling-text .scrolling.should-scroll {
-  animation: move 8s ease-in-out infinite;
   position: relative;
   display: inline-block;
   overflow: hidden;
   white-space: nowrap;
   box-sizing: border-box;
+  /* Remove the fixed animation - we'll set it dynamically */
 }
 
 @keyframes move {
