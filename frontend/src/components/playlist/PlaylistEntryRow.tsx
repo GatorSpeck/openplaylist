@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useState } from 'react';
+import React, { forwardRef, useEffect, useState, useRef } from 'react';
 import EntryTypeBadge from '../EntryTypeBadge';
 import '../../styles/PlaylistGrid.css';
 import lastFMRepository from '../../repositories/LastFMRepository';
@@ -32,6 +32,8 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
   const [isMobile, setIsMobile] = useState(false);
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
   const [isLongPressing, setIsLongPressing] = useState(false);
+  const [shouldScroll, setShouldScroll] = useState(false);
+  const scrollingRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchAlbumArt = async () => {
@@ -169,6 +171,28 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
     <span>{entry.getAlbum()}</span>
   );
 
+  // Check if content overflows and should scroll
+  useEffect(() => {
+    const checkOverflow = () => {
+      if (scrollingRef.current) {
+        const container = scrollingRef.current.parentElement;
+        const content = scrollingRef.current;
+        
+        if (container && content) {
+          const containerWidth = container.clientWidth;
+          const contentWidth = content.scrollWidth;
+          setShouldScroll(contentWidth > containerWidth);
+        }
+      }
+    };
+
+    checkOverflow();
+    
+    // Recheck on window resize
+    window.addEventListener('resize', checkOverflow);
+    return () => window.removeEventListener('resize', checkOverflow);
+  }, [contentsHidden, isMobile]); // Re-run when content or mobile state changes
+
   return (
     <div
       ref={ref}
@@ -200,11 +224,16 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
           <div className="artist truncate-text">
             {artist}
           </div>
-          <div className="album truncate-text" overflow="auto"><i>{album}</i></div>
+          <div className="album truncate-text"><i>{album}</i></div>
         </div>
       </div>
-      <div className="grid-cell truncate-text" overflow="auto">
-        <span>{contentsHidden}</span>
+      <div className="grid-cell scrolling-text">
+        <div 
+          ref={scrollingRef}
+          className={`scrolling ${shouldScroll ? 'should-scroll' : ''}`}
+        >
+          <span>{contentsHidden}</span>
+        </div>
         {isMobile && (<button 
           className="mobile-menu-button"
           onClick={handleMenuClick}
