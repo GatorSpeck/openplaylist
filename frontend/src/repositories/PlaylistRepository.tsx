@@ -29,7 +29,8 @@ export class PlaylistRepository {
         limit?: number;
         offset?: number;
         countOnly?: boolean;
-        includeHidden?: boolean;  // Add this parameter
+        includeHidden?: boolean;
+        randomSeed?: number;  // Add this parameter
     } = {}) {
         const queryParams = new URLSearchParams();
         
@@ -39,7 +40,8 @@ export class PlaylistRepository {
         if (params.limit) queryParams.append('limit', params.limit.toString());
         if (params.offset) queryParams.append('offset', params.offset.toString());
         if (params.countOnly) queryParams.append('count_only', params.countOnly.toString());
-        if (params.includeHidden) queryParams.append('include_hidden', params.includeHidden.toString());  // Add this line
+        if (params.includeHidden) queryParams.append('include_hidden', params.includeHidden.toString());
+        if (params.randomSeed !== undefined) queryParams.append('random_seed', params.randomSeed.toString());  // Add this line
 
         const response = await fetch(`/api/playlists/${playlistId}/filter?${queryParams}`);
         return response.json();

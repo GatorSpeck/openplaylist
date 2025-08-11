@@ -804,8 +804,9 @@ def filter_playlist(
     sort_direction: Optional[str] = None,
     limit: Optional[int] = None,
     offset: Optional[int] = None,
-    include_hidden: Optional[bool] = False,  # Add this parameter
+    include_hidden: Optional[bool] = False,
     count_only: Optional[bool] = False,
+    random_seed: Optional[int] = None,
     repo: PlaylistRepository = Depends(get_playlist_repository)
 ):
     try:
@@ -815,7 +816,8 @@ def filter_playlist(
             sortDirection=PlaylistSortDirection[sort_direction.upper()] if sort_direction else PlaylistSortDirection.ASC,
             limit=limit,
             offset=offset,
-            include_hidden=include_hidden  # Add this line
+            include_hidden=include_hidden,
+            randomSeed=random_seed
         )
         
         result = repo.filter_playlist(playlist_id, playlist_filter, count_only=count_only)

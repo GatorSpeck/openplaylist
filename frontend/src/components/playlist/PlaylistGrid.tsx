@@ -121,7 +121,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   // Get sort parameters from URL or use defaults
   const getSortColumnFromParam = (param: string | null): string => {
-    const validColumns = ['order', 'title', 'artist', 'album'];
+    const validColumns = ['order', 'title', 'artist', 'album', 'random'];
     
     // First check URL params
     if (param && validColumns.includes(param)) {
@@ -161,6 +161,23 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     const initialSortDirection = getSortDirectionFromParam(searchParams.get('dir'));
     const initialFilter = searchParams.get('filter') || '';
     
+    // Handle random seed
+    const urlSeed = searchParams.get('seed');
+    const cookieSeed = getCookie(`playlist_${playlistID}_randomSeed`);
+    let initialSeed = null;
+    
+    if (initialSortColumn === 'random') {
+      if (urlSeed && !isNaN(parseInt(urlSeed))) {
+        initialSeed = parseInt(urlSeed);
+      } else if (cookieSeed && !isNaN(parseInt(cookieSeed))) {
+        initialSeed = parseInt(cookieSeed);
+      } else {
+        initialSeed = Math.floor(Math.random() * 1000000);
+      }
+      setRandomSeed(initialSeed);
+      setIsRandomOrder(true);
+    }
+    
     // Set the state values all at once
     setSortColumn(initialSortColumn);
     setSortDirection(initialSortDirection);
@@ -183,6 +200,11 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     
     if (initialFilter && searchParams.get('filter') !== initialFilter) {
       newParams.set('filter', initialFilter);
+      urlNeedsUpdate = true;
+    }
+    
+    if (initialSortColumn === 'random' && initialSeed !== null && searchParams.get('seed') !== initialSeed.toString()) {
+      newParams.set('seed', initialSeed.toString());
       urlNeedsUpdate = true;
     }
     
@@ -259,6 +281,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const [showHidden, setShowHidden] = useState(false);
   const [hideByDefault, setHideByDefault] = useState(false); // For playlist preference
 
+  // Add this near your other state declarations around line 255
+  const [randomSeed, setRandomSeed] = useState<number | null>(null);
+  const [isRandomOrder, setIsRandomOrder] = useState(false);
+
   // Apply debouncing to the filter
   useEffect(() => {
     // Set a timer to update the debounced filter after typing stops
@@ -288,6 +314,23 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       console.error('Error fetching album art grid:', error);
     }
   }
+
+  // Add a function to generate a new random order
+  const shufflePlaylist = () => {
+    const newSeed = Math.floor(Math.random() * 1000000);
+    setRandomSeed(newSeed);
+    setSortColumn('random');
+    setIsRandomOrder(true);
+    
+    // Update cookies and URL
+    setCookie(`playlist_${playlistID}_sortColumn`, 'random');
+    setCookie(`playlist_${playlistID}_randomSeed`, newSeed.toString());
+    
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('sort', 'random');
+    newParams.set('seed', newSeed.toString());
+    setSearchParams(newParams, { replace: true });
+  };
 
   // Add this state variable with your other state declarations
   const [initialFetchComplete, setInitialFetchComplete] = useState(false);
@@ -347,7 +390,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         sortDirection: sortDirection,
         limit: pageSize,
         offset: offset,
-        includeHidden: showHidden  // This line was already correct
+        includeHidden: showHidden,
+        randomSeed: sortColumn === 'random' ? randomSeed : undefined
       };
       
       const response = await playlistRepository.getPlaylistEntries(playlistID, filterParams);
@@ -631,24 +675,48 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   const handleSort = (column: String) => {
     let newDirection = sortDirection;
+    let newSeed = randomSeed;
     
-    if (sortColumn === column) {
-      newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-      setSortDirection(newDirection);
+    if (column === 'random') {
+      // Generate a new random seed when switching to random order
+      if (sortColumn !== 'random') {
+        newSeed = Math.floor(Math.random() * 1000000);
+        setRandomSeed(newSeed);
+        setIsRandomOrder(true);
+      }
+      newDirection = 'asc'; // Random doesn't need direction, but keep consistent
     } else {
+      setIsRandomOrder(false);
+      if (sortColumn === column) {
+        newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+        setSortDirection(newDirection);
+      } else {
+        setSortColumn(column.toString());
+        newDirection = 'asc';
+        setSortDirection('asc');
+      }
+    }
+    
+    if (column !== sortColumn) {
       setSortColumn(column.toString());
-      newDirection = 'asc';
-      setSortDirection('asc');
     }
     
     // Save to cookies
     setCookie(`playlist_${playlistID}_sortColumn`, column.toString());
     setCookie(`playlist_${playlistID}_sortDirection`, newDirection);
+    if (newSeed !== null) {
+      setCookie(`playlist_${playlistID}_randomSeed`, newSeed.toString());
+    }
     
     // Update URL query parameters while preserving other params
     const newParams = new URLSearchParams(searchParams);
     newParams.set('sort', column.toString());
     newParams.set('dir', newDirection);
+    if (column === 'random' && newSeed !== null) {
+      newParams.set('seed', newSeed.toString());
+    } else {
+      newParams.delete('seed');
+    }
     setSearchParams(newParams, { replace: true });
   };
 
@@ -1143,54 +1211,31 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         <button className="playlist-options" onClick={() => setPlaylistModalVisible(true)}>
           ...
         </button>
-        <div className="filter-container">
-          <input
-            type="text"
-            placeholder="Filter playlist..."
-            value={filter}
-            onChange={(e) => {
-              setFilter(e.target.value);
-            }}
-            className="filter-input"
-          />
-
-          {filter && (
-            <button 
-              className="clear-filter"
-              onClick={() => {
-                setFilter('');
-              }}
-            >
-              Clear
-            </button>
-          )}
-          
-          {/* Add show hidden checkbox */}
-          <label className="show-hidden-label">
-            <input
-              type="checkbox"
-              checked={showHidden}
-              onChange={(e) => {
-                setShowHidden(e.target.checked);
-                // This will trigger a re-fetch via the useEffect
-              }}
-            />
-            Show Hidden
-          </label>
-
-          <span className="filter-count">
-            {totalCount} tracks {filter ? 
-              (filter !== debouncedFilter ? '(filtering...)' : '(filtered)') 
-              : ''} {showHidden ? '(including hidden)' : ''}
-          </span>
-        </div>
-
-        <BatchActions 
-          selectedCount={selectedEntries.length}
-          onRemove={removeSelectedTracks}
-          onClear={clearTrackSelection}
-          onHide={hideSelectedTracks}  // Add this line
-        />
+        
+        {/* Add random order button */}
+        <button 
+          className={`random-button ${isRandomOrder ? 'active' : ''}`}
+          onClick={() => {
+            if (isRandomOrder) {
+              // Return to original order
+              setSortColumn('order');
+              setSortDirection('asc');
+              setIsRandomOrder(false);
+              setRandomSeed(null);
+              
+              const newParams = new URLSearchParams(searchParams);
+              newParams.set('sort', 'order');
+              newParams.set('dir', 'asc');
+              newParams.delete('seed');
+              setSearchParams(newParams, { replace: true });
+            } else {
+              shufflePlaylist();
+            }
+          }}
+          title={isRandomOrder ? "Return to original order" : "Shuffle playlist"}
+        >
+          {isRandomOrder ? "📋" : "🔀"} {isRandomOrder ? "Original" : "Shuffle"}
+        </button>
       </div>
 
       <div className="playlist-container">

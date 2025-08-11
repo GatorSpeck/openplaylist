@@ -692,7 +692,7 @@ def import_spotify_playlist(
     if not spotify_repo:
         raise HTTPException(status_code=500, detail="Spotify API key not configured")
     
-    snapshot = spotify_repo.get_playlist_snapshot(params.playlist_id)
+    snapshot = spotify_repo.get_playlist_snapshot(params.playlist_name, params.playlist_id)
     if not snapshot:
         raise HTTPException(status_code=404, detail="Playlist not found")
 

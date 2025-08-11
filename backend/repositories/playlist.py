@@ -78,6 +78,7 @@ class PlaylistSortCriteria(IntEnum):
     TITLE = 1
     ARTIST = 2
     ALBUM = 3
+    RANDOM = 4  # Add this line
 
     @classmethod
     def from_str(cls, s):
@@ -92,6 +93,8 @@ class PlaylistSortCriteria(IntEnum):
             return cls.ARTIST
         elif s == "album":
             return cls.ALBUM
+        elif s == "random":
+            return cls.RANDOM
         else:
             return cls.ORDER
 
@@ -119,6 +122,7 @@ class PlaylistFilter(BaseModel):
     limit: Optional[int] = None
     offset: Optional[int] = None
     include_hidden: Optional[bool] = False
+    randomSeed: Optional[int] = None  # Add this line
 
 class PlaylistRepository(BaseRepository[PlaylistDB]):
     def __init__(self, session):
@@ -1046,17 +1050,23 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 (poly_entity.entry_type == "requested_album", requested_album_details.title),
                 else_=None
             )
+        elif filter.sortCriteria == PlaylistSortCriteria.RANDOM:
+            # Use a deterministic random function with the seed
+            from sqlalchemy import func
+            if filter.randomSeed is not None:
+                # Create a deterministic random sort using the ID and seed
+                sort_column = func.abs(func.random() * (poly_entity.id + filter.randomSeed))
+            else:
+                sort_column = func.random()
         else:
             # default to order
             sort_column = poly_entity.order
         
-        # Handle sort direction
-        if filter.sortDirection == PlaylistSortDirection.ASC:
+        # Handle sort direction (random always uses ASC since it's already randomized)
+        if filter.sortCriteria == PlaylistSortCriteria.RANDOM or filter.sortDirection == PlaylistSortDirection.ASC:
             query = query.order_by(sort_column.asc())
-        elif filter.sortDirection == PlaylistSortDirection.DESC:
-            query = query.order_by(sort_column.desc())
         else:
-            query = query.order_by(sort_column.asc())
+            query = query.order_by(sort_column.desc())
         
         if count_only:
             count = query.count()

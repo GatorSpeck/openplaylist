@@ -457,3 +457,51 @@
   25% { transform: translate(0, 0); left: 0%; }
   75%, 100% { transform: translate(-100%, 0); left: 100%; }
 }
+
+/* Add these styles for the random controls */
+.random-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 0.8em;
+}
+
+.shuffle-button {
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+.shuffle-button:hover {
+  background-color: #f0f0f0;
+}
+
+.random-seed {
+  color: #666;
+  font-size: 0.8em;
+}
+
+.random-button {
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.random-button:hover {
+  background-color: #f0f0f0;
+}
+
+.random-button.active {
+  background-color: #e3f2fd;
+  border-color: #2196f3;
+  color: #1976d2;
+}
