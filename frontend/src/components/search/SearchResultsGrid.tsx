@@ -614,19 +614,19 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   // Create a new function to directly add manual entries
   const addManualEntry = (title: string, artist: string, album: string) => {
     const artistToUse = artist ? artist : 'Unknown Artist';
-    const entryType = (album && !title) ? 'requested_album' : 'requested';
+    const entryType = (album && !title) ? 'requested_album' : 'music_file';
     
     const newEntry = new PlaylistEntry({
       entry_type: entryType,
-      title: entryType === 'requested' ? title : album,
+      title: entryType === 'music_file' ? title : album,
       artist: artistToUse,
-      album: entryType === 'requested' ? album : null,
+      album: entryType === 'music_file' ? album : null,
       tracks: entryType === 'requested_album' ? [] : null
     });
     
     onAddSongs([newEntry]);
 
-    const titleToShow = entryType === 'requested' ? title : album;
+    const titleToShow = entryType === 'music_file' ? title : album;
     
     setSnackbar({
       open: true,
