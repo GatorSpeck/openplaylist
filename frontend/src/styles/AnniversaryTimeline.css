@@ -1,0 +1,249 @@
+.anniversary-timeline {
+  background: var(--background-color, #fff);
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--accent-color, #007bff);
+}
+
+.timeline-header h3 {
+  margin: 0;
+  color: var(--text-color, #333);
+  font-size: 1.2em;
+}
+
+.timeline-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.refresh-button {
+  background: var(--accent-color, #007bff);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.refresh-button:hover {
+  background: var(--accent-color-hover, #0056b3);
+}
+
+.timeline-content {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.timeline-day {
+  margin-bottom: 20px;
+  border-left: 3px solid var(--border-color, #ddd);
+  padding-left: 16px;
+  position: relative;
+}
+
+.timeline-day.today {
+  border-left-color: var(--accent-color, #007bff);
+}
+
+.timeline-day.today .day-header {
+  background: var(--accent-color-light, #e3f2fd);
+  border-radius: 4px;
+  padding: 8px;
+  margin: -4px -8px 8px -12px;
+}
+
+.timeline-day.past {
+  opacity: 0.7;
+}
+
+.timeline-day::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 8px;
+  width: 8px;
+  height: 8px;
+  background: var(--border-color, #ddd);
+  border-radius: 50%;
+}
+
+.timeline-day.today::before {
+  background: var(--accent-color, #007bff);
+  box-shadow: 0 0 0 3px var(--accent-color-light, #e3f2fd);
+}
+
+.day-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.day-date {
+  display: flex;
+  flex-direction: column;
+}
+
+.day-short {
+  font-weight: bold;
+  font-size: 1.1em;
+  color: var(--text-color, #333);
+}
+
+.day-full {
+  font-size: 0.9em;
+  color: var(--text-color-secondary, #666);
+}
+
+.today-badge {
+  background: var(--accent-color, #007bff);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.8em;
+  font-weight: bold;
+}
+
+.day-anniversaries {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.anniversary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: var(--item-background, #f8f9fa);
+  border: 1px solid var(--item-border, #e9ecef);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.anniversary-item:hover {
+  background: var(--item-background-hover, #e9ecef);
+  border-color: var(--accent-color, #007bff);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.album-info {
+  flex: 1;
+}
+
+.album-title {
+  font-weight: bold;
+  color: var(--text-color, #333);
+  margin-bottom: 4px;
+}
+
+.album-artist {
+  color: var(--text-color-secondary, #666);
+  font-size: 0.9em;
+  margin-bottom: 6px;
+}
+
+.anniversary-info {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.years-badge {
+  background: var(--success-color, #28a745);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 0.8em;
+  font-weight: bold;
+}
+
+.original-date {
+  font-size: 0.8em;
+  color: var(--text-color-tertiary, #999);
+}
+
+.album-art {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.album-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.loading-message, .error-message, .empty-message {
+  text-align: center;
+  padding: 32px;
+  color: var(--text-color-secondary, #666);
+}
+
+.error-message {
+  color: var(--error-color, #dc3545);
+}
+
+.retry-button {
+  background: var(--error-color, #dc3545);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  margin-top: 12px;
+}
+
+.retry-button:hover {
+  background: var(--error-color-hover, #c82333);
+}
+
+@media (max-width: 768px) {
+  .anniversary-timeline {
+    padding: 12px;
+  }
+  
+  .timeline-day {
+    padding-left: 12px;
+  }
+  
+  .anniversary-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .album-art {
+    align-self: center;
+    margin-left: 0;
+  }
+  
+  .anniversary-info {
+    justify-content: center;
+    width: 100%;
+  }
+  
+  .day-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}

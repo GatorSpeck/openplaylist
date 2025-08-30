@@ -81,6 +81,21 @@ export class LibraryRepository {
             console.error('Error fetching album list:', error);
         }
     }
+
+    async getUpcomingAnniversaries(daysAhead: number = 30, daysBehind: number = 7) {
+        try {
+            const response = await axios.get('/api/music/anniversaries', {
+                params: {
+                    days_ahead: daysAhead,
+                    days_behind: daysBehind
+                }
+            });
+            return response.data.anniversaries;
+        } catch (error) {
+            console.error('Error fetching anniversaries:', error);
+            throw error;
+        }
+    }
 };
 
 const libraryRepository = new LibraryRepository();
