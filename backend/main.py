@@ -818,13 +818,26 @@ def health_check():
 
 @router.get("/music/anniversaries")
 def get_upcoming_anniversaries(
-    days_ahead: int = Query(30, description="Days ahead to look for anniversaries"),
-    days_behind: int = Query(7, description="Days behind to include recently passed anniversaries"),
+    start_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
+    end_date: str = Query(..., description="End date in YYYY-MM-DD format"),
     repo: MusicFileRepository = Depends(get_music_file_repository)
 ):
-    """Get upcoming album anniversaries"""
+    """Get album anniversaries within the specified date range"""
     try:
-        anniversaries = repo.get_upcoming_anniversaries(days_ahead, days_behind)
+        from datetime import datetime
+        
+        # Parse the date strings
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        # Validate date range
+        if start_dt > end_dt:
+            raise HTTPException(status_code=400, detail="Start date must be before end date")
+        
+        anniversaries = repo.get_anniversaries_in_date_range(start_dt, end_dt)
         
         # Convert to response format
         anniversary_data = []
@@ -833,13 +846,15 @@ def get_upcoming_anniversaries(
                 "id": album.id,
                 "album": album.album,
                 "artist": album.album_artist or album.artist,
-                "original_release_date": album.exact_release_date,
-                "anniversary_date": album.anniversary_date,
+                "original_release_date": album.exact_release_date.strftime("%Y-%m-%d") if album.exact_release_date else None,
+                "anniversary_date": album.anniversary_date.strftime("%Y-%m-%d"),
                 "years_since_release": album.years_since_release,
                 "art_url": None  # Could be enhanced to fetch from Last.fm
             })
         
         return {"anniversaries": anniversary_data}
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error fetching anniversaries: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch anniversaries")

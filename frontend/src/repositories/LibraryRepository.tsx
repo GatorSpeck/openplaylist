@@ -82,15 +82,34 @@ export class LibraryRepository {
         }
     }
 
-    async getUpcomingAnniversaries(daysAhead: number = 30, daysBehind: number = 7) {
+    async getAnniversariesInDateRange(startDate: string, endDate: string) {
         try {
-            const response = await axios.get('/api/music/anniversaries', {
+            const response = await axiosCached.get('/api/music/anniversaries', {
                 params: {
-                    days_ahead: daysAhead,
-                    days_behind: daysBehind
+                    start_date: startDate,
+                    end_date: endDate
                 }
             });
             return response.data.anniversaries;
+        } catch (error) {
+            console.error('Error fetching anniversaries:', error);
+            throw error;
+        }
+    }
+
+    // Keep the old method for backward compatibility
+    async getUpcomingAnniversaries(daysAhead: number = 30, daysBehind: number = 7) {
+        try {
+            const today = new Date();
+            const startDate = new Date(today);
+            startDate.setDate(today.getDate() - daysBehind);
+            const endDate = new Date(today);
+            endDate.setDate(today.getDate() + daysAhead);
+            
+            return this.getAnniversariesInDateRange(
+                startDate.toISOString().split('T')[0],
+                endDate.toISOString().split('T')[0]
+            );
         } catch (error) {
             console.error('Error fetching anniversaries:', error);
             throw error;

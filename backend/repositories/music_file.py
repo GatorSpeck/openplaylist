@@ -386,23 +386,18 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         
         return matches[0] if matches else None
     
-    def get_upcoming_anniversaries(self, days_ahead: int = 30, days_behind: int = 7) -> List[MusicFile]:
+    def get_anniversaries_in_date_range(self, start_date, end_date) -> List[MusicFile]:
         """
-        Get albums with upcoming anniversaries within the specified date range.
+        Get albums with anniversaries within the specified absolute date range.
         
-        :param days_ahead: Number of days ahead to look for anniversaries
-        :param days_behind: Number of days behind to include (for recently passed anniversaries)
-        :return: List of music files representing albums with upcoming anniversaries
+        :param start_date: Start date (date object)
+        :param end_date: End date (date object)
+        :return: List of music files representing albums with anniversaries in the date range
         """
         from datetime import datetime, timedelta
         import calendar
         
-        today = datetime.now().date()
-        start_date = today - timedelta(days=days_behind)
-        end_date = today + timedelta(days=days_ahead)
-        
-        # Get the current year for anniversary calculation
-        current_year = today.year
+        current_year = datetime.now().year
         
         # Query for distinct albums with exact release dates using subquery approach
         subquery = self.session.query(
@@ -431,34 +426,62 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
                 # Parse the exact release date
                 release_date = album.exact_release_date.date()
                 
-                # Calculate this year's anniversary date
-                try:
-                    anniversary_this_year = release_date.replace(year=current_year)
-                    if anniversary_this_year < today:
-                        anniversary_this_year = anniversary_this_year.replace(year=current_year + 1)
-                except ValueError:
-                    # Handle leap year edge case (Feb 29)
-                    if release_date.month == 2 and release_date.day == 29:
-                        anniversary_this_year = release_date.replace(year=current_year, day=28)
-                    else:
-                        continue
+                # We need to check multiple years because the date range might span years
+                years_to_check = []
                 
-                # Check if anniversary falls within our date range
-                if (start_date <= anniversary_this_year) and (anniversary_this_year <= end_date):
-                    # Calculate years since release
-                    years_since = current_year - release_date.year
+                # Add current year and surrounding years based on the date range
+                start_year = start_date.year
+                end_year = end_date.year
+                
+                # Check all years that might have anniversaries in our date range
+                for year in range(start_year, end_year + 1):
+                    if year >= release_date.year:  # Can't have anniversary before release
+                        years_to_check.append(year)
+                
+                for year in years_to_check:
+                    try:
+                        # Calculate anniversary date for this year
+                        anniversary_date = release_date.replace(year=year)
+                    except ValueError:
+                        # Handle leap year edge case (Feb 29)
+                        if release_date.month == 2 and release_date.day == 29:
+                            anniversary_date = release_date.replace(year=year, day=28)
+                        else:
+                            continue
                     
-                    # Add anniversary metadata to the album object
-                    album.anniversary_date = anniversary_this_year
-                    album.years_since_release = years_since
-                    album.original_release_date = release_date
-                    
-                    anniversary_albums.append(album)
+                    # Check if anniversary falls within our date range
+                    if start_date <= anniversary_date <= end_date:
+                        # Calculate years since release
+                        years_since = year - release_date.year
+                        
+                        # Create a copy of the album object for this anniversary
+                        album_copy = album
+                        album_copy.anniversary_date = anniversary_date
+                        album_copy.years_since_release = years_since
+                        album_copy.original_release_date = release_date
+                        
+                        anniversary_albums.append(album_copy)
+                        break  # Only add once per album (first anniversary found in range)
+                        
             except (ValueError, TypeError):
                 # Skip albums with invalid date formats
                 continue
 
-        # Sort by anniversary date and years since release
-        anniversary_albums.sort(key=lambda x: (x.anniversary_date, -1 * (x.years_since_release)))
+        # Sort by anniversary date
+        anniversary_albums.sort(key=lambda x: x.anniversary_date)
 
         return anniversary_albums
+
+    # Keep the old method for backward compatibility, but mark it as deprecated
+    def get_upcoming_anniversaries(self, days_ahead: int = 30, days_behind: int = 7) -> List[MusicFile]:
+        """
+        DEPRECATED: Use get_anniversaries_in_date_range instead.
+        Get albums with upcoming anniversaries within the specified date range.
+        """
+        from datetime import datetime, timedelta
+        
+        today = datetime.now().date()
+        start_date = today - timedelta(days=days_behind)
+        end_date = today + timedelta(days=days_ahead)
+        
+        return self.get_anniversaries_in_date_range(start_date, end_date)
