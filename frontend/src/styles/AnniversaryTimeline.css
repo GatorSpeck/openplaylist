@@ -249,13 +249,29 @@
 }
 
 .years-badge {
-  background: var(--success-color, #28a745);
   color: white;
   padding: 2px 6px;
   border-radius: 10px;
   font-size: 0.7em;
   font-weight: bold;
   align-self: flex-start;
+}
+
+/* Anniversary badge color classes */
+.years-badge.anniversary-new {
+  background-color: #22c55e; /* Green for new releases (0 years) */
+}
+
+.years-badge.anniversary-decade {
+  background-color: #eab308; /* Gold for decade milestones (10, 20, 30, etc.) */
+}
+
+.years-badge.anniversary-half-decade {
+  background-color: #9ca3af; /* Silver for half-decade milestones (5, 15, 25, etc.) */
+}
+
+.years-badge.anniversary-regular {
+  background-color: #d97706; /* Bronze/orange for regular anniversaries */
 }
 
 .original-date {

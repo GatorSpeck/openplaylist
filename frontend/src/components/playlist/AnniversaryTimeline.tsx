@@ -294,6 +294,49 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
 
   const groupedAnniversaries = groupAnniversariesByDate();
 
+  const anniversaryCards = Object.entries(groupedAnniversaries).map(([date, dayAnniversaries]) => {
+    const anniversaryYears = dayAnniversaries.map(anniversary => anniversary.years_since_release);
+    return (
+    <div key={date} className={`timeline-day ${isToday(date) ? 'today' : ''} ${isPast(date) ? 'past' : ''}`}>
+      <div className="day-header">
+        <div className="day-date">
+          <span className="day-short">{formatDate(date)}</span>
+          <span className="day-full">{formatFullDate(date)}</span>
+        </div>
+        {isToday(date) && <span className="today-badge">Today</span>}
+      </div>
+
+      <div className="day-anniversaries">
+        {dayAnniversaries.map(anniversary => (
+          <div
+            key={`${anniversary.id}-${date}`}
+            className="anniversary-item"
+            onClick={() => handleAlbumClick(anniversary)}
+          >
+            <div className="album-info">
+              <div className="album-title">{anniversary.album}</div>
+              <div className="album-artist">{anniversary.artist}</div>
+              <div className="anniversary-info">
+                <span className={`years-badge ${getAnniversaryBadgeColor(anniversary.years_since_release)}`}>
+                  {anniversary.years_since_release} year{anniversary.years_since_release !== 1 ? 's' : ''}
+                </span>
+                <span className={`original-date`}>
+                  Released {formatFullDate(anniversary.original_release_date)}
+                </span>
+              </div>
+            </div>
+
+            {anniversary.art_url && (
+              <div className="album-art">
+                <img src={anniversary.art_url} alt={`${anniversary.album} cover`} />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )});
+
   return (
     <div className="anniversary-timeline">
       <div className="timeline-header">
@@ -321,49 +364,7 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
             </div>
           )}
           
-          {Object.entries(groupedAnniversaries).map(([date, dayAnniversaries]) => (
-            <div 
-              key={date} 
-              className={`timeline-day ${isToday(date) ? 'today' : ''} ${isPast(date) ? 'past' : ''}`}
-            >
-              <div className="day-header">
-                <div className="day-date">
-                  <span className="day-short">{formatDate(date)}</span>
-                  <span className="day-full">{formatFullDate(date)}</span>
-                </div>
-                {isToday(date) && <span className="today-badge">Today</span>}
-              </div>
-
-              <div className="day-anniversaries">
-                {dayAnniversaries.map(anniversary => (
-                  <div 
-                    key={`${anniversary.id}-${date}`}
-                    className="anniversary-item"
-                    onClick={() => handleAlbumClick(anniversary)}
-                  >
-                    <div className="album-info">
-                      <div className="album-title">{anniversary.album}</div>
-                      <div className="album-artist">{anniversary.artist}</div>
-                      <div className="anniversary-info">
-                        <span className="years-badge">
-                          {anniversary.years_since_release} year{anniversary.years_since_release !== 1 ? 's' : ''}
-                        </span>
-                        <span className="original-date">
-                          Released {formatFullDate(anniversary.original_release_date)}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    {anniversary.art_url && (
-                      <div className="album-art">
-                        <img src={anniversary.art_url} alt={`${anniversary.album} cover`} />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+          {anniversaryCards}
 
           {loadingMore && (
             <div className="loading-indicator right">
@@ -383,5 +384,17 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
     </div>
   );
 };
+
+export function getAnniversaryBadgeColor(years: number): string {
+  if (years <= 0) {
+    return 'anniversary-new'; // Green for new releases
+  } else if (years % 10 === 0) {
+    return 'anniversary-decade'; // Gold for decade milestones
+  } else if (years % 5 === 0) {
+    return 'anniversary-half-decade'; // Silver for half-decade milestones
+  } else {
+    return 'anniversary-regular'; // Bronze/orange for regular anniversaries
+  }
+}
 
 export default AnniversaryTimeline;
