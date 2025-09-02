@@ -9,7 +9,7 @@ const axiosCached = setupCache(axios);
 export class LibraryRepository {
     async searchLibrary(query) {
         try {
-            const response = await axios.get(`/api/search`, {
+            const response = await axiosCached.get(`/api/search`, {
                 params: {
                     query: query
                 }
@@ -38,7 +38,7 @@ export class LibraryRepository {
     async findLocalFiles(tracks: PlaylistEntry[]) {
         try {
             const details = tracks.map(track => track.details);
-            const response = await axios.post(`/api/library/findlocals`, details);
+            const response = await axiosCached.post(`/api/library/findlocals`, details);
             const localFiles = response.data.map(tracks => ({...tracks, entry_type: "music_file"}));
 
             return tracks.map((track, idx) => localFiles[idx].path ? localFiles[idx] : track);
@@ -50,7 +50,7 @@ export class LibraryRepository {
 
     async filter(query) {
         try {
-            const response = await axios.get(`/api/filter`, {
+            const response = await axiosCached.get(`/api/filter`, {
                 params: query
             });
 

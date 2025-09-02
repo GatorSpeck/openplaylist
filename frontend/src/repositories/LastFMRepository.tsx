@@ -60,10 +60,10 @@ export class LastFMRepository {
         }
     }
 
-    async getAlbumInfo(title: string, artist: string) {
+    async getAlbumInfo(title?: string, artist?: string, mbid?: string) {
         try {
             const response = await axios.get('/api/lastfm/album/info', {
-                params: { album: title, artist }
+                params: { album: title, artist, mbid }
             });
             return {
                 ...response.data,
@@ -91,6 +91,43 @@ export class LastFMRepository {
         }
     }
 
+    async enhanceAlbumsWithDetailedInfo(albums: PlaylistEntry[]): Promise<PlaylistEntry[]> {
+        const enhancedAlbums = await Promise.all(
+            albums.map(async (album) => {
+                try {
+                    // Only fetch detailed info if we have an mbid
+                    if (album.details?.mbid) {
+                        const detailedInfo = await this.getAlbumInfo(
+                            album.getTitle(), 
+                            album.getArtist(), 
+                            album.details.mbid
+                        );
+                        
+                        // Create a new PlaylistEntry with enhanced details
+                        const enhancedEntry = new PlaylistEntry({
+                            ...album,
+                            details: {
+                                ...album.details,
+                                ...detailedInfo,
+                                // Preserve original fields that might not be in detailed info
+                                last_fm_url: album.details.last_fm_url || detailedInfo.last_fm_url
+                            }
+                        });
+                        
+                        return enhancedEntry;
+                    }
+                    return album;
+                } catch (error) {
+                    console.warn(`Failed to enhance album ${album.getArtist()} - ${album.getTitle()}:`, error);
+                    // Return original album if enhancement fails
+                    return album;
+                }
+            })
+        );
+        
+        return enhancedAlbums;
+    }
+
     async searchTrack(title: string, artist: string) {
         try {
             const response = await axios.get('/api/lastfm', {
@@ -102,9 +139,11 @@ export class LastFMRepository {
                 return null;
             }
 
-            return response.data.map((track) => {
-                let result = new PlaylistEntry(track);
-                result.entry_type = 'music_file';
+            return response.data.map((track: any) => {
+                let result = new PlaylistEntry({
+                    ...track,
+                    entry_type: 'music_file'
+                });
                 return result;
             });
         } catch (error) {
@@ -113,10 +152,10 @@ export class LastFMRepository {
     }
 
     // fetch up to 1, 4, or 9 album thumbnails for the playlist
-    async generatePlaylistThumbnail(artistAlbums) {
+    async generatePlaylistThumbnail(artistAlbums: any[]) {
         try {
             const albumThumbnails = await Promise.all(
-                artistAlbums.map(async (album) => {
+                artistAlbums.map(async (album: any) => {
                     const albumArt = await this.fetchAlbumArt(album.artist, album.album);
                     return albumArt;
                 })

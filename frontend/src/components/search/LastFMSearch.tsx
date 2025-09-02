@@ -71,10 +71,15 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
     setSelectedResults([]);
   };
 
-  const handleAddToPlaylist = () => {
+  const handleAddToPlaylist = async () => {
     if (selectedResults.length > 0) {
       console.log('Adding to playlist:', selectedResults);
-      onAddToPlaylist(selectedResults);
+      
+      // If we're adding albums, enhance them with detailed release date info
+      let resultsToAdd = selectedResults;
+      // resultsToAdd = await LastFMRepository.enhanceAlbumsWithDetailedInfo(selectedResults);
+      
+      onAddToPlaylist(resultsToAdd);
       onClose();
     }
   };

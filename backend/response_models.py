@@ -281,6 +281,8 @@ class Album(MusicEntity, ExternalTrackDetails):
     publisher: Optional[str] = None
     tracks: Optional[List[AlbumTrack]] = None
     art_url: Optional[str] = None
+    exact_release_date: Optional[str] = None
+    mbid: Optional[str] = None
 
     @classmethod
     def from_orm(cls, obj: AlbumDB):
@@ -296,7 +298,8 @@ class Album(MusicEntity, ExternalTrackDetails):
             mbid=obj.mbid,
             spotify_uri=obj.spotify_uri,
             youtube_url=obj.youtube_url,
-            plex_rating_key=obj.plex_rating_key
+            plex_rating_key=obj.plex_rating_key,
+            exact_release_date=obj.exact_release_date
         )
     
     def to_db(self) -> AlbumDB:
@@ -312,7 +315,8 @@ class Album(MusicEntity, ExternalTrackDetails):
             mbid=self.mbid,
             spotify_uri=self.spotify_uri,
             youtube_url=self.youtube_url,
-            plex_rating_key=self.plex_rating_key
+            plex_rating_key=self.plex_rating_key,
+            exact_release_date=self.exact_release_date
         )
 
     def to_json(self) -> dict:
@@ -328,7 +332,8 @@ class Album(MusicEntity, ExternalTrackDetails):
             "tracks": [t.to_json() for t in self.tracks] if self.tracks else None,
             "spotify_uri": self.spotify_uri,
             "youtube_url": self.youtube_url,
-            "plex_rating_key": self.plex_rating_key
+            "plex_rating_key": self.plex_rating_key,
+            "exact_release_date": self.exact_release_date
         }
     
     def get_title(self):

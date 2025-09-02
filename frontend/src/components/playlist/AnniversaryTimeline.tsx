@@ -295,7 +295,6 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
   const groupedAnniversaries = groupAnniversariesByDate();
 
   const anniversaryCards = Object.entries(groupedAnniversaries).map(([date, dayAnniversaries]) => {
-    const anniversaryYears = dayAnniversaries.map(anniversary => anniversary.years_since_release);
     return (
     <div key={date} className={`timeline-day ${isToday(date) ? 'today' : ''} ${isPast(date) ? 'past' : ''}`}>
       <div className="day-header">
