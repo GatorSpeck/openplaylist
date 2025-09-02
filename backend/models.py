@@ -239,6 +239,17 @@ class MusicFileDB(BaseNode, TrackDetailsMixin, ExternalDetailMixin):
         self.comments = self.local_file.file_comments
         self.disc_number = self.local_file.file_disc_number
         self.track_number = self.local_file.file_track_number
+
+        # try to infer the exact release date
+        if self.year:
+            if len(self.year) > 4:
+                try:
+                    self.exact_release_date = datetime.strptime(self.year, "%Y-%m-%d")
+                    self.release_year = self.exact_release_date.year
+                except ValueError:
+                    pass
+            elif len(self.year) == 4:
+                self.release_year = int(self.year)
         
         # Copy genres
         self.genres.clear()

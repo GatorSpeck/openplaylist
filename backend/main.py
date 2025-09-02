@@ -317,20 +317,6 @@ def scan_directory(directory: str, full=False):
             file_size = os.path.getsize(full_path)
 
             year = metadata.year
-            release_year = None
-            exact_release_date = None
-
-            # try to infer the exact release date
-            if year:
-                if len(year) > 4:
-                    try:
-                        exact_release_date = datetime.strptime(year, "%Y-%m-%d")
-                        release_year = exact_release_date.year
-                        exact_release_date = exact_release_date
-                    except ValueError:
-                        pass
-                elif len(year) == 4:
-                    release_year = int(year)
             
             album = None
 
@@ -342,7 +328,7 @@ def scan_directory(directory: str, full=False):
                     album = AlbumDB(
                         artist=metadata.get_album_artist(),
                         title=metadata.album,
-                        year=exact_release_date if exact_release_date else release_year,
+                        year=year,
                         tracks = []
                     )
                     db.add(album)
@@ -361,8 +347,6 @@ def scan_directory(directory: str, full=False):
                 existing_file.year = year
                 existing_file.length = metadata.length
                 existing_file.publisher = metadata.publisher
-                existing_file.exact_release_date = exact_release_date
-                existing_file.release_year = release_year
                 existing_file.rating = metadata.rating
                 existing_file.genres = [
                     TrackGenreDB(parent_type="music_file", genre=genre)
@@ -371,6 +355,13 @@ def scan_directory(directory: str, full=False):
                 existing_file.comments = metadata.comments
                 existing_file.track_number = metadata.track_number
                 existing_file.disc_number = metadata.disc_number
+
+                # get existing MusicFile record
+                this_track = db.query(MusicFileDB).join(LocalFileDB).filter(LocalFileDB.id == existing_file.id).first()
+                if this_track:
+                    db.flush()
+                    this_track.sync_from_file_metadata()
+
             else:
                 scan_results.files_indexed += 1
                 scan_results.files_added += 1
@@ -591,13 +582,13 @@ def get_album_art(artist: str = Query(...), album: str = Query(...)):
     return repo.get_album_art(artist, album)
 
 @router.get("/lastfm/album/info", response_model=Optional[Album])
-def get_album_info(artist: str = Query(...), album: str = Query(...)):
+def get_album_info(artist: str = Query(...), album: str = Query(...), mbid: str = Query(...)):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
     repo = last_fm_repository(api_key, requests_cache_session, redis_session=redis_session)
-    return repo.get_album_info(artist, album)
+    return repo.get_album_info(artist=artist, album=album, mbid=mbid)
 
 @router.get("/lastfm/album/search", response_model=List[Album])
 def search_album(album: str = Query(...), artist: Optional[str] = Query(None), ):
@@ -824,6 +815,50 @@ def browse_directories(current_path: Optional[str] = Query(None)):
 @router.get("/health")
 def health_check():
     return {"status": "ok"}
+
+@router.get("/music/anniversaries")
+def get_upcoming_anniversaries(
+    start_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
+    end_date: str = Query(..., description="End date in YYYY-MM-DD format"),
+    repo: MusicFileRepository = Depends(get_music_file_repository)
+):
+    """Get album anniversaries within the specified date range"""
+    try:
+        from datetime import datetime
+        
+        # Parse the date strings
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        # Validate date range
+        if start_dt > end_dt:
+            raise HTTPException(status_code=400, detail="Start date must be before end date")
+        
+        anniversaries = repo.get_anniversaries_in_date_range(start_dt, end_dt)
+        
+        # Convert to response format
+        anniversary_data = []
+        for album in anniversaries:
+            anniversary_data.append({
+                "id": album.id,
+                "album": album.album,
+                "artist": album.album_artist or album.artist,
+                "original_release_date": album.exact_release_date.strftime("%Y-%m-%d") if album.exact_release_date else None,
+                "anniversary_date": album.anniversary_date.strftime("%Y-%m-%d"),
+                "years_since_release": album.years_since_release,
+                "art_url": None  # Could be enhanced to fetch from Last.fm
+            })
+        
+        return {"anniversaries": anniversary_data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error fetching anniversaries: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch anniversaries")
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

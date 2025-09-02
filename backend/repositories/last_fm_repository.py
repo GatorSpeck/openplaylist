@@ -28,11 +28,15 @@ def from_json(payload) -> Optional[Album]:
             linked_track = MusicFile(title=track.get("name"), artist=track.get("artist").get("name"), last_fm_url=track.get("url"))
             tracks.append(AlbumTrack(order=i, linked_track=linked_track))
 
+    exact_release_date = payload.get("album", {}).get("releasedate")
+
     return Album(
         title=payload.get("album").get("name"),
         artist=payload.get("album").get("artist"),
         art_url=payload.get("album").get("image")[-1].get("#text"),
         last_fm_url=payload.get("album").get("url"),
+        exact_release_date=exact_release_date,
+        mbid=payload.get("album").get("mbid"),
         tracks=tracks
     )
 
@@ -244,6 +248,9 @@ class last_fm_repository:
                 artist=album.get("artist"),
                 art_url=album.get("art_url"),
                 last_fm_url=album.get("last_fm_url"),
+                mbid=album.get("mbid"),
+                exact_release_date=album.get("exact_release_date"),
+                release_year=album.get("release_year"),
             ) for album in results][:limit]
         
         # else, we just have the title to work with
@@ -276,6 +283,9 @@ class last_fm_repository:
             artist=album.get("artist"),
             art_url=album.get("image")[-1].get("#text"),
             last_fm_url=album.get("url"),
+            mbid=album.get("mbid"),
+            exact_release_date=album.get("exact_release_date"),
+            release_year=album.get("release_year"),
         ) for album in albums]
 
     def get_album_art(self, artist, album):
@@ -403,9 +413,50 @@ class last_fm_repository:
             art_url=album.get("image")[-1].get("#text"),
             last_fm_url=album.get("url"),
             mbid=album.get("mbid"),
+            exact_release_date=album.get("exact_release_date"),
+            release_year=album.get("release_year"),
         ) for album in albums]
+    
+    def get_album_info_by_mbid(self, mbid: str) -> Optional[Album]:
+        if os.getenv("LASTFM_API_KEY") is None:
+            raise ValueError("LASTFM_API_KEY environment variable is not set")
+        
+        redis_tag = f"albuminfo:mbid:{mbid}"
 
-    def get_album_info(self, artist, album) -> Optional[Album]:
+        if self.redis_session:
+            try:
+                cached_info = self.redis_session.get(redis_tag)
+                if cached_info is not None:
+                    logging.debug(cached_info)
+                    return from_json(json.loads(cached_info))
+            except Exception as e:
+                logging.error(e)
+                pass
+
+        url = f"http://ws.audioscrobbler.com/2.0/?method=album.getinfo&api_key={os.getenv('LASTFM_API_KEY')}&mbid={mbid}&format=json"
+        logging.info(url)
+
+        response = self.get_with_retries(url)
+    
+        album_info = None
+        if response.status_code == 200:
+            album_info = response.json()
+            if self.redis_session:
+                try:
+                    self.redis_session.set(redis_tag, json.dumps(album_info))
+                except Exception as e:
+                    logging.error(e)
+                    pass
+        else:
+            logging.warning(f"Failed to fetch data from Last.FM: {response.status_code} {response.text}")
+            raise HTTPException(status_code=500, detail="Failed to fetch data from Last.FM")
+        
+        return from_json(album_info) if album_info else None
+
+    def get_album_info(self, artist=None, album=None, mbid=None) -> Optional[Album]:
+        if mbid is not None:
+            return self.get_album_info_by_mbid(mbid)
+        
         if os.getenv("LASTFM_API_KEY") is None:
             raise ValueError("LASTFM_API_KEY environment variable is not set")
         

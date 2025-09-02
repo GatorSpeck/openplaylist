@@ -4,6 +4,7 @@ import '../../styles/Playlists.css';
 import Snackbar from '../Snackbar';
 import PlaylistGrid from '../playlist/PlaylistGrid';
 import PlaylistSidebar from '../nav/PlaylistSidebar';
+import AnniversaryTimeline from '../playlist/AnniversaryTimeline';
 import mapToTrackModel from '../../lib/mapToTrackModel';
 import { useParams, useNavigate } from 'react-router-dom';
 import playlistRepository from '../../repositories/PlaylistRepository';
@@ -229,6 +230,16 @@ const Playlists = () => {
     }
   };
 
+  const handleAlbumClick = (anniversary) => {
+    // You could implement search functionality here
+    // For now, just show a snackbar with the album info
+    setSnackbar({
+      open: true,
+      message: `${anniversary.album} by ${anniversary.artist} (${anniversary.years_since_release} years old)`,
+      severity: 'info'
+    });
+  };
+
   const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistID);
  
   return (
@@ -248,10 +259,22 @@ const Playlists = () => {
       />
       
       <div className="editor-panel">
-        {selectedPlaylist && (
+        {selectedPlaylist ? (
           <PlaylistGrid
             playlistID={selectedPlaylistID}
           />
+        ) : (
+          <div className="landing-page">
+            <div className="landing-header">
+              <h1>Welcome to Your Music Library</h1>
+              <p>Select a playlist from the sidebar to get started, or check out upcoming album anniversaries below.</p>
+            </div>
+            <AnniversaryTimeline 
+              daysAhead={7}
+              daysBehind={7}
+              onAlbumClick={handleAlbumClick}
+            />
+          </div>
         )}
       </div>
       {newPlaylistModalVisible && (
