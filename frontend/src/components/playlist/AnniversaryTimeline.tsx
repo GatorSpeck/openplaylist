@@ -199,7 +199,9 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
   }, []);
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    // Parse date as local date to avoid timezone issues
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // month is 0-indexed
     return date.toLocaleDateString('en-US', { 
       month: 'short', 
       day: 'numeric'
@@ -207,7 +209,9 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
   };
 
   const formatFullDate = (dateString: string) => {
-    const date = new Date(dateString);
+    // Parse date as local date to avoid timezone issues
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // month is 0-indexed
     return date.toLocaleDateString('en-US', { 
       weekday: 'long',
       month: 'long', 
@@ -217,15 +221,24 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
   };
 
   const isToday = (dateString: string) => {
-    const date = new Date(dateString);
+    // Parse date as local date to avoid timezone issues
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
     const today = new Date();
-    return date.toDateString() === today.toDateString();
+    
+    return date.getFullYear() === today.getFullYear() &&
+           date.getMonth() === today.getMonth() &&
+           date.getDate() === today.getDate();
   };
 
   const isPast = (dateString: string) => {
-    const date = new Date(dateString);
+    // Parse date as local date to avoid timezone issues
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    date.setHours(0, 0, 0, 0);
+    
     return date < today;
   };
 
@@ -240,10 +253,14 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
       grouped[date].push(anniversary);
     });
 
-    // Sort dates chronologically
-    const sortedEntries = Object.entries(grouped).sort(([a], [b]) => 
-      new Date(a).getTime() - new Date(b).getTime()
-    );
+    // Sort dates chronologically using proper date parsing
+    const sortedEntries = Object.entries(grouped).sort(([a], [b]) => {
+      const [yearA, monthA, dayA] = a.split('-').map(Number);
+      const [yearB, monthB, dayB] = b.split('-').map(Number);
+      const dateA = new Date(yearA, monthA - 1, dayA);
+      const dateB = new Date(yearB, monthB - 1, dayB);
+      return dateA.getTime() - dateB.getTime();
+    });
 
     return Object.fromEntries(sortedEntries);
   };
