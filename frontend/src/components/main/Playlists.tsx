@@ -191,7 +191,14 @@ const Playlists = () => {
     }
   };
 
-  const handlePlaylistSelect = (id) => {
+  const handlePlaylistSelect = (id: number | null) => {
+    if (id === selectedPlaylistID) return; // No change
+    if (!id) {
+      setSelectedPlaylistID(null);
+      navigate("/");
+      return;
+    }
+
     const playlistName = playlists.find(p => p.id === id).name;
     navigate(`/playlist/${playlistName}`);
     setSelectedPlaylistID(id);

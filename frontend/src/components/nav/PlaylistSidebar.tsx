@@ -84,7 +84,11 @@ const PlaylistSidebar = ({
   };
 
   const handlePlaylistClick = (id) => {
-    onPlaylistSelect(id);
+    if (selectedPlaylist?.id === id) {
+      onPlaylistSelect(null); // Deselect and return to root
+    } else {
+      onPlaylistSelect(id);
+    }
   };
 
   const handlePlaylistImported = (importedPlaylist) => {
