@@ -468,7 +468,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
                 continue
 
         # Sort by anniversary date
-        anniversary_albums.sort(key=lambda x: x.anniversary_date)
+        anniversary_albums.sort(key=lambda x: (x.anniversary_date, 0 - x.years_since_release))
 
         return anniversary_albums
 
