@@ -210,7 +210,9 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     
     // Only update URL if it needs updating, and do it silently
     if (urlNeedsUpdate) {
-      setSearchParams(newParams, { replace: true });
+      // Use navigate with the current pathname to ensure we don't lose the playlist name
+      const currentPath = window.location.pathname;
+      navigate(`${currentPath}?${newParams.toString()}`, { replace: true });
     }
     
     // Mark parameters as initialized
