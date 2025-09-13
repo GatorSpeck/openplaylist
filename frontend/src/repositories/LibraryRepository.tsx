@@ -9,7 +9,7 @@ const axiosCached = setupCache(axios);
 export class LibraryRepository {
     async searchLibrary(query) {
         try {
-            const response = await axios.get(`/api/search`, {
+            const response = await axiosCached.get(`/api/search`, {
                 params: {
                     query: query
                 }
@@ -38,7 +38,7 @@ export class LibraryRepository {
     async findLocalFiles(tracks: PlaylistEntry[]) {
         try {
             const details = tracks.map(track => track.details);
-            const response = await axios.post(`/api/library/findlocals`, details);
+            const response = await axiosCached.post(`/api/library/findlocals`, details);
             const localFiles = response.data.map(tracks => ({...tracks, entry_type: "music_file"}));
 
             return tracks.map((track, idx) => localFiles[idx].path ? localFiles[idx] : track);
@@ -50,7 +50,7 @@ export class LibraryRepository {
 
     async filter(query) {
         try {
-            const response = await axios.get(`/api/filter`, {
+            const response = await axiosCached.get(`/api/filter`, {
                 params: query
             });
 
@@ -79,6 +79,40 @@ export class LibraryRepository {
             return response.data;
         } catch (error) {
             console.error('Error fetching album list:', error);
+        }
+    }
+
+    async getAnniversariesInDateRange(startDate: string, endDate: string) {
+        try {
+            const response = await axiosCached.get('/api/music/anniversaries', {
+                params: {
+                    start_date: startDate,
+                    end_date: endDate
+                }
+            });
+            return response.data.anniversaries;
+        } catch (error) {
+            console.error('Error fetching anniversaries:', error);
+            throw error;
+        }
+    }
+
+    // Keep the old method for backward compatibility
+    async getUpcomingAnniversaries(daysAhead: number = 30, daysBehind: number = 7) {
+        try {
+            const today = new Date();
+            const startDate = new Date(today);
+            startDate.setDate(today.getDate() - daysBehind);
+            const endDate = new Date(today);
+            endDate.setDate(today.getDate() + daysAhead);
+            
+            return this.getAnniversariesInDateRange(
+                startDate.toISOString().split('T')[0],
+                endDate.toISOString().split('T')[0]
+            );
+        } catch (error) {
+            console.error('Error fetching anniversaries:', error);
+            throw error;
         }
     }
 };

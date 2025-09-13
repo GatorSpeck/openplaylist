@@ -163,7 +163,9 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
       // Use the correct field names for the API
       const linkRequest = {
         track_id: entry.id,
-        [sourceType]: inputValue.trim()
+        updates: {
+          [sourceType]: inputValue.trim()
+        }
       };
 
       const response = await fetch(`/api/playlists/${playlistId}/links`, {
@@ -183,7 +185,9 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
         ...entry,
         details: {
           ...entry.details,
-          [sourceType]: inputValue.trim()
+          updates: {
+            [sourceType]: inputValue.trim()
+          }
         }
       });
 
@@ -661,6 +665,14 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
               </div>
             )}
           </div>
+
+          {/* Hidden Information Section */}
+          {entry.isHidden() && (
+            <div className="detail-row">
+              <strong>Hidden:</strong>
+              <span>Yes (on {entry.getHiddenDate()})</span>
+            </div>
+          )}
         </div>
         <div className="modal-actions">
           <button onClick={onClose}>Close</button>

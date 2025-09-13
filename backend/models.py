@@ -239,6 +239,17 @@ class MusicFileDB(BaseNode, TrackDetailsMixin, ExternalDetailMixin):
         self.comments = self.local_file.file_comments
         self.disc_number = self.local_file.file_disc_number
         self.track_number = self.local_file.file_track_number
+
+        # try to infer the exact release date
+        if self.year:
+            if len(self.year) > 4:
+                try:
+                    self.exact_release_date = datetime.strptime(self.year, "%Y-%m-%d")
+                    self.release_year = self.exact_release_date.year
+                except ValueError:
+                    pass
+            elif len(self.year) == 4:
+                self.release_year = int(self.year)
         
         # Copy genres
         self.genres.clear()
@@ -358,6 +369,8 @@ class PlaylistEntryDB(Base):
     order = Column(Integer, index=True)
 
     date_added = Column(DateTime)  # date added to playlist
+    date_hidden = Column(DateTime, nullable=True)  # Add this field
+    is_hidden = Column(Boolean, default=False, nullable=False, index=True)  # Add this field
 
     playlist_id: Mapped[int] = mapped_column(ForeignKey("playlists.id"), index=True)
     playlist: Mapped["PlaylistDB"] = relationship("PlaylistDB", back_populates="entries")
@@ -368,7 +381,7 @@ class PlaylistEntryDB(Base):
     details = relationship(
         "BaseNode", 
         foreign_keys=[details_id],
-        cascade="save-update, merge, expunge"  # Make sure it doesn't include "delete"
+        cascade="save-update, merge, expunge"
     )
 
     __mapper_args__ = {"polymorphic_on": entry_type, "polymorphic_identity": "entry"}

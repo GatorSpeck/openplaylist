@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useState } from 'react';
+import React, { forwardRef, useEffect, useState, useRef } from 'react';
 import EntryTypeBadge from '../EntryTypeBadge';
 import '../../styles/PlaylistGrid.css';
 import lastFMRepository from '../../repositories/LastFMRepository';
@@ -24,7 +24,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
   className,
   style,
   isDragging,
-  dragHandleProps, // Add this parameter
+  dragHandleProps,
   ...props 
 }, ref) => {
   const [imageUrl, setImageUrl] = useState(null);
@@ -32,6 +32,12 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
   const [isMobile, setIsMobile] = useState(false);
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
   const [isLongPressing, setIsLongPressing] = useState(false);
+  const [shouldScroll, setShouldScroll] = useState(false);
+  const [shouldScrollArtist, setShouldScrollArtist] = useState(false);
+  const [shouldScrollAlbum, setShouldScrollAlbum] = useState(false);
+  const scrollingRef = useRef<HTMLDivElement>(null);
+  const artistRef = useRef<HTMLDivElement>(null);
+  const albumRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchAlbumArt = async () => {
@@ -143,22 +149,111 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
     </div>
   ) : entry.getTitle();
 
+  const contentsHidden = entry.isHidden() ? (
+    <s>{contents}</s>
+  ) : (
+    <span>{contents}</span>
+  );
+
   const handleMenuClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onContextMenu(e);
   };
 
+  // Add styling for hidden entries
+  const hiddenClass = entry.isHidden() ? 'hidden-entry' : '';
+
+  const artist = entry.isHidden() ? (
+    <s>{entry.getArtist()}</s>
+  ) : (
+    <span>{entry.getArtist()}</span>
+  );
+
+  const album = entry.isHidden() ? (
+    <s>{entry.getAlbum()}</s>
+  ) : (
+    <span>{entry.getAlbum()}</span>
+  );
+
+  // Check if content overflows and should scroll
+  useEffect(() => {
+    const checkOverflow = () => {
+      // Check title content
+      if (scrollingRef.current) {
+        const container = scrollingRef.current.parentElement;
+        const content = scrollingRef.current;
+        
+        if (container && content) {
+          const containerWidth = container.clientWidth;
+          const contentWidth = content.scrollWidth;
+          const shouldScrollTitle = contentWidth > containerWidth;
+          setShouldScroll(shouldScrollTitle);
+          
+          // Set dynamic animation duration based on text length
+          if (shouldScrollTitle) {
+            const scrollDistance = contentWidth - containerWidth;
+            // Base duration: 3 seconds minimum, add 0.05s per pixel of overflow
+            const duration = Math.max(3, 3 + (scrollDistance * 0.05));
+            content.style.animationDuration = `${duration}s`;
+            content.style.animation = `move ${duration}s ease-in-out infinite`;
+          }
+        }
+      }
+
+      // Check artist content
+      if (artistRef.current) {
+        const container = artistRef.current.parentElement;
+        const content = artistRef.current;
+        
+        if (container && content) {
+          const containerWidth = container.clientWidth;
+          const contentWidth = content.scrollWidth;
+          const shouldScrollArtistContent = contentWidth > containerWidth;
+          setShouldScrollArtist(shouldScrollArtistContent);
+          
+          if (shouldScrollArtistContent) {
+            const scrollDistance = contentWidth - containerWidth;
+            const duration = Math.max(3, 3 + (scrollDistance * 0.05));
+            content.style.animationDuration = `${duration}s`;
+            content.style.animation = `move ${duration}s ease-in-out infinite`;
+          }
+        }
+      }
+
+      // Check album content
+      if (albumRef.current) {
+        const container = albumRef.current.parentElement;
+        const content = albumRef.current;
+        
+        if (container && content) {
+          const containerWidth = container.clientWidth;
+          const contentWidth = content.scrollWidth;
+          const shouldScrollAlbumContent = contentWidth > containerWidth;
+          setShouldScrollAlbum(shouldScrollAlbumContent);
+          
+          if (shouldScrollAlbumContent) {
+            const scrollDistance = contentWidth - containerWidth;
+            const duration = Math.max(3, 3 + (scrollDistance * 0.05));
+            content.style.animationDuration = `${duration}s`;
+            content.style.animation = `move ${duration}s ease-in-out infinite`;
+          }
+        }
+      }
+    };
+
+    checkOverflow();
+    
+    // Recheck on window resize
+    window.addEventListener('resize', checkOverflow);
+    return () => window.removeEventListener('resize', checkOverflow);
+  }, [contentsHidden, isMobile, artist, album]); // Re-run when content changes
+
   return (
-    <div 
+    <div
       ref={ref}
-      className={`${className} ${isDragging ? 'dragging' : ''} ${isLongPressing ? 'long-pressing' : ''}`}
+      className={`playlist-entry-row ${className} ${hiddenClass}`}
       style={style}
       onContextMenu={onContextMenu}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      onMouseDown={handleMouseDown}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseLeave}
       {...props}
     >
       {/* Apply dragHandleProps only to the first grid cell */}
@@ -181,12 +276,31 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
       
       <div className="grid-cell artist-cell">
         <div className="track-info">
-          <div className="artist truncate-text">{entry.getArtist()}</div>
-          <div className="album truncate-text" overflow="auto"><i>{entry.getAlbum()}</i></div>
+          <div className="artist scrolling-text">
+            <div 
+              ref={artistRef}
+              className={`scrolling ${shouldScrollArtist ? 'should-scroll' : ''}`}
+            >
+              <span>{artist}</span>
+            </div>
+          </div>
+          <div className="album scrolling-text">
+            <div 
+              ref={albumRef}
+              className={`scrolling ${shouldScrollAlbum ? 'should-scroll' : ''}`}
+            >
+              <span><i>{album}</i></span>
+            </div>
+          </div>
         </div>
       </div>
-      <div className="grid-cell truncate-text" overflow="auto">
-        <span>{contents}</span>
+      <div className="grid-cell scrolling-text">
+        <div 
+          ref={scrollingRef}
+          className={`scrolling ${shouldScroll ? 'should-scroll' : ''}`}
+        >
+          <span>{contentsHidden}</span>
+        </div>
         {isMobile && (<button 
           className="mobile-menu-button"
           onClick={handleMenuClick}

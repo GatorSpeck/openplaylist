@@ -30,8 +30,11 @@ import SelectPlaylistModal from './SelectPlaylistModal';
 import { setCookie, getCookie } from '../../lib/cookieUtils';
 import SyncConfig from './SyncConfig'; // Import the SyncConfig component
 
-const BatchActions = ({ selectedCount, onRemove, onClear }) => (
+const BatchActions = ({ selectedCount, onRemove, onClear, onHide }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
+    <button onClick={onHide}>
+      Hide {selectedCount} Selected Entries
+    </button>
     <button onClick={onRemove}>
       Remove {selectedCount} Selected Entries
     </button>
@@ -118,7 +121,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   // Get sort parameters from URL or use defaults
   const getSortColumnFromParam = (param: string | null): string => {
-    const validColumns = ['order', 'title', 'artist', 'album'];
+    const validColumns = ['order', 'title', 'artist', 'album', 'random'];
     
     // First check URL params
     if (param && validColumns.includes(param)) {
@@ -158,6 +161,23 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     const initialSortDirection = getSortDirectionFromParam(searchParams.get('dir'));
     const initialFilter = searchParams.get('filter') || '';
     
+    // Handle random seed
+    const urlSeed = searchParams.get('seed');
+    const cookieSeed = getCookie(`playlist_${playlistID}_randomSeed`);
+    let initialSeed = null;
+    
+    if (initialSortColumn === 'random') {
+      if (urlSeed && !isNaN(parseInt(urlSeed))) {
+        initialSeed = parseInt(urlSeed);
+      } else if (cookieSeed && !isNaN(parseInt(cookieSeed))) {
+        initialSeed = parseInt(cookieSeed);
+      } else {
+        initialSeed = Math.floor(Math.random() * 1000000);
+      }
+      setRandomSeed(initialSeed);
+      setIsRandomOrder(true);
+    }
+    
     // Set the state values all at once
     setSortColumn(initialSortColumn);
     setSortDirection(initialSortDirection);
@@ -183,9 +203,16 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       urlNeedsUpdate = true;
     }
     
+    if (initialSortColumn === 'random' && initialSeed !== null && searchParams.get('seed') !== initialSeed.toString()) {
+      newParams.set('seed', initialSeed.toString());
+      urlNeedsUpdate = true;
+    }
+    
     // Only update URL if it needs updating, and do it silently
     if (urlNeedsUpdate) {
-      setSearchParams(newParams, { replace: true });
+      // Use navigate with the current pathname to ensure we don't lose the playlist name
+      const currentPath = window.location.pathname;
+      navigate(`${currentPath}?${newParams.toString()}`, { replace: true });
     }
     
     // Mark parameters as initialized
@@ -252,6 +279,14 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   const [syncConfigOpen, setSyncConfigOpen] = useState(false);
 
+  // Add new state for hidden entries
+  const [showHidden, setShowHidden] = useState(false);
+  const [hideByDefault, setHideByDefault] = useState(false); // For playlist preference
+
+  // Add this near your other state declarations around line 255
+  const [randomSeed, setRandomSeed] = useState<number | null>(null);
+  const [isRandomOrder, setIsRandomOrder] = useState(false);
+
   // Apply debouncing to the filter
   useEffect(() => {
     // Set a timer to update the debounced filter after typing stops
@@ -271,7 +306,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       fetchPlaylistArtGrid();
       fetchPlaylistDetails(true);
     }
-  }, [playlistID, debouncedFilter, sortColumn, sortDirection, paramsInitialized]);
+  }, [playlistID, debouncedFilter, sortColumn, sortDirection, paramsInitialized, showHidden]); // Add showHidden here
 
   const fetchPlaylistArtGrid = async () => {
     try {
@@ -282,6 +317,23 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     }
   }
 
+  // Add a function to generate a new random order
+  const shufflePlaylist = () => {
+    const newSeed = Math.floor(Math.random() * 1000000);
+    setRandomSeed(newSeed);
+    setSortColumn('random');
+    setIsRandomOrder(true);
+    
+    // Update cookies and URL
+    setCookie(`playlist_${playlistID}_sortColumn`, 'random');
+    setCookie(`playlist_${playlistID}_randomSeed`, newSeed.toString());
+    
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('sort', 'random');
+    newParams.set('seed', newSeed.toString());
+    setSearchParams(newParams, { replace: true });
+  };
+
   // Add this state variable with your other state declarations
   const [initialFetchComplete, setInitialFetchComplete] = useState(false);
 
@@ -291,6 +343,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       if (isInitialLoad) {
         setPlaylistLoading(true);
         setInitialFetchComplete(false); // Reset flag for new initial loads
+        
         // Get basic playlist info for the name on initial load
         const playlistInfo = await playlistRepository.getPlaylistDetails(playlistID);
         setName(playlistInfo.name);
@@ -299,6 +352,9 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         setIsLoadingMore(true);
         const countResponse = await playlistRepository.getPlaylistEntries(playlistID, {
           filter: debouncedFilter,
+          sortCriteria: sortColumn,
+          sortDirection: sortDirection,
+          includeHidden: showHidden, // Add this line to count query
           countOnly: true
         });
 
@@ -335,7 +391,9 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         sortCriteria: sortColumn,
         sortDirection: sortDirection,
         limit: pageSize,
-        offset: offset
+        offset: offset,
+        includeHidden: showHidden,
+        randomSeed: sortColumn === 'random' ? randomSeed : undefined
       };
       
       const response = await playlistRepository.getPlaylistEntries(playlistID, filterParams);
@@ -395,7 +453,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       setPlaylistLoading(false);
       setIsLoadingMore(false);
     }
-  }, [playlistID, debouncedFilter, sortColumn, sortDirection, pageSize, totalCount, entries.length]);
+  }, [playlistID, debouncedFilter, sortColumn, sortDirection, pageSize, totalCount, entries.length, showHidden]); // showHidden was already in dependencies
 
   const pushToHistory = (entries) => {
     const newHistory = history.slice(0, historyIndex + 1);
@@ -619,24 +677,48 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   const handleSort = (column: String) => {
     let newDirection = sortDirection;
+    let newSeed = randomSeed;
     
-    if (sortColumn === column) {
-      newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-      setSortDirection(newDirection);
+    if (column === 'random') {
+      // Generate a new random seed when switching to random order
+      if (sortColumn !== 'random') {
+        newSeed = Math.floor(Math.random() * 1000000);
+        setRandomSeed(newSeed);
+        setIsRandomOrder(true);
+      }
+      newDirection = 'asc'; // Random doesn't need direction, but keep consistent
     } else {
+      setIsRandomOrder(false);
+      if (sortColumn === column) {
+        newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+        setSortDirection(newDirection);
+      } else {
+        setSortColumn(column.toString());
+        newDirection = 'asc';
+        setSortDirection('asc');
+      }
+    }
+    
+    if (column !== sortColumn) {
       setSortColumn(column.toString());
-      newDirection = 'asc';
-      setSortDirection('asc');
     }
     
     // Save to cookies
     setCookie(`playlist_${playlistID}_sortColumn`, column.toString());
     setCookie(`playlist_${playlistID}_sortDirection`, newDirection);
+    if (newSeed !== null) {
+      setCookie(`playlist_${playlistID}_randomSeed`, newSeed.toString());
+    }
     
     // Update URL query parameters while preserving other params
     const newParams = new URLSearchParams(searchParams);
     newParams.set('sort', column.toString());
     newParams.set('dir', newDirection);
+    if (column === 'random' && newSeed !== null) {
+      newParams.set('seed', newSeed.toString());
+    } else {
+      newParams.delete('seed');
+    }
     setSearchParams(newParams, { replace: true });
   };
 
@@ -670,6 +752,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     const similars = await openAIRepository.findSimilarTracks(track);
     const localFiles = await libraryRepository.findLocalFiles(similars);
 
+    if (localFiles.length === 0) {
+      window.alert('No similar tracks found with OpenAI.');
+    }
+
     // prefer local files
     setSimilarTracks(localFiles.map(track => new PlaylistEntry(track)));
 
@@ -682,6 +768,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
     const similars = await lastFMRepository.findSimilarTracks(track);
     const localFiles = await libraryRepository.findLocalFiles(similars);
+
+    if (localFiles.length === 0) {
+      window.alert('No similar tracks found with Last.FM.');
+    }
 
     // prefer local files
     setSimilarTracks(localFiles.map(track => new PlaylistEntry(track)));
@@ -700,118 +790,6 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     setShowTrackDetails(true);
   }
 
-  const unMatchTrack = (track: PlaylistEntry) => {
-    // convert this music track to a RequestedTrack
-    let newTrack = track;
-    newTrack.getDetails().path = null;
-    newTrack.getDetails().size = null;
-    newTrack.getDetails().kind = null;
-
-    // Update backend
-    playlistRepository.unlinkTrack(playlistID, track.id, newTrack);
-
-    // Update local state
-    pushToHistory(entries);
-    const newEntries = [...entries];
-    const trackIndex = entries.findIndex(entry => entry.order === track.order);
-    newEntries[trackIndex] = mapToTrackModel(newTrack);
-    setEntries(newEntries);
-  }
-
-  const matchTrack = async (track: PlaylistEntry) => {
-    try {
-      setPlaylistLoading(true);
-      
-      // Search for potential matches based on track info
-      const searchQuery = `${track.getArtist()} ${track.getTitle()}`;
-      const potentialMatches = await libraryRepository.searchLibrary(searchQuery);
-      
-      if (!potentialMatches || potentialMatches.length === 0) {
-        setSnackbar({
-          open: true,
-          message: `No matching entries found for "${track.getTitle()}"`,
-          severity: 'warning'
-        });
-      }
-      
-      // Set up the modal state
-      setMatchingTracks(potentialMatches);
-      setTrackToMatch(track);
-      setMatchModalOpen(true);
-    } catch (error) {
-      console.error('Error matching entry:', error);
-      setSnackbar({
-        open: true,
-        message: `Error matching entry: ${error.message}`,
-        severity: 'error'
-      });
-    } finally {
-      setPlaylistLoading(false);
-    }
-  };
-
-  const matchAlbum = async (album: PlaylistEntry) => {
-    try {
-      setPlaylistLoading(true);
-      
-      setAlbumToMatch(album);
-      setAlbumMatchModalOpen(true);
-    } catch (error) {
-      console.error('Error matching album:', error);
-      setSnackbar({
-        open: true,
-        message: `Error searching for album: ${error.message}`,
-        severity: 'error'
-      });
-    } finally {
-      setPlaylistLoading(false);
-    }
-  };
-  
-  const replaceAlbumWithMatch = async (selectedMatch: PlaylistEntry) => {
-    try {
-      if (!albumToMatch) return;
-      
-      // Get the track index in the playlist
-      const trackIndex = entries.findIndex(entry => entry.order === albumToMatch.order);
-      if (trackIndex === -1) return;
-      
-      // Create a new album entry with the Last.fm metadata
-      let newAlbum = selectedMatch.toRequestedAlbum();
-      newAlbum.id = albumToMatch.id;
-      newAlbum.order = albumToMatch.order;
-      
-      // Update backend
-      if (!albumToMatch.id) {
-        console.error('No album ID found for album to match');
-        return;
-      }
-
-      await playlistRepository.updateLinks(playlistID, albumToMatch.id, newAlbum);
-      
-      // Update local state
-      pushToHistory(entries);
-      const newEntries = [...entries];
-      newEntries[trackIndex] = newAlbum;
-      setEntries(newEntries);
-      
-      setAlbumMatchModalOpen(false);
-      
-      setSnackbar({
-        open: true,
-        message: `Album matched to "${selectedMatch.getAlbum()}" by ${selectedMatch.getArtist()}`,
-        severity: 'success'
-      });
-    } catch (error) {
-      console.error('Error replacing album:', error);
-      setSnackbar({
-        open: true,
-        message: `Error replacing album: ${error.message}`,
-        severity: 'error'
-      });
-    }
-  };
-
   const handleAddToOtherPlaylist = (tracks: PlaylistEntry[]) => {
     setTracksToAddToOtherPlaylist(tracks);
     setSelectPlaylistModalVisible(true);
@@ -819,12 +797,13 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   const handleContextMenu = (e, track: PlaylistEntry) => {
     e.preventDefault();
-  
+
     const isAlbum = track.entry_type === 'requested_album' || track.entry_type === 'album';
     const isMusicFile = track.entry_type === 'music_file';
     const isRequestedTrack = track.entry_type === 'requested' || track.entry_type === 'lastfm';
     const canEdit = isRequestedTrack || (track.entry_type === 'requested_album');  // Track can be edited if it's a requested track or album
-  
+    const isHidden = track.isHidden();
+
     const options = [
       { label: 'Details', onClick: () => handleShowDetails(track) },
       canEdit ? { label: 'Edit Details', onClick: () => handleEditItem(track) } : null,
@@ -834,22 +813,22 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: (e) => findSimilarTracksWithOpenAI(e, track) } : null,
       { label: 'Search for Album', onClick: () => searchFor({"title": "", "album": track.getAlbum(), "artist": track.getArtist()}) },
       { label: 'Search for Artist', onClick: () => searchFor({"title": "", "album": "", "artist": track.getAlbumArtist()}) },
+      // Add hide/unhide options
+      isHidden 
+        ? { label: 'Unhide', onClick: () => unhideEntry(track.id) }
+        : { label: 'Hide', onClick: () => hideEntry(track.id) },
       { label: 'Remove', onClick: () => removeSongsFromPlaylist([track.order]) },
       { label: 'Remove by Artist', onClick: () => onRemoveByArtist(track.getArtist()) },
       { label: 'Remove by Album', onClick: () => onRemoveByAlbum(track.getAlbum()) },
-      isRequestedTrack ? { label: 'Match to Music File', onClick: () => matchTrack(track) } : null,
-      isMusicFile ? { label: 'Re-Match Track', onClick: () => matchTrack(track) } : null,
-      isMusicFile ? { label: 'Unmatch Track', onClick: () => unMatchTrack(track) } : null,
-      isAlbum ? { label: 'Match Album on Last.fm', onClick: () => matchAlbum(track) } : null
     ].filter(Boolean);
-  
+
     setContextMenu({
       visible: true,
       x: e.clientX,
       y: e.clientY,
       options: options.filter(option => option !== null)
     });
-  }
+  };
 
   const listRef = useRef(null);
 
@@ -963,19 +942,175 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     }
   };
 
+  // Add function to hide a single entry
+  const hideEntry = async (entryId: number) => {
+    try {
+      // Optimistically update local state first
+      pushToHistory(entries);
+      const newEntries = entries.map(entry => 
+        entry.id === entryId 
+          ? { ...entry, is_hidden: true, date_hidden: new Date().toISOString() }
+          : entry
+      );
+      
+      // If not showing hidden entries, filter them out
+      if (!showHidden) {
+        setEntries(newEntries.filter(entry => !entry.is_hidden));
+        setTotalCount(prevCount => prevCount - 1);
+      } else {
+        setEntries(newEntries);
+      }
+      
+      // Update backend asynchronously
+      await playlistRepository.hideEntries(playlistID, [entryId], true);
+      
+      setSnackbar({
+        open: true,
+        message: 'Entry hidden',
+        severity: 'success'
+      });
+      
+    } catch (error) {
+      console.error('Error hiding entry:', error);
+      
+      // Revert the optimistic update on error
+      setEntries(entries);
+      if (!showHidden) {
+        setTotalCount(prevCount => prevCount + 1);
+      }
+      
+      setSnackbar({
+        open: true,
+        message: `Error hiding entry: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  };
+
+  // Add function to hide selected entries
+  const hideSelectedTracks = async () => {
+    const length = selectedEntries.length;
+    if (length === 0) return;
+    
+    if (!window.confirm(`Are you sure you want to hide ${length} entries?`)) {
+      return;
+    }
+
+    try {
+      // Optimistically update local state first
+      pushToHistory(entries);
+      const newEntries = entries.map(entry => 
+        selectedEntries.includes(entry.id) 
+          ? { ...entry, is_hidden: true, date_hidden: new Date().toISOString() }
+          : entry
+      );
+      
+      // If not showing hidden entries, filter them out
+      if (!showHidden) {
+        setEntries(newEntries.filter(entry => !entry.is_hidden));
+        setTotalCount(prevCount => prevCount - length);
+      } else {
+        setEntries(newEntries);
+      }
+      
+      clearTrackSelection();
+      
+      // Update backend asynchronously
+      await playlistRepository.hideEntries(playlistID, selectedEntries, true);
+      
+      setSnackbar({
+        open: true,
+        message: `Hidden ${length} entries`,
+        severity: 'success'
+      });
+      
+    } catch (error) {
+      console.error('Error hiding entries:', error);
+      
+      // Revert the optimistic update on error
+      setEntries(entries);
+      if (!showHidden) {
+        setTotalCount(prevCount => prevCount + length);
+      }
+      
+      setSnackbar({
+        open: true,
+        message: `Error hiding entries: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  };
+
+  // Add function to unhide entries
+  const unhideEntry = async (entryId: number) => {
+    try {
+      // Optimistically update local state first
+      pushToHistory(entries);
+      const newEntries = entries.map(entry => 
+        entry.id === entryId 
+          ? { ...entry, is_hidden: false, date_hidden: null }
+          : entry
+      );
+      setEntries(newEntries);
+      
+      // Update backend asynchronously
+      await playlistRepository.hideEntries(playlistID, [entryId], false);
+      
+      setSnackbar({
+        open: true,
+        message: 'Entry unhidden',
+        severity: 'success'
+      });
+      
+    } catch (error) {
+      console.error('Error unhiding entry:', error);
+      
+      // Revert the optimistic update on error
+      setEntries(entries);
+      
+      setSnackbar({
+        open: true,
+        message: `Error unhiding entry: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  };
+
+  // Update BatchActions to include hide option
+  const BatchActions = ({ selectedCount, onRemove, onClear, onHide }) => (
+    <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
+      <button onClick={onHide}>
+        Hide {selectedCount} Selected Entries
+      </button>
+      <button onClick={onRemove}>
+        Remove {selectedCount} Selected Entries
+      </button>
+      <button onClick={onClear}>
+        Clear Selection
+      </button>
+    </div>
+  );
+
+  // Update the render to include the show hidden checkbox and updated batch actions
   return (
     <div className="main-playlist-view">
       <div className="playlist-header">
         <AlbumArtGrid
-          artList={albumArtList ? albumArtList.map(album => album.image_url) : []}
+          artList={
+            albumArtList ? albumArtList.map((album) => album.image_url) : []
+          }
         />
         <h2 className="playlist-name">{name}</h2>
       </div>
       <div className="playlist-controls">
         {historyEnabled && historyControls}
-        <button className="playlist-options" onClick={() => setPlaylistModalVisible(true)}>
+        <button
+          className="playlist-options"
+          onClick={() => setPlaylistModalVisible(true)}
+        >
           ...
         </button>
+
         <div className="filter-container">
           <input
             type="text"
@@ -983,54 +1118,105 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             value={filter}
             onChange={(e) => {
               setFilter(e.target.value);
-              // Direct cookie update isn't needed here as we handle it in useEffect with the debounced value
             }}
             className="filter-input"
           />
 
           {filter && (
-            <button 
+            <button
               className="clear-filter"
               onClick={() => {
-                setFilter('');
+                setFilter("");
               }}
             >
               Clear
             </button>
           )}
+
+          <label className="show-hidden-label">
+            <input
+              type="checkbox"
+              checked={showHidden}
+              onChange={(e) => {
+                setShowHidden(e.target.checked);
+
+                // This will trigger a re-fetch via the useEffect
+              }}
+            />
+            Show Hidden
+          </label>
+
           <span className="filter-count">
-            {totalCount} tracks {filter ? 
-              (filter !== debouncedFilter ? '(filtering...)' : '(filtered)') 
-              : ''}
+            {totalCount} tracks{" "}
+            {filter
+              ? filter !== debouncedFilter
+                ? "(filtering...)"
+                : "(filtered)"
+              : ""}{" "}
+            {showHidden ? "(including hidden)" : ""}
           </span>
         </div>
 
-        <BatchActions 
+        <BatchActions
           selectedCount={selectedEntries.length}
           onRemove={removeSelectedTracks}
           onClear={clearTrackSelection}
+          onHide={hideSelectedTracks} // Add this line
         />
+
+        {/* Add random order button */}
+        <button
+          className={`random-button ${isRandomOrder ? "active" : ""}`}
+          onClick={() => {
+            if (isRandomOrder) {
+              // Return to original order
+              setSortColumn("order");
+              setSortDirection("asc");
+              setIsRandomOrder(false);
+              setRandomSeed(null);
+
+              const newParams = new URLSearchParams(searchParams);
+              newParams.set("sort", "order");
+              newParams.set("dir", "asc");
+              newParams.delete("seed");
+              setSearchParams(newParams, { replace: true });
+            } else {
+              shufflePlaylist();
+            }
+          }}
+          title={
+            isRandomOrder ? "Return to original order" : "Shuffle playlist"
+          }
+        >
+          {isRandomOrder ? "🔁" : "🔀"} {isRandomOrder ? "Unshuffle" : "Shuffle"}
+        </button>
       </div>
 
       <div className="playlist-container">
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="playlist-grid-header-row">
             <div className="grid-cell">
-              <input 
-                type="checkbox" 
-                checked={allPlaylistEntriesSelected} 
-                onChange={toggleAllTracks} 
+              <input
+                type="checkbox"
+                checked={allPlaylistEntriesSelected}
+                onChange={toggleAllTracks}
               />
-              <span className="clickable" onClick={() => handleSort('order')}>
-                # {getSortIndicator('order')}
+              <span className="clickable" onClick={() => handleSort("order")}>
+                # {getSortIndicator("order")}
               </span>
             </div>
-            
-            <div className="grid-cell clickable" onClick={() => handleSort('artist')}>
-              Artist {getSortIndicator('artist')}
+
+            <div
+              className="grid-cell clickable"
+              onClick={() => handleSort("artist")}
+            >
+              Artist {getSortIndicator("artist")}
             </div>
-            <div className="grid-cell clickable" onClick={() => handleSort('title')}>
-              Song {getSortIndicator('title')}
+            <div
+              className="grid-cell clickable"
+              onClick={() => handleSort("title")}
+            >
+              Song {getSortIndicator("title")}
             </div>
           </div>
 
@@ -1051,10 +1237,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             )}
           >
             {(provided, snapshot) => (
-              <div 
-                className="playlist-grid-content" 
-                ref={provided.innerRef}
-              >
+              <div className="playlist-grid-content" ref={provided.innerRef}>
                 <AutoSizer>
                   {({ height, width }) => (
                     <List
@@ -1070,17 +1253,23 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                         sortColumn,
                         handleContextMenu: handleContextMenu,
                         isDraggingOver: snapshot.isDraggingOver,
-                        totalCount: totalCount
+                        totalCount: totalCount,
                       }}
                       overscanCount={50} // Increased from 20 to handle fast scrolling better
-                      onItemsRendered={({ visibleStartIndex, visibleStopIndex }) => {
+                      onItemsRendered={({
+                        visibleStartIndex,
+                        visibleStopIndex,
+                      }) => {
                         // Store the visible range
                         setVisibleStartIndex(visibleStartIndex);
                         setVisibleStopIndex(visibleStopIndex);
-                        
+
                         // Use requestAnimationFrame to ensure this runs after the render cycle
                         requestAnimationFrame(() => {
-                          loadItemsForVisibleRange(visibleStartIndex, visibleStopIndex);
+                          loadItemsForVisibleRange(
+                            visibleStartIndex,
+                            visibleStopIndex
+                          );
                         });
                       }}
                     >
@@ -1094,10 +1283,11 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         </DragDropContext>
       </div>
 
-      <BatchActions 
+      <BatchActions
         selectedCount={selectedEntries.length}
         onRemove={removeSelectedTracks}
         onClear={clearTrackSelection}
+        onHide={hideSelectedTracks} // Add this line
       />
 
       <SearchResultsGrid
@@ -1118,7 +1308,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         />
       )}
 
-      {!!(similarTracks.length) && (
+      {!!similarTracks.length && (
         <SimilarTracksPopup
           x={position.x}
           y={position.y}
@@ -1136,7 +1326,9 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           onEntryUpdated={(updatedEntry) => {
             // Update the entry in your playlist state
             const newEntries = [...entries];
-            const entryIndex = entries.findIndex(e => e.id === updatedEntry.id);
+            const entryIndex = entries.findIndex(
+              (e) => e.id === updatedEntry.id
+            );
             if (entryIndex !== -1) {
               newEntries[entryIndex] = updatedEntry;
               setEntries(newEntries);
@@ -1157,13 +1349,25 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         <BaseModal
           title="Playlist Options"
           options={[
-            { label: 'Export to m3u', action: () => exportPlaylist(playlistID) },
-            { label: 'Export to JSON', action: () => exportPlaylistToJson(playlistID) },
-            { label: 'Sync Options', action: () => {setSyncConfigOpen(true)} },
-            { label: 'Sync Now', action: onSyncToPlex },
-            { label: 'Delete Playlist', action: onDeletePlaylist }
+            {
+              label: "Export to m3u",
+              action: () => exportPlaylist(playlistID),
+            },
+            {
+              label: "Export to JSON",
+              action: () => exportPlaylistToJson(playlistID),
+            },
+            {
+              label: "Sync Options",
+              action: () => {
+                setSyncConfigOpen(true);
+              },
+            },
+            { label: "Sync Now", action: onSyncToPlex },
+            { label: "Delete Playlist", action: onDeletePlaylist },
           ]}
           onClose={() => setPlaylistModalVisible(false)}
+          onBackdropClick={() => setPlaylistModalVisible(false)}
         />
       )}
 
@@ -1180,27 +1384,6 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             <BiLoaderAlt className="spinner-icon" />
           </div>
         </div>
-      )}
-
-      {matchModalOpen && (
-        <MatchTrackModal
-          isOpen={matchModalOpen}
-          onClose={() => setMatchModalOpen(false)}
-          track={trackToMatch}
-          initialMatches={matchingTracks.map(track => new PlaylistEntry(track))}
-          onMatchSelect={linkTrackWithMatch}
-          setSnackbar={setSnackbar}
-        />
-      )}
-
-      {albumMatchModalOpen && (
-        <MatchAlbumModal
-          isOpen={albumMatchModalOpen}
-          onClose={() => setAlbumMatchModalOpen(false)}
-          track={albumToMatch}
-          onMatchSelect={replaceAlbumWithMatch}
-          setSnackbar={setSnackbar}
-        />
       )}
 
       {editModalOpen && (

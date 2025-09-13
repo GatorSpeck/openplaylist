@@ -66,6 +66,10 @@ def playlist_orm_to_response(playlist_entry: PlaylistEntryDB, order: Optional[in
     if order is not None:
         result.order = order
     
+    # Add hidden fields
+    result.is_hidden = playlist_entry.is_hidden
+    result.date_hidden = playlist_entry.date_hidden
+    
     return result
     
 
@@ -74,6 +78,7 @@ class PlaylistSortCriteria(IntEnum):
     TITLE = 1
     ARTIST = 2
     ALBUM = 3
+    RANDOM = 4  # Add this line
 
     @classmethod
     def from_str(cls, s):
@@ -88,6 +93,8 @@ class PlaylistSortCriteria(IntEnum):
             return cls.ARTIST
         elif s == "album":
             return cls.ALBUM
+        elif s == "random":
+            return cls.RANDOM
         else:
             return cls.ORDER
 
@@ -114,6 +121,8 @@ class PlaylistFilter(BaseModel):
     sortDirection: PlaylistSortDirection = PlaylistSortDirection.ASC
     limit: Optional[int] = None
     offset: Optional[int] = None
+    include_hidden: Optional[bool] = False
+    randomSeed: Optional[int] = None  # Add this line
 
 class PlaylistRepository(BaseRepository[PlaylistDB]):
     def __init__(self, session):
@@ -292,7 +301,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
 
         return Playlist.from_orm(result, details=False)
 
-    def get_with_entries(self, playlist_id: int, limit=None, offset=None) -> Optional[Playlist]:
+    def get_with_entries(self, playlist_id: int, limit=None, offset=None, include_hidden=False) -> Optional[Playlist]:
         # First, get the basic playlist info without entries
         playlist = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
         if playlist is None:
@@ -302,8 +311,13 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         entries_query = (
             self.session.query(PlaylistEntryDB)
             .filter(PlaylistEntryDB.playlist_id == playlist_id)
-            .order_by(PlaylistEntryDB.order)
         )
+        
+        # Filter out hidden entries unless explicitly requested
+        if not include_hidden:
+            entries_query = entries_query.filter(PlaylistEntryDB.is_hidden == False)
+            
+        entries_query = entries_query.order_by(PlaylistEntryDB.order)
         
         # Apply pagination at the database level
         if limit is not None and offset is not None:
@@ -1013,6 +1027,10 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 )
             )
         
+        # Add hidden filter
+        if not filter.include_hidden:
+            query = query.filter(poly_entity.is_hidden == False)
+        
         # Apply sorting
         if filter.sortCriteria == PlaylistSortCriteria.TITLE:
             sort_column = case(
@@ -1032,17 +1050,23 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 (poly_entity.entry_type == "requested_album", requested_album_details.title),
                 else_=None
             )
+        elif filter.sortCriteria == PlaylistSortCriteria.RANDOM:
+            # Use a deterministic random function with the seed
+            from sqlalchemy import func
+            if filter.randomSeed is not None:
+                # Create a deterministic random sort using the ID and seed
+                sort_column = func.abs(func.random() * (poly_entity.id + filter.randomSeed))
+            else:
+                sort_column = func.random()
         else:
             # default to order
             sort_column = poly_entity.order
         
-        # Handle sort direction
-        if filter.sortDirection == PlaylistSortDirection.ASC:
+        # Handle sort direction (random always uses ASC since it's already randomized)
+        if filter.sortCriteria == PlaylistSortCriteria.RANDOM or filter.sortDirection == PlaylistSortDirection.ASC:
             query = query.order_by(sort_column.asc())
-        elif filter.sortDirection == PlaylistSortDirection.DESC:
-            query = query.order_by(sort_column.desc())
         else:
-            query = query.order_by(sort_column.asc())
+            query = query.order_by(sort_column.desc())
         
         if count_only:
             count = query.count()
@@ -1432,3 +1456,27 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             raise e
         finally:
             self.session.close()
+
+    # Add new method to hide entries
+    def hide_entries(self, playlist_id: int, entry_ids: List[int], hide: bool = True) -> None:
+        """Hide or unhide playlist entries"""
+        entries = (
+            self.session.query(PlaylistEntryDB)
+            .filter(PlaylistEntryDB.playlist_id == playlist_id)
+            .filter(PlaylistEntryDB.id.in_(entry_ids))
+            .all()
+        )
+        
+        for entry in entries:
+            entry.is_hidden = hide
+            if hide:
+                entry.date_hidden = datetime.now()
+            else:
+                entry.date_hidden = None
+        
+        # Update playlist timestamp
+        playlist = self.session.get(PlaylistDB, playlist_id)
+        playlist.updated_at = datetime.now()
+        
+        self.session.commit()
+        logging.info(f"{'Hidden' if hide else 'Unhidden'} {len(entries)} entries in playlist {playlist_id}")

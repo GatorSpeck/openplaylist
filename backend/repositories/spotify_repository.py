@@ -377,16 +377,14 @@ class SpotifyRepository(RemotePlaylistRepository):
                 
         return self.sp.playlist(self.playlist_id)
     
-    def get_playlist_snapshot(self, playlist_name: str) -> Optional[PlaylistSnapshot]:
+    def get_playlist_snapshot(self, playlist_name: str, playlist_id: str) -> Optional[PlaylistSnapshot]:
         """Get a snapshot of a Spotify playlist for sync"""
         try:
             if not self.is_authenticated():
                 logging.error("Not authenticated with Spotify")
                 return None
-
-            if not self.playlist_id:
-                logging.error("No playlist ID configured")
-                return None
+        
+            self.playlist_id = playlist_id
             
             result = PlaylistSnapshot(
                 name=playlist_name,  # Use the provided name for consistency

@@ -6,7 +6,7 @@ import PlaylistEntry from '../../lib/PlaylistEntry';
 
 const MatchAlbumModal = ({ isOpen, onClose, track, onMatchSelect, setSnackbar }) => {
   const [searchQuery, setSearchQuery] = useState(`${track.getArtist() || ''} ${track.getAlbum() || ''}`);
-  const [matches, setMatches] = useState([]);
+  const [matches, setMatches] = useState<PlaylistEntry[]>([]);
   const [loading, setLoading] = useState(false);
 
   const searchAlbums = async (includeTrack) => {
@@ -22,12 +22,13 @@ const MatchAlbumModal = ({ isOpen, onClose, track, onMatchSelect, setSnackbar })
       }
 
       const results = await Promise.all(promises);
-      console.log(results);
 
       const searchResults = results[0] || [];
       const infoResults = [results[1]];
 
       const jointResults = infoResults.concat(searchResults);
+
+      // console.log(jointResults);
 
       if (!jointResults || results.length === 0) {
         setSnackbar({
@@ -88,10 +89,15 @@ const MatchAlbumModal = ({ isOpen, onClose, track, onMatchSelect, setSnackbar })
           {matches.length > 0 ? (
             <div className="album-list">
               {matches.map((album, index) => (
-                <div key={index} className="album-match" onClick={() => onMatchSelect(album)}>
+                <div key={index} className="album-match" onClick={async () => {
+                  // Enhance the album with detailed release date info if it has an mbid
+                  // not worth doing this now, since the Last.FM route doesn't actually return the release date....
+                  // const enhancedAlbums = await lastFMRepository.enhanceAlbumsWithDetailedInfo([album]);
+                  onMatchSelect(album);
+                }}>
                   <div className="album-cover">
-                    {album.details.art_url ? (
-                      <img src={album.details.art_url} alt={album.getAlbum()} />
+                    {album.getArtUrl() ? (
+                      <img src={album.getArtUrl()} alt={album.getAlbum()} />
                     ) : (
                       <div className="no-image">No Image</div>
                     )}
@@ -99,8 +105,8 @@ const MatchAlbumModal = ({ isOpen, onClose, track, onMatchSelect, setSnackbar })
                   <div className="album-details">
                     <p className="album-name">{album.getAlbum()}</p>
                     <p className="album-artist">{album.getAlbumArtist()}</p>
-                    {album.details.tracks && (
-                      <p className="track-count">{album.details.tracks.length} tracks</p>
+                    {album.getTracks() && album.getTracks().length > 0 && (
+                      <p className="track-count">{album.getTracks().length} tracks</p>
                     )}
                   </div>
                 </div>

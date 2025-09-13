@@ -37,6 +37,52 @@ from pydantic import BaseModel
 import sys
 from routes import router
 from routes.spotify_router import spotify_router
+import asyncio
+from fastapi.responses import StreamingResponse
+from typing import AsyncGenerator
+import queue  # Add this import for thread-safe queue
+from collections import deque
+import threading
+
+class LogHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.log_buffer = deque(maxlen=1000)  # Keep last 1000 log entries
+        self.subscribers = set()
+
+    def emit(self, record):
+        try:
+            log_entry = {
+                'timestamp': record.created,
+                'level': record.levelname,
+                'name': record.name,
+                'filename': record.filename,
+                'lineno': record.lineno,
+                'message': record.getMessage()
+            }
+            
+            self.log_buffer.append(log_entry)
+            # Notify subscribers - use thread-safe approach
+            dead_subscribers = set()
+            for subscriber_queue in list(self.subscribers):
+                try:
+                    # Use put_nowait to avoid blocking
+                    subscriber_queue.put_nowait(log_entry)
+                except queue.Full:
+                    # Queue is full, mark for removal
+                    dead_subscribers.add(subscriber_queue)
+                except Exception:
+                    # Subscriber is dead, mark for removal
+                    dead_subscribers.add(subscriber_queue)
+                
+            # Remove dead subscribers
+            for dead_sub in dead_subscribers:
+                self.subscribers.discard(dead_sub)
+                    
+        except Exception as e:
+            # Don't let logging errors break the application
+            pass
+
 
 class TimingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable):
@@ -45,7 +91,7 @@ class TimingMiddleware(BaseHTTPMiddleware):
         # Get query parameters as dict
         params = dict(request.query_params)
 
-        do_logging = request.url.path != "/api/health"
+        do_logging = request.url.path not in ("/api/health", "/api/logs/recent", "/api/scan/progress")
 
         if do_logging:
             logging.info(
@@ -86,6 +132,12 @@ logging.basicConfig(
     format='%(asctime)s.%(msecs)03d - %(levelname)s - %(name)s:%(filename)s:%(lineno)d - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+
+# Create global log handler instance
+log_handler = LogHandler()
+
+# Add the custom handler to the root logger
+logging.getLogger().addHandler(log_handler)
 
 ALLOW_ORIGINS = [origin.strip() for origin in os.getenv("ALLOW_ORIGINS", "http://localhost:80").split(",")]
 
@@ -265,20 +317,6 @@ def scan_directory(directory: str, full=False):
             file_size = os.path.getsize(full_path)
 
             year = metadata.year
-            release_year = None
-            exact_release_date = None
-
-            # try to infer the exact release date
-            if year:
-                if len(year) > 4:
-                    try:
-                        exact_release_date = datetime.strptime(year, "%Y-%m-%d")
-                        release_year = exact_release_date.year
-                        exact_release_date = exact_release_date
-                    except ValueError:
-                        pass
-                elif len(year) == 4:
-                    release_year = int(year)
             
             album = None
 
@@ -290,7 +328,7 @@ def scan_directory(directory: str, full=False):
                     album = AlbumDB(
                         artist=metadata.get_album_artist(),
                         title=metadata.album,
-                        year=exact_release_date if exact_release_date else release_year,
+                        year=year,
                         tracks = []
                     )
                     db.add(album)
@@ -309,8 +347,6 @@ def scan_directory(directory: str, full=False):
                 existing_file.year = year
                 existing_file.length = metadata.length
                 existing_file.publisher = metadata.publisher
-                existing_file.exact_release_date = exact_release_date
-                existing_file.release_year = release_year
                 existing_file.rating = metadata.rating
                 existing_file.genres = [
                     TrackGenreDB(parent_type="music_file", genre=genre)
@@ -319,6 +355,13 @@ def scan_directory(directory: str, full=False):
                 existing_file.comments = metadata.comments
                 existing_file.track_number = metadata.track_number
                 existing_file.disc_number = metadata.disc_number
+
+                # get existing MusicFile record
+                this_track = db.query(MusicFileDB).join(LocalFileDB).filter(LocalFileDB.id == existing_file.id).first()
+                if this_track:
+                    db.flush()
+                    this_track.sync_from_file_metadata()
+
             else:
                 scan_results.files_indexed += 1
                 scan_results.files_added += 1
@@ -377,6 +420,27 @@ def scan_directory(directory: str, full=False):
     db.close()
 
     scan_results.in_progress = False
+
+@router.get("/logs/recent")
+def get_recent_logs(level: Optional[str] = None, since: Optional[float] = None):
+    """Get recent log entries, optionally filtered by level and timestamp"""
+    with log_handler.lock:
+        logs = list(log_handler.log_buffer)
+    
+    # Filter by timestamp first if since is provided
+    if since:
+        logs = [log for log in logs if log['timestamp'] > since]
+    
+    # Filter by level if specified
+    if level:
+        level_upper = level.upper()
+        logs = [log for log in logs if log['level'] == level_upper]
+    
+    return {
+        "logs": logs, 
+        "timestamp": time.time(),
+        "count": len(logs)
+    }
 
 @router.get("/purge")
 def purge_data():
@@ -518,13 +582,13 @@ def get_album_art(artist: str = Query(...), album: str = Query(...)):
     return repo.get_album_art(artist, album)
 
 @router.get("/lastfm/album/info", response_model=Optional[Album])
-def get_album_info(artist: str = Query(...), album: str = Query(...)):
+def get_album_info(artist: str = Query(...), album: str = Query(...), mbid: str = Query(...)):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
     repo = last_fm_repository(api_key, requests_cache_session, redis_session=redis_session)
-    return repo.get_album_info(artist, album)
+    return repo.get_album_info(artist=artist, album=album, mbid=mbid)
 
 @router.get("/lastfm/album/search", response_model=List[Album])
 def search_album(album: str = Query(...), artist: Optional[str] = Query(None), ):
@@ -619,7 +683,7 @@ def import_spotify_playlist(
     if not spotify_repo:
         raise HTTPException(status_code=500, detail="Spotify API key not configured")
     
-    snapshot = spotify_repo.get_playlist_snapshot(params.playlist_id)
+    snapshot = spotify_repo.get_playlist_snapshot(params.playlist_name, params.playlist_id)
     if not snapshot:
         raise HTTPException(status_code=404, detail="Playlist not found")
 
@@ -751,6 +815,50 @@ def browse_directories(current_path: Optional[str] = Query(None)):
 @router.get("/health")
 def health_check():
     return {"status": "ok"}
+
+@router.get("/music/anniversaries")
+def get_upcoming_anniversaries(
+    start_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
+    end_date: str = Query(..., description="End date in YYYY-MM-DD format"),
+    repo: MusicFileRepository = Depends(get_music_file_repository)
+):
+    """Get album anniversaries within the specified date range"""
+    try:
+        from datetime import datetime
+        
+        # Parse the date strings
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        # Validate date range
+        if start_dt > end_dt:
+            raise HTTPException(status_code=400, detail="Start date must be before end date")
+        
+        anniversaries = repo.get_anniversaries_in_date_range(start_dt, end_dt)
+        
+        # Convert to response format
+        anniversary_data = []
+        for album in anniversaries:
+            anniversary_data.append({
+                "id": album.id,
+                "album": album.album,
+                "artist": album.album_artist or album.artist,
+                "original_release_date": album.exact_release_date.strftime("%Y-%m-%d") if album.exact_release_date else None,
+                "anniversary_date": album.anniversary_date.strftime("%Y-%m-%d"),
+                "years_since_release": album.years_since_release,
+                "art_url": None  # Could be enhanced to fetch from Last.fm
+            })
+        
+        return {"anniversaries": anniversary_data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error fetching anniversaries: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch anniversaries")
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
