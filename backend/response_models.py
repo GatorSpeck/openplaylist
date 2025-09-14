@@ -811,3 +811,19 @@ class PlaylistSnapshot(BaseModel):
         right_contents = [item.to_string(normalize=True) for item in other.items]
         diff = difflib.ndiff(left_contents, right_contents)
         return list(diff)
+
+class SyncLogEntry(BaseModel):
+    action: str  # 'add' or 'remove'
+    track: str  # formatted track string
+    target: str  # 'local' or service name like 'spotify', 'plex'
+    target_name: Optional[str] = None  # specific playlist name
+    reason: str
+    success: bool = True
+    error: Optional[str] = None
+
+class SyncResult(BaseModel):
+    status: str  # 'success', 'partial', or 'failed'
+    synced: List[Dict]
+    failed: List[Dict]
+    summary: Dict
+    log: List[SyncLogEntry]  # Add this field

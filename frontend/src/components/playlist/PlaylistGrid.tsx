@@ -29,6 +29,7 @@ import PlaylistEntry, {PlaylistEntryStub} from '../../lib/PlaylistEntry';
 import SelectPlaylistModal from './SelectPlaylistModal';
 import { setCookie, getCookie } from '../../lib/cookieUtils';
 import SyncConfig from './SyncConfig'; // Import the SyncConfig component
+import SyncLogModal from './SyncLogModal';
 
 const BatchActions = ({ selectedCount, onRemove, onClear, onHide }) => (
   <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -258,6 +259,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const [totalCount, setTotalCount] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [tracksToAddToOtherPlaylist, setTracksToAddToOtherPlaylist] = useState([]);
+  const [syncLogModalOpen, setSyncLogModalOpen] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
 
   // Add these state variables to track visible ranges
   const [visibleStartIndex, setVisibleStartIndex] = useState(0);
@@ -586,20 +589,39 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   const onSyncToPlex = async () => {
     try {
-      await playlistRepository.syncToPlex(playlistID);
+      const response = await playlistRepository.syncToPlex(playlistID);
+      
+      // Store the sync result for the log modal
+      setSyncResult(response);
+      setSyncLogModalOpen(true);
 
       const playlistName = (await playlistRepository.getPlaylistDetails(playlistID)).name;
 
       setSnackbar({
         open: true,
-        message: `'${playlistName}' synced to Plex`
+        message: `'${playlistName}' synced to Plex - Click to view details`,
+        severity: 'success',
+        action: () => setSyncLogModalOpen(true)
       });
 
       // refresh view
-      fetchPlaylistDetails(true);
+      await refreshPlaylist();
     } catch (error) {
-      console.error('Error exporting playlist:', error);
+      console.error('Error syncing to Plex:', error);
+      setSnackbar({
+        open: true,
+        message: 'Error syncing to Plex',
+        severity: 'error'
+      });
     }
+  };
+
+  const refreshPlaylist = async () => {
+    // Re-fetch playlist details and art grid
+    await Promise.all([
+      fetchPlaylistDetails(true),
+      fetchPlaylistArtGrid()
+    ]);
   };
 
   const onDragEnd = async (result) => {
@@ -1401,6 +1423,15 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           onClose={() => setSelectPlaylistModalVisible(false)}
           selectedEntries={tracksToAddToOtherPlaylist}
           setSnackbar={setSnackbar}
+        />
+      )}
+
+      {syncLogModalOpen && (
+        <SyncLogModal
+          open={syncLogModalOpen}
+          onClose={() => setSyncLogModalOpen(false)}
+          syncResult={syncResult}
+          playlistName={name}
         />
       )}
     </div>

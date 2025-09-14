@@ -376,21 +376,29 @@ class SpotifyRepository(RemotePlaylistRepository):
                 self.sp.playlist_add_items(self.playlist_id, batch)
                 
         return self.sp.playlist(self.playlist_id)
+
+    def get_playlist_id_by_name(self, name):
+        playlists = self.sp.current_user_playlists()
+        for playlist in playlists["items"]:
+            if playlist["name"] == name:
+                return playlist["id"]
+            
+        return None
     
-    def get_playlist_snapshot(self, playlist_name: str, playlist_id: str) -> Optional[PlaylistSnapshot]:
+    def get_playlist_snapshot(self, playlist_name: str) -> Optional[PlaylistSnapshot]:
         """Get a snapshot of a Spotify playlist for sync"""
         try:
             if not self.is_authenticated():
                 logging.error("Not authenticated with Spotify")
                 return None
-        
-            self.playlist_id = playlist_id
-            
+
             result = PlaylistSnapshot(
                 name=playlist_name,  # Use the provided name for consistency
                 last_updated=datetime.now(get_local_tz()),  # Spotify doesn't provide last updated time
                 items=[]
             )
+
+            self.playlist_id = playlist_name
             
             # Get all tracks (handle pagination)
             tracks = []
