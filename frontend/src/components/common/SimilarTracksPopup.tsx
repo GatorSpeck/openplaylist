@@ -102,7 +102,7 @@ export const SimilarTracksPopup: React.FC<SimilarTracksPopupProps> = ({ x, y, tr
                 style={{ marginRight: '0.5rem' }}
                 readOnly
                 />
-                <span>{track.getArtist()} - {track.getTitle()}{track.entry_type === "music_file" ? (<span>&nbsp;<LibraryMusicIcon /></span>) : null}</span>
+                <span>{track.getArtist()} - {track.getTitle()}{track.getPath() ? (<span>&nbsp;<LibraryMusicIcon /></span>) : null}</span>
                 {track.url && (
                     <span>
                         &nbsp;
