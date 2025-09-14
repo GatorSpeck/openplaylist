@@ -263,9 +263,9 @@ class SpotifyRepository(RemotePlaylistRepository):
                 logging.error(f"Error fetching track by URI {item.spotify_uri}: {e}")
                 return None
         
-        query = {"artist": item.artist, "title": item.title}
+        query = {"artist": item.artist, "title": item.title[:50]}  # limit title length for super long titles
         if item.album:
-            query["album"] = item.album
+            query["album"] = item.album[:50]  # limit album length too
             
         query = urllib.parse.urlencode(query)
 
