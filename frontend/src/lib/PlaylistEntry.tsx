@@ -131,6 +131,10 @@ class PlaylistEntry extends PlaylistEntryStub {
     return this.details.art_url || null;
   }
 
+  getPath() {
+    return this.getDetails().path || null;
+  }
+
   getTracks() {
     if (!this.isAlbum()) {
       return [];

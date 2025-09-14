@@ -774,7 +774,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     const similars = await openAIRepository.findSimilarTracks(track);
     const localFiles = await libraryRepository.findLocalFiles(similars);
 
-    if (localFiles.length === 0) {
+    if (similars.length === 0) {
       window.alert('No similar tracks found with OpenAI.');
     }
 
@@ -791,7 +791,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     const similars = await lastFMRepository.findSimilarTracks(track);
     const localFiles = await libraryRepository.findLocalFiles(similars);
 
-    if (localFiles.length === 0) {
+    if (similars.length === 0) {
       window.alert('No similar tracks found with Last.FM.');
     }
 
