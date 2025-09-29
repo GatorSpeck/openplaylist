@@ -385,7 +385,7 @@ class SpotifyRepository(RemotePlaylistRepository):
             
         return None
     
-    def get_playlist_snapshot(self, playlist_name: str) -> Optional[PlaylistSnapshot]:
+    def get_playlist_snapshot(self, playlist_id: str) -> Optional[PlaylistSnapshot]:
         """Get a snapshot of a Spotify playlist for sync"""
         try:
             if not self.is_authenticated():
@@ -393,19 +393,19 @@ class SpotifyRepository(RemotePlaylistRepository):
                 return None
 
             result = PlaylistSnapshot(
-                name=playlist_name,  # Use the provided name for consistency
+                name=playlist_id,  # Use the provided name for consistency
                 last_updated=datetime.now(get_local_tz()),  # Spotify doesn't provide last updated time
                 items=[]
             )
 
-            self.playlist_id = playlist_name
+            self.playlist_id = playlist_id
             
             # Get all tracks (handle pagination)
             tracks = []
             results_page = self.sp.playlist_tracks(self.playlist_id)
 
             if not results_page or "items" not in results_page:
-                logging.error(f"Failed to fetch tracks for playlist: {playlist_name}")
+                logging.error(f"Failed to fetch tracks for playlist: {playlist_id}")
                 return None
             
             while True:
@@ -435,7 +435,7 @@ class SpotifyRepository(RemotePlaylistRepository):
 
                 result.add_item(playlist_item)
             
-            self.playlist_snapshots[playlist_name] = result
+            self.playlist_snapshots[playlist_id] = result
 
             return result
         except Exception as e:
