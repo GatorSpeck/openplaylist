@@ -59,11 +59,11 @@ def create_snapshot(playlist: PlaylistDB) -> PlaylistSnapshot:
             artist=e.details.artist,
             album=e.details.album,
             title=e.details.title,
-            local_path=e.details.path,
-            spotify_uri=e.details.spotify_uri,
-            youtube_url=e.details.youtube_url,
-            plex_rating_key=e.details.plex_rating_key,
-            music_file_id=e.details.id
+            local_path=getattr(e.details, 'path', None),
+            spotify_uri=getattr(e.details, 'spotify_uri', None),
+            youtube_url=getattr(e.details, 'youtube_url', None),
+            plex_rating_key=getattr(e.details, 'plex_rating_key', None),
+            music_file_id=getattr(e.details, 'id', None)
         )
 
         result.add_item(new_item)
@@ -306,28 +306,127 @@ class RemotePlaylistRepository(ABC):
         Apply the unified sync plan to both local and remote playlists
         """
         for change in plan:
-            change.log_change()
+            logging.info(f"Sync change: {change.action} {change.item.to_string()} from {change.source} - {change.reason}")
         
         # Apply remote changes
-        remote_adds = [change for change in plan if change.action == 'add' and change.target == 'remote']
+        remote_adds = [change for change in plan if change.action == 'add' and change.source == 'local']
         if remote_adds:
             try:
-                self.add_items(remote_playlist_name, remote_adds)
+                items_to_add = [change.item for change in remote_adds]
+                self.add_items(remote_playlist_name, items_to_add)
                 logging.info(f"Added {len(remote_adds)} tracks to remote playlist")
             except Exception as e:
                 logging.error(f"Error adding tracks to remote playlist: {e}")
 
-        remote_removes = [change for change in plan if change.action == 'remove' and change.target == 'remote']
+        remote_removes = [change for change in plan if change.action == 'remove' and change.source == 'local']
         if remote_removes:
             removed_count = 0
-            for item in remote_removes:
+            for change in remote_removes:
                 try:
-                    self.remove_items(remote_playlist_name, [item])
+                    self.remove_items(remote_playlist_name, [change.item])
                     removed_count += 1
                 except Exception as e:
-                    logging.error(f"Error removing {item.to_string()} from remote playlist: {e}")
+                    logging.error(f"Error removing {change.item.to_string()} from remote playlist: {e}")
             
             if removed_count > 0:
                 logging.info(f"Removed {removed_count} tracks from remote playlist")
         
         logging.info(f"Applying local changes to playlist {playlist_id}")
+        
+        # Apply local changes (from remote source)
+        local_adds = [change for change in plan if change.action == 'add' and change.source == 'remote']
+        if local_adds:
+            for change in local_adds:
+                try:
+                    # Convert PlaylistItem to a format the local repo can handle
+                    # This would typically involve calling something like repo.add_music_file or similar
+                    if hasattr(repo, 'add_music_file'):
+                        # Create a basic music file object from the playlist item
+                        from response_models import MusicFile
+                        music_file = MusicFile(
+                            title=change.item.title,
+                            artist=change.item.artist,
+                            album=change.item.album
+                        )
+                        repo.add_music_file(playlist_id, music_file)
+                        logging.info(f"Added track {change.item.to_string()} to local playlist")
+                except Exception as e:
+                    logging.error(f"Error adding {change.item.to_string()} to local playlist: {e}")
+        
+        local_removes = [change for change in plan if change.action == 'remove' and change.source == 'remote']
+        if local_removes:
+            for change in local_removes:
+                try:
+                    if hasattr(repo, 'remove_music_file'):
+                        repo.remove_music_file(playlist_id, change.item)
+                        logging.info(f"Removed track {change.item.to_string()} from local playlist")
+                except Exception as e:
+                    logging.error(f"Error removing {change.item.to_string()} from local playlist: {e}")
+    
+    def sync_playlist(self, local_repo, playlist_id: int, sync_target: SyncTarget):
+        """
+        Sync a playlist with the remote service
+        
+        Args:
+            local_repo: Local playlist repository
+            playlist_id: ID of the playlist to sync
+            sync_target: Sync target configuration
+        """
+        if not sync_target.enabled:
+            logging.info(f"Sync target {sync_target.id} is disabled, skipping sync")
+            return
+        
+        # Get the local playlist
+        playlist = local_repo.get_by_id(playlist_id)
+        if not playlist:
+            raise ValueError(f"Playlist {playlist_id} not found")
+        
+        # Create local snapshot
+        local_snapshot = create_snapshot(playlist)
+        
+        # Get target name from config
+        target_name = sync_target.config.get('playlist_name') or playlist.name
+        
+        # Get current remote snapshot and stored snapshot
+        current_remote_snapshot = self.get_playlist_snapshot(target_name)
+        stored_remote_snapshot = self.get_current_snapshot(target_name)
+        
+        # If no remote playlist exists, create it
+        if not current_remote_snapshot:
+            logging.info(f"Creating remote playlist '{target_name}'")
+            if sync_target.sendEntryAdds:
+                # Create with current local items
+                self.create_playlist(target_name, local_snapshot)
+                # Update stored snapshot - create new snapshot with correct name
+                new_snapshot = PlaylistSnapshot(
+                    name=target_name,
+                    last_updated=local_snapshot.last_updated,
+                    items=local_snapshot.items
+                )
+            else:
+                # Create empty playlist when sendEntryAdds is False
+                empty_snapshot = PlaylistSnapshot(
+                    name=target_name,
+                    last_updated=local_snapshot.last_updated,
+                    items=[]
+                )
+                self.create_playlist(target_name, empty_snapshot)
+                new_snapshot = empty_snapshot
+                
+            self.write_snapshot(new_snapshot)
+            return
+        
+        # Create sync plan
+        sync_plan = self.create_sync_plan(
+            old_remote_snapshot=stored_remote_snapshot,
+            new_remote_snapshot=current_remote_snapshot,
+            new_local_snapshot=local_snapshot,
+            sync_target=sync_target
+        )
+        
+        # Apply sync plan
+        self.apply_sync_plan(local_repo, playlist_id, target_name, sync_plan)
+        
+        # Update stored snapshot with current remote state
+        if current_remote_snapshot:
+            self.write_snapshot(current_remote_snapshot)

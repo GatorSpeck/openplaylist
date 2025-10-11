@@ -7,7 +7,7 @@ clean:
 
 [working-directory: 'backend']
 @test_backend:
-    pytest
+    python3 -m venv .venv && . .venv/bin/activate && pytest
 
 [working-directory: 'frontend']
 @test_frontend:
