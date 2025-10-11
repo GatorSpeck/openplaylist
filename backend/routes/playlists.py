@@ -3,7 +3,7 @@ from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
 from repositories.playlist import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
 from fastapi import Query, APIRouter, Depends, Body, File, UploadFile
-from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, LinkChangeRequest, MusicFileEntry, RequestedAlbumEntry, Album, TrackDetails, PlaylistEntryStub, SyncTarget
+from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, LinkChangeRequest, MusicFileEntry, RequestedAlbumEntry, Album, TrackDetails, PlaylistEntryStub, SyncTarget, SyncLogEntry
 import json
 from repositories.playlist import PlaylistRepository
 from repositories.music_file import MusicFileRepository
@@ -483,6 +483,8 @@ def sync_playlist(
     Args:
         playlist_id: The ID of the playlist to sync
     """
+    sync_log = []  # Initialize sync log
+    
     try:
         # Get all enabled sync targets for this playlist
         sync_targets = repo.get_sync_targets(playlist_id)
@@ -507,7 +509,7 @@ def sync_playlist(
         remote_repos = {}
         current_snapshots = {}
         old_snapshots = {}
-
+        
         # Step 2: Get the current local snapshot
         playlist = repo.get_by_id(playlist_id)
         if not playlist:
@@ -526,6 +528,8 @@ def sync_playlist(
                     # Use playlist name as fallback for Plex
                     playlist = repo.get_by_id(playlist_id)
                     target_name = playlist.name
+                if not target_name and target.service == 'spotify':
+                    target_name = config.get('playlist_uri', None)
                 
                 # Create the appropriate repository
                 remote_repo = create_remote_repository(
@@ -537,7 +541,7 @@ def sync_playlist(
 
                 if remote_repo is None:
                     raise Exception(f"Unsupported service: {target.service}")
-                
+
                 # Store the repository and target name for later use
                 remote_repos[target.id] = {
                     'repo': remote_repo,
@@ -551,6 +555,14 @@ def sync_playlist(
 
                 if not current_snapshots[target.id]:
                     # remote playlist doesn't exist - let's create it
+                    sync_log.append(SyncLogEntry(
+                        action="create",
+                        track=f"Playlist '{target_name or f'{target.service}_playlist'}'",
+                        target=target.service,
+                        target_name=target_name,
+                        reason="Remote playlist did not exist",
+                        success=True
+                    ))
                     logging.info(f"Creating new remote playlist for {target.service} target {target.id}")
 
                     remote_repo.create_playlist(target_name or f"{target.service}_playlist", local_snapshot)
@@ -627,24 +639,56 @@ def sync_playlist(
         # If we don't have a unified plan, we can't proceed
         if unified_plan is None:
             raise HTTPException(status_code=500, detail="Failed to create any sync plans")
-    
+        
+        # Step 4: Apply the unified sync plan
         for change in unified_plan:
             logging.info(f"Processing change: {change.action} {change.item.to_string()} (source: {change.source}, reason: {change.reason})")
 
             # apply local changes first, only if the change is not from a remote source
             if change.source != "local":
-                if change.action == 'add':
-                    logging.info(f"Adding {change.item.to_string()} to local playlist")
-                    result = repo.add_music_file(playlist_id, change.item, normalize=True)
-                    if not result:
-                        logging.info(f"Could not find music file for {change.item.to_string()}, adding as requested track")
-                        repo.add_requested_track(playlist_id, change.item)
+                try:
+                    if change.action == 'add':
+                        logging.info(f"Adding {change.item.to_string()} to local playlist")
+                        result = repo.add_music_file(playlist_id, change.item, normalize=True)
+                        if not result:
+                            logging.info(f"Could not find music file for {change.item.to_string()}, adding as requested track")
+                            repo.add_requested_track(playlist_id, change.item)
+                        
+                        sync_log.append(SyncLogEntry(
+                            action="add",
+                            track=change.item.to_string(),
+                            target="local",
+                            target_name=playlist.name,
+                            reason=change.reason,
+                            success=True
+                        ))
 
-                if change.action == 'remove':
-                    logging.info(f"Removing {change.item.to_string()} from local playlist")
-                    repo.remove_music_file(playlist_id, change.item)
+                    if change.action == 'remove':
+                        logging.info(f"Removing {change.item.to_string()} from local playlist")
+                        repo.remove_music_file(playlist_id, change.item)
+                        
+                        sync_log.append(SyncLogEntry(
+                            action="remove",
+                            track=change.item.to_string(),
+                            target="local",
+                            target_name=playlist.name,
+                            reason=change.reason,
+                            success=True
+                        ))
+                        
+                except Exception as e:
+                    logging.error(f"Failed to apply local change: {e}", exc_info=True)
+                    sync_log.append(SyncLogEntry(
+                        action=change.action,
+                        track=change.item.to_string(),
+                        target="local",
+                        target_name=playlist.name,
+                        reason=change.reason,
+                        success=False,
+                        error=str(e)
+                    ))
 
-            # Step 4: Apply the unified sync plan to each target
+            # Apply changes to each remote target
             for target_id, plan_info in individual_plans.items():
                 try:
                     repo_info = plan_info['repo_info']
@@ -656,18 +700,69 @@ def sync_playlist(
 
                     this_snapshot = current_snapshots[target_id]
 
-                    if target.receiveEntryAdds and change.action == "add":
-                        # check if the item is already in the remote snapshot
-                        if (not this_snapshot) or (not this_snapshot.has(change.item)):
-                            remote_repo.add_items(target_name, [change.item])
+                    if change.source == "local" or change.source == "remote":
+                        if change.action == "add":
+                            # Send adds to remote if enabled
+                            if target.sendEntryAdds and change.source == "local":
+                                # check if the item is already in the remote snapshot
+                                if (not this_snapshot) or (not this_snapshot.has(change.item)):
+                                    remote_repo.add_items(target_name, [change.item])
+                                    sync_log.append(SyncLogEntry(
+                                        action="add",
+                                        track=change.item.to_string(),
+                                        target=target.service,
+                                        target_name=target_name,
+                                        reason=f"Added to {target.service} playlist",
+                                        success=True
+                                    ))
+                            
+                            # Receive adds from remote if enabled
+                            elif target.receiveEntryAdds and change.source == "remote":
+                                sync_log.append(SyncLogEntry(
+                                    action="add",
+                                    track=change.item.to_string(),
+                                    target=target.service,
+                                    target_name=target_name,
+                                    reason=f"Received from {target.service} playlist",
+                                    success=True
+                                ))
 
-                    if target.receiveEntryRemovals and change.action == "remove":
-                        # Apply remote removes
-                        if (not this_snapshot) or current_snapshots[target_id].has(change.item):
-                            remote_repo.remove_items(target_name, [change.item])
+                        elif change.action == "remove":
+                            # Send removes to remote if enabled
+                            if target.sendEntryRemovals and change.source == "local":
+                                if (not this_snapshot) or this_snapshot.has(change.item):
+                                    remote_repo.remove_items(target_name, [change.item])
+                                    sync_log.append(SyncLogEntry(
+                                        action="remove",
+                                        track=change.item.to_string(),
+                                        target=target.service,
+                                        target_name=target_name,
+                                        reason=f"Removed from {target.service} playlist",
+                                        success=True
+                                    ))
+                            
+                            # Receive removes from remote if enabled
+                            elif target.receiveEntryRemovals and change.source == "remote":
+                                sync_log.append(SyncLogEntry(
+                                    action="remove",
+                                    track=change.item.to_string(),
+                                    target=target.service,
+                                    target_name=target_name,
+                                    reason=f"Removed from {target.service} playlist",
+                                    success=True
+                                ))
                 
                 except Exception as e:
                     logging.error(f"Failed to apply sync plan for target {target_id}: {e}", exc_info=True)
+                    sync_log.append(SyncLogEntry(
+                        action=change.action,
+                        track=change.item.to_string(),
+                        target=repo_info['target'].service,
+                        target_name=repo_info['target_name'],
+                        reason=change.reason,
+                        success=False,
+                        error=str(e)
+                    ))
                     results["failed"].append({
                         "service": repo_info['target'].service,
                         "target_id": target_id,
@@ -711,7 +806,8 @@ def sync_playlist(
                 "total_targets": len(sync_targets),
                 "successful": len(results["success"]),
                 "failed": len(results["failed"])
-            }
+            },
+            "log": sync_log  # Include the detailed sync log
         }
     
     except HTTPException:

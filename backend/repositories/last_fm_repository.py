@@ -214,7 +214,7 @@ class last_fm_repository:
             results = []
 
             for artist in last_fm_artists:
-                albums = self.get_artist_albums(artist_name=artist.name, artist_mbid=artist.mbid, limit=25, page=page)
+                albums = self.get_artist_albums(artist_name=artist.name, artist_mbid=artist.mbid, limit=50, page=page)
 
                 album_matches = [a.to_json() for a in albums]
 
@@ -236,7 +236,7 @@ class last_fm_repository:
             
             results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
-            if not (results and results[0].get("score", 0) >= 5):
+            if not (results and results[0].get("score", 0) >= 2):
                 # try searching for album without artist
                 albums = self.search_album_fallback(artist=artist.name, title=title, limit=limit)
 

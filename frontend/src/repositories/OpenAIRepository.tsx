@@ -37,7 +37,7 @@ export class OpenAIRepository {
 
             return response.data.tracks.map((track) => {
                 let t = new PlaylistEntry(track);
-                t.entry_type = "requested";
+                t.entry_type = "music_file";
                 return t;
             });
         } catch (error) {
