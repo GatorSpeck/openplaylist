@@ -54,6 +54,8 @@ jobs:
       env:
         # Add any environment variables your tests need
         PYTHONPATH: ${{ github.workspace }}/backend
+        DATABASE_URL: "sqlite:///:memory:"
+        DB_TYPE: "sqlite"
 
     - name: Upload test results
       uses: actions/upload-artifact@v4
