@@ -107,7 +107,8 @@ describe('PlaylistEntryRow', () => {
     const entry = createMusicTrackEntry();
     render(<PlaylistEntryRow entry={entry} {...defaultProps} onContextMenu={onContextMenu} />);
     
-    fireEvent.contextMenu(screen.getByText('Test Track').closest('div[class^="test-class"]'));
+    const row = screen.getByText('Test Track').closest('.playlist-entry-row');
+    fireEvent.contextMenu(row);
     expect(onContextMenu).toHaveBeenCalled();
   });
   
@@ -135,7 +136,7 @@ describe('PlaylistEntryRow', () => {
     
     render(<PlaylistEntryRow entry={entry} {...defaultProps} isDragging={true} />);
     
-    const row = document.querySelector('.test-class.dragging');
+    const row = document.querySelector('.playlist-entry-row.dragging');
     expect(row).toBeInTheDocument();
   });
   

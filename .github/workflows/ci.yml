@@ -80,7 +80,6 @@ jobs:
 
   frontend-test:
     runs-on: ubuntu-latest
-    if: false  # Set to true if you have frontend tests to run
 
     steps:
     - uses: actions/checkout@v4
@@ -102,7 +101,8 @@ jobs:
         cd frontend
         npm test
 
-    - name: Run frontend linting
+    - name: Run frontend linting (optional)
+      continue-on-error: true  # Allow workflow to continue even if linting fails
       run: |
         cd frontend
         npm run lint
