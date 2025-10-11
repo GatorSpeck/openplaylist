@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
+import sys
 import dotenv
 import urllib.parse
 import logging
@@ -40,7 +41,10 @@ class Database:
                 logging.info(f"Using MariaDB database at {db_host}:{db_port}/{db_name}")
             else:
                 # Default to SQLite
-                db_path = os.getenv("DATABASE_URL", "sqlite:////data/playlists.db")
+                # Check if we're in a test environment
+                is_testing = os.getenv("TESTING", "false").lower() == "true" or "pytest" in os.getenv("_", "")
+                default_db = "sqlite:///:memory:" if is_testing else "sqlite:////data/playlists.db"
+                db_path = os.getenv("DATABASE_URL", default_db)
                 DATABASE_URL = db_path
                 connect_args = {"check_same_thread": False} if db_path.startswith("sqlite") else {}
                 
@@ -63,6 +67,8 @@ class Database:
 
     @classmethod
     def get_session(cls):
+        if not cls._instance:
+            cls()
         return cls._sessionmaker()
 
     @classmethod

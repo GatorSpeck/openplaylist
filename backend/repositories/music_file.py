@@ -78,8 +78,10 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             [scoring.replace(":token", f":token{i}") for i in range(len(tokens))]
         )
 
-        # Build query with scoring
-        query = self.session.query(LocalFileDB, text(f"({score_sum}) as relevance"))
+        # Build query with scoring, joining MusicFileDB to get genres
+        query = self.session.query(MusicFileDB, text(f"({score_sum}) as relevance")).join(
+            LocalFileDB, MusicFileDB.local_file
+        )
 
         # Add token parameters
         for i, token in enumerate(tokens):
@@ -105,9 +107,9 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             f"Search query: {search_query} returned {len(results)} results in {time.time() - start_time:.2f} seconds"
         )
 
-        # Extract just the LocalFileDB objects from results (first element of each tuple)
-        local_files = [result[0] for result in results]
-        return [MusicFile.from_local_file(local_file) for local_file in local_files]
+        # Extract just the MusicFileDB objects from results (first element of each tuple)
+        music_files = [result[0] for result in results]
+        return [to_music_file(music_file) for music_file in music_files]
 
     def filter(
         self,
@@ -160,8 +162,8 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         return [to_music_file(music_file) for music_file in results]
 
     def add_music_file(self, music_file: MusicFile) -> MusicFile:
+        # Create the MusicFileDB object first
         music_file_db = MusicFileDB(
-            path=music_file.path,
             title=music_file.title,
             artist=music_file.artist,
             album_artist=music_file.album_artist,
@@ -169,19 +171,38 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             year=music_file.year,
             length=music_file.length,
             publisher=music_file.publisher,
-            kind=music_file.kind,
-            last_scanned=music_file.last_scanned,
             track_number=music_file.track_number,
             disc_number=music_file.disc_number,
         )
 
+        # Create LocalFileDB if path is provided
+        if music_file.path:
+            local_file_db = LocalFileDB(
+                path=music_file.path,
+                kind=music_file.kind,
+                last_scanned=music_file.last_scanned,
+                file_title=music_file.title,
+                file_artist=music_file.artist,
+                file_album_artist=music_file.album_artist,
+                file_album=music_file.album,
+                file_year=music_file.year,
+                file_length=music_file.length,
+                file_publisher=music_file.publisher,
+                file_track_number=music_file.track_number,
+                file_disc_number=music_file.disc_number,
+            )
+            music_file_db.local_file = local_file_db
+
+        # Add genres if they exist
+        if music_file.genres:
+            for genre in music_file.genres:
+                genre_db = TrackGenreDB(
+                    parent_type="music_file",
+                    genre=genre
+                )
+                music_file_db.genres.append(genre_db)
+
         self.session.add(music_file_db)
-        self.session.commit()
-
-        # Add genres
-        for genre in music_file.genres:
-            music_file_db.genres.append(TrackGenreDB(parent_type="music_file", genre=genre))
-
         self.session.commit()
         self.session.refresh(music_file_db)
 

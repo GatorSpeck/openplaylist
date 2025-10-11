@@ -385,7 +385,11 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         for entry_idx, entry in enumerate(entries):
             if entry.entry_type == "requested_album":
                 album_entries.append((entry_idx, entry))
-            else:
+            elif entry.entry_type == "music_file" and hasattr(entry, 'music_file_id') and entry.music_file_id:
+                # Skip entries that already reference existing music files
+                continue
+            elif hasattr(entry, 'details') and entry.details:
+                # Only add entries that have details for dependency creation
                 requested_entries.append((entry_idx, entry))
 
         if requested_entries:

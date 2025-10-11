@@ -251,7 +251,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
   return (
     <div
       ref={ref}
-      className={`playlist-entry-row ${className} ${hiddenClass}`}
+      className={`playlist-entry-row ${className} ${hiddenClass} ${isDragging ? 'dragging' : ''}`}
       style={style}
       onContextMenu={onContextMenu}
       {...props}
