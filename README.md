@@ -4,7 +4,7 @@
 [![Backend Tests](https://github.com/GatorSpeck/openplaylist/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/GatorSpeck/openplaylist/actions/workflows/backend-tests.yml)
 
 ## Overview
-OpenPlaylist is a music playlist management portal, that indexes your local music files and allows you to organize them into playlists, which can be synced to Plex or exported in various formats.
+OpenPlaylist is a music playlist management portal that indexes your local music files and allows you to organize them into playlists, which can be synced to Plex or exported in various formats.
 
 In addition to local music, your playlists can be augmented with search results from Last.FM, and suggestions from Last.FM and OpenAI.
 
