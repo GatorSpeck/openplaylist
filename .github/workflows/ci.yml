@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      # Optional: Add database service if needed for integration tests
+      # mysql:
+      #   image: mysql:8.0
+      #   env:
+      #     MYSQL_ROOT_PASSWORD: test
+      #     MYSQL_DATABASE: test_db
+      #   ports:
+      #     - 3306:3306
+      #   options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    strategy:
+      matrix:
+        python-version: [3.10.12]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Create virtual environment
+      run: |
+        cd backend
+        python -m venv .venv
+
+    - name: Install dependencies
+      run: |
+        cd backend
+        source .venv/bin/activate
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Run linting (optional)
+      run: |
+        cd backend
+        source .venv/bin/activate
+        # Uncomment if you want to run black formatting check
+        # black --check .
+        
+        # Uncomment if you want to run mypy type checking
+        # mypy . --ignore-missing-imports
+
+    - name: Run tests
+      run: |
+        cd backend
+        source .venv/bin/activate
+        python -m pytest tests/ -v --tb=short
+
+    - name: Run tests with coverage (optional)
+      if: false  # Set to true if you want coverage reports
+      run: |
+        cd backend
+        source .venv/bin/activate
+        pip install coverage pytest-cov
+        python -m pytest tests/ --cov=. --cov-report=xml --cov-report=html
+
+    - name: Upload coverage to Codecov (optional)
+      if: false  # Set to true if you want to use Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: backend/coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+  frontend-test:
+    runs-on: ubuntu-latest
+    if: false  # Set to true if you have frontend tests to run
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install dependencies
+      run: |
+        cd frontend
+        npm ci
+
+    - name: Run frontend tests
+      run: |
+        cd frontend
+        npm test
+
+    - name: Run frontend linting
+      run: |
+        cd frontend
+        npm run lint
+
+  build-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image (backend)
+      run: |
+        docker build -f Dockerfile -t playlist-backend:test .
+
+    - name: Test Docker image runs
+      run: |
+        # Quick smoke test to ensure the image starts
+        docker run --rm -d --name test-container playlist-backend:test
+        sleep 10
+        docker stop test-container || true
