@@ -10,17 +10,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
     
-    services:
-      # Optional: Add database service if needed for integration tests
-      # mysql:
-      #   image: mysql:8.0
-      #   env:
-      #     MYSQL_ROOT_PASSWORD: test
-      #     MYSQL_DATABASE: test_db
-      #   ports:
-      #     - 3306:3306
-      #   options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
-
     strategy:
       matrix:
         python-version: [3.10.12]
