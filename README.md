@@ -116,79 +116,67 @@ If there is a breaking DB change, migrations can be run manually (for now) -
 docker exec -it openplaylist bash -c "cd backend && alembic upgrade head"
 ```
 
-## Local Dev Setup
+## Development
 
-### Backend
+### Quick Start for New Developers
 
-1. Navigate to the `backend` directory:
+```bash
+# One-time setup
+./scripts/setup.sh
 
+# Daily development
+./scripts/dev.sh
+
+# Run tests
+./scripts/test.sh
+
+# Check code quality
+./scripts/lint.sh
+```
+
+### Detailed Development Guide
+
+For comprehensive development instructions including:
+- Environment setup and configuration
+- Running tests and builds  
+- Database migrations
+- Docker development
+- Troubleshooting common issues
+- Contributing guidelines
+
+**See [DEVELOPMENT.md](DEVELOPMENT.md) for complete development documentation.**
+
+### Manual Setup (if you prefer not to use scripts)
+
+#### Backend
+
+1. Navigate to the `backend` directory and set up virtual environment:
     ```sh
     cd backend
-    ```
-
-2. Create a virtual environment:
-
-    ```sh
-    python3 -m venv .venv
-    ```
-
-3. Activate the virtual environment:
-
-    - On Windows:
-
-        ```sh
-        .venv\Scripts\activate
-        ```
-
-    - On macOS/Linux:
-
-        ```sh
-        source .venv/bin/activate
-        ```
-
-4. Install the required dependencies:
-
-    ```sh
+    python3 -m venv venv
+    source venv/bin/activate  # On Windows: venv\Scripts\activate
     pip install -r requirements.txt
-    pip install -r requirements-dev.txt
     ```
 
-5. Create a `.env` file in the `backend/` directory and add the following environment variables:
-
-    ```env
-    HOST=127.0.0.1
-    PORT=3000
-    ```
-
-6. Start the backend server:
-
+2. Run database migrations:
     ```sh
-    python main.py
+    alembic upgrade head
     ```
 
-### Frontend
+3. Start the backend server:
+    ```sh
+    uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    ```
 
-1. Navigate to the `frontend/` directory:
+#### Frontend
 
+1. Navigate to the `frontend/` directory and install dependencies:
     ```sh
     cd frontend
-    ```
-
-2. Install the required dependencies:
-
-    ```sh
     npm install
     ```
 
-3. Create a `.env` file in the `frontend/` directory and add the following environment variables:
-
-    ```env
-    VITE_API_URL=http://127.0.0.1:3000
-    VITE_PORT=3009
-    ```
-
-4. Start the frontend development server:
-
+2. Start the frontend development server:
     ```sh
     npm run dev
     ```

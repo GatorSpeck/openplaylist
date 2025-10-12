@@ -5,6 +5,12 @@
   margin-bottom: 20px;
 }
 
+.header-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .add-button {
   background-color: #4CAF50;
   color: white;
@@ -15,6 +21,44 @@
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.sync-button {
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.sync-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.force-push-button {
+  background-color: #FF5722;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  position: relative;
+  overflow: hidden;
+}
+
+.force-push-button:hover:not(:disabled) {
+  background-color: #E64A19;
+  box-shadow: 0 2px 4px rgba(255, 87, 34, 0.3);
+}
+
+.force-push-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
 }
 
 .error-message {

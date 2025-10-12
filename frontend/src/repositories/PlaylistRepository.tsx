@@ -135,8 +135,10 @@ export class PlaylistRepository {
         }
     }
 
-    async syncToPlex(id: number) {
-        const response = await axios.get(`/api/playlists/${id}/sync`);
+    async syncToPlex(id: number, forcePush: boolean = false) {
+        const response = await axios.get(`/api/playlists/${id}/sync`, {
+            params: { force_push: forcePush }
+        });
         return response.data;
     }
 
