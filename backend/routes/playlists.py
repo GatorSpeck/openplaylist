@@ -475,6 +475,7 @@ def delete_sync_target(playlist_id: int, target_id: int, repo: PlaylistRepositor
 @router.get("/{playlist_id}/sync")
 def sync_playlist(
     playlist_id: int,
+    force_push: bool = False,
     repo: PlaylistRepository = Depends(get_playlist_repository)
 ):
     """
@@ -585,6 +586,17 @@ def sync_playlist(
         individual_plans = {}
         unified_plan = None
         
+        if force_push:
+            logging.info("🔥 FORCE PUSH SYNC requested - all remote playlists will be completely replaced with local content")
+            sync_log.append(SyncLogEntry(
+                action="force_push",
+                track="FORCE PUSH SYNC",
+                target="system",
+                target_name="All targets",
+                reason="Force push sync initiated - all remote content will be replaced",
+                success=True
+            ))
+        
         for target_id, repo_info in remote_repos.items():
             try:
                 remote_repo = repo_info['repo']
@@ -592,12 +604,32 @@ def sync_playlist(
                 target_name = repo_info['target_name']
                 
                 # Create sync plan for this target
-                sync_plan = remote_repo.create_sync_plan(
-                    old_remote_snapshot=old_snapshots.get(target_id),
-                    new_remote_snapshot=current_snapshots.get(target_id),
-                    new_local_snapshot=local_snapshot,
-                    sync_target=target
-                )
+                if force_push:
+                    # Validate that target supports force push
+                    if not target.sendEntryAdds or not target.sendEntryRemovals:
+                        logging.warning(f"Skipping force push for target {target_id} ({target.service}): requires both sendEntryAdds and sendEntryRemovals to be enabled")
+                        results["failed"].append({
+                            "service": target.service,
+                            "target_id": target_id,
+                            "error": "Force push requires both send adds and send removes to be enabled"
+                        })
+                        continue
+                    
+                    # Use force push sync plan
+                    logging.info(f"Creating force push sync plan for {target.service} target {target_id}")
+                    sync_plan = remote_repo.create_force_push_sync_plan(
+                        new_remote_snapshot=current_snapshots.get(target_id),
+                        new_local_snapshot=local_snapshot,
+                        sync_target=target
+                    )
+                else:
+                    # Use normal sync plan
+                    sync_plan = remote_repo.create_sync_plan(
+                        old_remote_snapshot=old_snapshots.get(target_id),
+                        new_remote_snapshot=current_snapshots.get(target_id),
+                        new_local_snapshot=local_snapshot,
+                        sync_target=target
+                    )
                 
                 individual_plans[target_id] = {
                     'plan': sync_plan,
@@ -704,8 +736,11 @@ def sync_playlist(
                         if change.action == "add":
                             # Send adds to remote if enabled
                             if target.sendEntryAdds and change.source == "local":
-                                # check if the item is already in the remote snapshot
-                                if (not this_snapshot) or (not this_snapshot.has(change.item)):
+                                # For force push, always add items without checking snapshot
+                                # For regular sync, check if the item is already in the remote snapshot
+                                should_add = force_push or (not this_snapshot) or (not this_snapshot.has(change.item))
+                                
+                                if should_add:
                                     remote_repo.add_items(target_name, [change.item])
                                     sync_log.append(SyncLogEntry(
                                         action="add",

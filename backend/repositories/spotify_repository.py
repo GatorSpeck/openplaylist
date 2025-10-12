@@ -10,6 +10,7 @@ from spotipy.oauth2 import SpotifyOAuth, CacheFileHandler
 from fastapi import HTTPException, Depends
 from repositories.plex_repository import normalize_title
 import urllib
+from lib.match import TrackStub, get_match_score
 
 from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz
 from repositories.requests_cache_session import requests_cache_session
@@ -281,16 +282,16 @@ class SpotifyRepository(RemotePlaylistRepository):
         
         if results and self.redis_session:
             self.redis_session.set(query, json.dumps(results), ex=3600)
+        
+        match_stub = TrackStub(artist=item.artist, title=item.title, album=item.album)
 
         if results and results["tracks"]["items"]:
             for track in results["tracks"]["items"]:
-                score = 0
-                if normalize_title(track["name"]) == normalize_title(item.title):
-                    score += 10
-                if any(artist["name"].lower() == item.artist.lower() for artist in track["artists"]):
-                    score += 5
-                if item.album and normalize_title(track["album"]["name"]) == normalize_title(item.album):
-                    score += 5
+                score = get_match_score(match_stub, TrackStub(
+                    artist=track["artists"][0]["name"],
+                    title=track["name"],
+                    album=track["album"]["name"]
+                ))
                 
                 track["score"] = score
             

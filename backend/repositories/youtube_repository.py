@@ -8,6 +8,7 @@ from ytmusicapi import YTMusic, OAuthCredentials
 from repositories.remote_playlist_repository import RemotePlaylistRepository, get_local_tz
 from response_models import PlaylistSnapshot, PlaylistItem
 from lib.normalize import normalize_title
+from lib.match import TrackStub, get_match_score
 
 class YouTubeMusicRepository(RemotePlaylistRepository):
     """Repository for YouTube Music playlists"""
@@ -85,30 +86,15 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             if not search_results:
                 return None
             
+            match_stub = TrackStub(artist=item.artist, title=item.title, album=item.album)
+            
             # Score the results similar to Spotify implementation
             for track in search_results:
-                score = 0
-                track_title = track.get("title", "")
-                track_artists = track.get("artists", [])
-                track_album = track.get("album", {})
-                
-                # Title matching
-                if normalize_title(track_title) == normalize_title(item.title):
-                    score += 10
-                elif track_title.lower() == item.title.lower():
-                    score += 8
-                
-                # Artist matching
-                if track_artists:
-                    artist_names = [artist.get("name", "") for artist in track_artists]
-                    if any(name.lower() == item.artist.lower() for name in artist_names):
-                        score += 5
-                
-                # Album matching
-                if item.album and track_album:
-                    album_name = track_album.get("name", "")
-                    if normalize_title(album_name) == normalize_title(item.album):
-                        score += 5
+                score = get_match_score(match_stub, TrackStub(
+                    artist=track["artists"][0]["name"] if track.get("artists") else "",
+                    title=track["title"],
+                    album=track["album"]["name"] if track.get("album") else ""
+                ))
                 
                 track["score"] = score
             
@@ -288,30 +274,20 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             playlist = self.ytmusic.get_playlist(self.playlist_id, limit=None)
             
             for item in items:
+                match_stub = TrackStub(artist=item.artist, title=item.title, album=item.album)
+
                 # Find matching track in the playlist
                 for track in playlist.get("tracks", []):
                     if not track:
                         continue
-                        
-                    track_title = track.get("title", "")
-                    track_artists = track.get("artists", [])
 
-                    score = 0
+                    score = get_match_score(match_stub, TrackStub(
+                        artist=track["artists"][0]["name"] if track.get("artists") else "",
+                        title=track.get("title", ""),
+                        album=track["album"]["name"] if track.get("album") else ""
+                    ))
                     
-                    # Check if this track matches the item we want to remove
-                    if track_title.lower() == item.title.lower():
-                        score += 10
-                    elif normalize_title(track_title) == normalize_title(item.title):
-                        score += 5
-                    
-                    artist_match = False
-                    if track_artists:
-                        artist_names = [artist.get("name", "") for artist in track_artists]
-                        artist_match = any(name.lower() == item.artist.lower() for name in artist_names)
-                        if artist_match:
-                            score += 5
-                    
-                    if score < 10:
+                    if score < 20:
                         continue
                     
                     if track.get("setVideoId"):

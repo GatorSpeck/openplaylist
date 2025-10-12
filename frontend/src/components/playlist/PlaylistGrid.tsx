@@ -587,9 +587,9 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     playlistRepository.export(id, "json");
   }
 
-  const onSyncToPlex = async () => {
+  const onSyncToPlex = async (forcePush: boolean = false) => {
     try {
-      const response = await playlistRepository.syncToPlex(playlistID);
+      const response = await playlistRepository.syncToPlex(playlistID, forcePush);
       
       // Store the sync result for the log modal
       setSyncResult(response);
@@ -1364,6 +1364,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           playlistId={playlistID}
           onClose={() => setSyncConfigOpen(false)}
           visible={syncConfigOpen}
+          onSyncResult={(result) => {
+            setSyncResult(result);
+            setSyncLogModalOpen(true);
+          }}
         />
       )}
 
@@ -1385,7 +1389,19 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                 setSyncConfigOpen(true);
               },
             },
-            { label: "Sync Now", action: onSyncToPlex },
+            { label: "Sync Now", action: () => onSyncToPlex(false) },
+            { 
+              label: "Force Push Sync", 
+              action: () => {
+                if (window.confirm(
+                  "⚠️ Force Push will remove ALL items from remote playlists and replace them with your local playlist.\n\n" +
+                  "This action cannot be undone and will overwrite any changes made directly in remote services.\n\n" +
+                  "Are you sure you want to continue?"
+                )) {
+                  onSyncToPlex(true);
+                }
+              }
+            },
             { label: "Delete Playlist", action: onDeletePlaylist },
           ]}
           onClose={() => setPlaylistModalVisible(false)}

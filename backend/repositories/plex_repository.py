@@ -9,6 +9,7 @@ import plexapi
 from typing import List, Optional, Dict, Any
 from tqdm import tqdm
 from lib.normalize   import normalize_title
+from lib.match import TrackStub, get_match_score
 
 from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz
 
@@ -47,23 +48,26 @@ class PlexRepository(RemotePlaylistRepository):
             normalized_album = normalize_title(item.album) if item.album else None
 
             def score_plex_results(items):
+                match_stub = TrackStub(artist=item.artist, title=item.title, album=item.album)
                 for plex_item in items:
-                    score = 0
-                    if plex_item.title.lower() == item.title.lower():
-                        score += 20
-                    elif normalized_title == normalize_title(plex_item.title):
-                        score += 10
-
-                    if plex_item.artist().title.lower() == item.artist.lower():
-                        score += 5
-
-                    if item.album and normalized_album == normalize_title(plex_item.album().title):
-                        score += 5
+                    artist = plex_item.artist()
+                    if artist:
+                        artist = artist.title
+                    
+                    album = plex_item.album()
+                    if album:
+                        album = album.title
+                        
+                    score = get_match_score(match_stub, TrackStub(
+                        artist=artist,
+                        title=plex_item.title,
+                        album=album
+                    ))
                         
                     plex_item.score = score
                     logging.info(f"Score for {plex_item.title}: {score}")
 
-                    if score == 30:
+                    if score >= 80:
                         logging.info(f"Exact match found for {item.to_string()}: {plex_item.title}")
                         return [plex_item]
                 

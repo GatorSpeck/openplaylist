@@ -177,6 +177,32 @@ class RemotePlaylistRepository(ABC):
         """Fetch a media item from the remote service"""
         pass
     
+    def create_force_push_sync_plan(self, 
+                                   new_remote_snapshot: Optional[PlaylistSnapshot],
+                                   new_local_snapshot: PlaylistSnapshot,
+                                   sync_target: SyncTarget) -> List[SyncChange]:
+        """
+        Create a force push sync plan that removes all remote items and adds all local items
+        """
+        plan = []
+        
+        # Only proceed if this target supports sending adds and removes
+        if not sync_target.sendEntryAdds or not sync_target.sendEntryRemovals:
+            logging.warning(f"Force push requires both sendEntryAdds and sendEntryRemovals to be enabled for target {sync_target.id}")
+            return []
+        
+        # If remote playlist exists, remove all items from it first
+        if new_remote_snapshot and new_remote_snapshot.items:
+            for item in new_remote_snapshot.items:
+                plan.append(SyncChange('remove', item, 'local', 'Force push: clearing remote playlist'))
+        
+        # Add all local items to remote
+        for item in new_local_snapshot.items:
+            plan.append(SyncChange('add', item, 'local', 'Force push: adding local item to remote'))
+        
+        logging.info(f"Created force push sync plan: {len([c for c in plan if c.action == 'remove'])} removes, {len([c for c in plan if c.action == 'add'])} adds")
+        return plan
+
     def create_sync_plan(self, old_remote_snapshot: Optional[PlaylistSnapshot], 
                     new_remote_snapshot: Optional[PlaylistSnapshot],
                     new_local_snapshot: PlaylistSnapshot,

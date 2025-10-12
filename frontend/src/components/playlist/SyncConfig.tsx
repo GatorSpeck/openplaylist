@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { BiTrash, BiPlus } from 'react-icons/bi';
 import Modal from '../common/Modal';
+import playlistRepository from '../../repositories/PlaylistRepository';
 import { 
   Box, 
   Typography,
@@ -59,15 +60,17 @@ interface SyncConfigProps {
     playlistId: number;
     visible?: boolean;
     onClose?: () => void;
+    onSyncResult?: (result: any) => void;
 }
 
-const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose }) => {
+const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, onSyncResult }) => {
   const [syncTargets, setSyncTargets] = useState<SyncTarget[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [currentTarget, setCurrentTarget] = useState<SyncTarget | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   // Load existing sync targets
   useEffect(() => {
@@ -209,6 +212,37 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose })
 
   // Clear error message
   const clearError = () => setError(null);
+
+  const handleSync = async (forcePush: boolean = false) => {
+    // Show confirmation dialog for force push
+    if (forcePush) {
+      const confirmed = window.confirm(
+        "⚠️ Force Push will remove ALL items from remote playlists and replace them with your local playlist.\n\n" +
+        "This action cannot be undone and will overwrite any changes made directly in remote services.\n\n" +
+        "Are you sure you want to continue?"
+      );
+      
+      if (!confirmed) {
+        return;
+      }
+    }
+    
+    try {
+      setSyncing(true);
+      const response = await playlistRepository.syncToPlex(playlistId, forcePush);
+      
+      if (onSyncResult) {
+        onSyncResult(response);
+      }
+      
+      // Show success message
+      setError(null);
+    } catch (err) {
+      setError(`Sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   // Modal form for adding/editing a sync target
   const renderTargetForm = () => {
@@ -377,9 +411,26 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose })
       <div className="sync-config">
         <div className="sync-config-header">
           <h2>Playlist Sync Targets</h2>
-          <button className="add-button" onClick={handleAddTarget}>
-            <BiPlus /> Add Sync Target
-          </button>
+          <div className="header-buttons">
+            <button 
+              className="sync-button" 
+              onClick={() => handleSync(false)}
+              disabled={syncing || syncTargets.length === 0 || !syncTargets.some(t => t.enabled)}
+            >
+              {syncing ? 'Syncing...' : 'Sync Now'}
+            </button>
+            <button 
+              className="force-push-button" 
+              onClick={() => handleSync(true)}
+              disabled={syncing || syncTargets.length === 0 || !syncTargets.some(t => t.enabled)}
+              title="Force Push: Remove all items from remote playlists and replace with local items"
+            >
+              {syncing ? 'Syncing...' : 'Force Push'}
+            </button>
+            <button className="add-button" onClick={handleAddTarget}>
+              <BiPlus /> Add Sync Target
+            </button>
+          </div>
         </div>
         
         {error && (

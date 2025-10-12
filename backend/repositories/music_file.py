@@ -8,6 +8,7 @@ import urllib
 import logging
 from repositories.playlist import PlaylistRepository
 from lib.normalize import normalize_title
+from lib.match import TrackStub, get_match_score
 
 def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
     return MusicFile(
@@ -388,19 +389,10 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             .all()
         )
 
-        for music_file in matches:
-            score = 0
+        match_stub = TrackStub(artist=item.artist, title=item.title, album=item.album)
 
-            if music_file.get_artist().lower() == item.artist.lower():
-                score += 10
-            elif normalize_title(music_file.get_artist().lower()) == normalize_title(item.artist.lower()):
-                score += 5
-            
-            if (music_file.album and item.album) and (music_file.album.lower() == item.album.lower()):
-                score += 10
-            elif (music_file.album and item.album) and normalize_title(music_file.album.lower()) == normalize_title(item.album.lower()):
-                score += 5
-            
+        for music_file in matches:
+            score = get_match_score(match_stub, music_file)
             music_file._score = score  # Use a temporary attribute (not persisted)
         
         matches = sorted(matches, key=lambda x: getattr(x, "_score", 0), reverse=True)

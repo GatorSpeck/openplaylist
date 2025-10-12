@@ -39,6 +39,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 from enum import IntEnum
 from lib.normalize import normalize_title
+from lib.match import TrackStub, get_match_score, AlbumStub, get_album_match_score, get_artist_match_score
 
 import dotenv
 dotenv.load_dotenv(override=True)
@@ -739,19 +740,14 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 .all()
             )
 
-            for music_file in matches:
-                score = 0
+            match_stub = TrackStub(artist=i.artist, title=i.title, album=i.album)
 
-                if music_file.get_artist().lower() == i.artist.lower():
-                    score += 10
-                elif normalize_title(music_file.get_artist().lower()) == normalize_title(i.artist.lower()):
-                    score += 5
-                
-                if music_file.album and (music_file.album.lower() == i.album.lower()):
-                    score += 10
-                elif music_file.album and normalize_title(music_file.album.lower()) == normalize_title(i.album.lower()):
-                    score += 5
-                
+            for music_file in matches:
+                score = get_match_score(match_stub, TrackStub(
+                    artist=music_file.artist,
+                    title=music_file.title,
+                    album=music_file.album
+                ))
                 music_file.score = score
             
             matches = sorted(matches, key=lambda x: x.score, reverse=True)
@@ -815,22 +811,16 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 logging.warning(f"No matching music file entry found for {i.artist} - {i.album} - {i.title} in playlist {playlist_id}")
                 continue
 
+            match_stub = TrackStub(artist=i.artist, title=i.title, album=i.album)
+
             for entry in entries:
-                score = 0
-                if entry.details.title.lower() == title_to_use.lower():
-                    score += 10
-                elif normalize_title(entry.details.title.lower()) == normalize_title(title_to_use.lower()):
-                    score += 5
-
-                if entry.details.artist.lower() == i.artist.lower():
-                    score += 10
-
-                if entry.details.album and (entry.details.album.lower() == i.album.lower()):
-                    score += 10
-                elif entry.details.album and normalize_title(entry.details.album.lower()) == normalize_title(i.album.lower()):
-                    score += 5
-
-                if score < 10:
+                score = get_match_score(match_stub, TrackStub(
+                    artist=entry.details.artist,
+                    title=entry.details.title,
+                    album=entry.details.album
+                ))
+                
+                if score < 20:
                     continue
                 
                 logging.info(f"Removing music file entry {entry.id} from playlist {playlist_id}")
