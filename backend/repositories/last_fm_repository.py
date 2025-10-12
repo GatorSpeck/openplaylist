@@ -7,6 +7,7 @@ import os
 import warnings
 import json
 from typing import Optional, List
+from lib.match import AlbumStub, get_album_match_score, get_artist_match_score
 
 import dotenv
 dotenv.load_dotenv(override=True)
@@ -162,18 +163,10 @@ class last_fm_repository:
 
         results = []
 
+        match_stub = AlbumStub(artist=artist, title=title)
+
         for match in albums:
-            score = 0
-            match_name = match.get("name")
-            match_artist = match.get("artist")
-            if match_name.lower() == title.lower() and match_artist.lower() == artist.lower():
-                score = 10
-            elif match_name.lower().startswith(title.lower()) and match_artist.lower() == artist.lower():
-                score = 5
-            elif match_artist.lower() == artist.lower():
-                score = 2
-            elif title.lower() in match_name.lower():
-                score = 1
+            score = get_album_match_score(match_stub, AlbumStub(artist=match.get("artist"), title=match.get("name")))
             
             if score == 0:
                 continue
@@ -213,21 +206,16 @@ class last_fm_repository:
             
             results = []
 
+            album_match_stub = AlbumStub(artist=artist, title=title)
+
             for artist in last_fm_artists:
                 albums = self.get_artist_albums(artist_name=artist.name, artist_mbid=artist.mbid, limit=50, page=page)
 
                 album_matches = [a.to_json() for a in albums]
 
                 for album in album_matches:
-                    album_title = album.get("title")
-                    if album_title.lower() == title.lower():
-                        album["score"] = 10
-                    elif album_title.lower().startswith(title.lower()):
-                        album["score"] = 5
-                    elif title.lower() in album_title.lower():
-                        album["score"] = 2
-                    else:
-                        album["score"] = 0
+                    score = get_album_match_score(album_match_stub, AlbumStub(artist=album.get("artist"), title=album.get("title")))
+                    album["score"] = score
 
                     results.append(album)
                 
@@ -362,15 +350,8 @@ class last_fm_repository:
         results = []
 
         for match in artists:
-            match_name = match.get("name")
-            if match_name.lower() == artist.lower():
-                match["score"] = 10
-            elif match_name.lower().startswith(artist.lower()):
-                match["score"] = 5
-            elif artist.lower() in match_name.lower():
-                match["score"] = 2
-            else:
-                match["score"] = 0
+            match_artist = match.get("artist")
+            match["score"] = get_artist_match_score(artist, match_artist)
             
             results.append(match)
         
