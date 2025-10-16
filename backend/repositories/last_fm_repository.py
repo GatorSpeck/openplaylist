@@ -350,7 +350,7 @@ class last_fm_repository:
         results = []
 
         for match in artists:
-            match_artist = match.get("artist")
+            match_artist = match.get("name")
             match["score"] = get_artist_match_score(artist, match_artist)
             
             results.append(match)
