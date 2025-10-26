@@ -32,5 +32,6 @@ compose.yml
 
 # YT Music creds
 oauth.json
+browser.json
 
 config/

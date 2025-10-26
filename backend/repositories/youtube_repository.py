@@ -256,10 +256,19 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
         track_ids = []
         for item in items:
             track = self.fetch_media_item(item)
-            if track and track.get("videoId"):
-                track_ids.append(track["videoId"])
-            else:
-                logging.warning(f"Track not found for item: {item.to_string()}")
+            if not track:
+                logging.warning(f"No track found for item: {item.to_string()}")
+                continue
+
+            video_id = track.get("videoId")
+            if not video_id:
+                video_id = track.get("videoDetails").get("videoId")
+
+            if not video_id:
+                logging.warning(f"No videoId found for item: {item.to_string()}")
+                continue
+
+            track_ids.append(video_id)
         
         if track_ids:
             try:
