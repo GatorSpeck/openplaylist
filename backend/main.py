@@ -669,6 +669,7 @@ def get_settings():
         "openAiApiKeyConfigured": os.getenv("OPENAI_API_KEY") is not None,
         "plexConfigured": all([os.getenv("PLEX_TOKEN"), os.getenv("PLEX_ENDPOINT"), os.getenv("PLEX_LIBRARY")]),
         "spotifyConfigured": all([os.getenv("SPOTIFY_CLIENT_ID"), os.getenv("SPOTIFY_CLIENT_SECRET")]),
+        "youtubeMusicConfigured": all([os.getenv("YOUTUBE_CLIENT_ID"), os.getenv("YOUTUBE_CLIENT_SECRET"), os.path.exists(os.getenv("YOUTUBE_OAUTH_PATH", "oauth.json"))]),
         "redisConfigured": redis_session is not None,
         "configDir": str(CONFIG_DIR),
         "logLevel": log_level,
@@ -768,6 +769,71 @@ def import_youtube_playlist(
     except Exception as e:
         logging.error(f"Error importing YouTube Music playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to import YouTube Music playlist: {str(e)}")
+
+@router.get("/youtube/status")
+def youtube_music_status():
+    """Get YouTube Music authentication status"""
+    result = {
+        "authenticated": False,
+        "error": None,
+        "user": None,
+    }
+    
+    try:
+        from repositories.youtube_repository import YouTubeMusicRepository
+        
+        # Create a test YouTube Music repository
+        youtube_repo = YouTubeMusicRepository(
+            session=Database.get_session(),
+            config={"playlist_uri": "test"}  # Use dummy playlist URI for status check
+        )
+        
+        if youtube_repo.is_authenticated():
+            result["authenticated"] = True
+            # Try to get basic user info from library
+            try:
+                playlists = youtube_repo.ytmusic.get_library_playlists(limit=1)
+                result["user"] = {
+                    "library_accessible": True,
+                    "playlists_count": len(playlists) if playlists else 0
+                }
+            except Exception as e:
+                logging.warning(f"Could not get YouTube Music user info: {e}")
+                result["user"] = {"library_accessible": False}
+        else:
+            result["error"] = "YouTube Music authentication not configured or invalid"
+            
+    except ValueError as e:
+        # Handle the case where playlist_uri is required but we're just checking status
+        if "YouTube playlist URI must be provided" in str(e):
+            # Retry without playlist_uri requirement for status check
+            try:
+                import os
+                from ytmusicapi import YTMusic, OAuthCredentials
+                
+                oath_path = os.getenv("YTMUSIC_OAUTH_PATH", "oauth.json")
+                
+                ytmusic = YTMusic(oath_path, oauth_credentials=OAuthCredentials(
+                    client_id=os.getenv("YOUTUBE_CLIENT_ID"),
+                    client_secret=os.getenv("YOUTUBE_CLIENT_SECRET"))
+                )
+                
+                # Test the connection
+                playlists = ytmusic.get_library_playlists(limit=1)
+                result["authenticated"] = True
+                result["user"] = {
+                    "library_accessible": True,
+                    "playlists_count": len(playlists) if playlists else 0
+                }
+            except Exception as e2:
+                result["error"] = f"YouTube Music authentication failed: {str(e2)}"
+        else:
+            result["error"] = f"Configuration error: {str(e)}"
+    except Exception as e:
+        result["error"] = f"Error checking YouTube Music status: {str(e)}"
+        logging.error(f"Error checking YouTube Music status: {e}")
+    
+    return result
 
 class Directory(BaseModel):
     name: str
