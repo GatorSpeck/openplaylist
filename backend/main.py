@@ -669,7 +669,7 @@ def get_settings():
         "openAiApiKeyConfigured": os.getenv("OPENAI_API_KEY") is not None,
         "plexConfigured": all([os.getenv("PLEX_TOKEN"), os.getenv("PLEX_ENDPOINT"), os.getenv("PLEX_LIBRARY")]),
         "spotifyConfigured": all([os.getenv("SPOTIFY_CLIENT_ID"), os.getenv("SPOTIFY_CLIENT_SECRET")]),
-        "youtubeMusicConfigured": all([os.getenv("YOUTUBE_CLIENT_ID"), os.getenv("YOUTUBE_CLIENT_SECRET"), os.path.exists(os.getenv("YTMUSIC_OAUTH_PATH", "oauth.json"))]),
+        "youtubeMusicConfigured": all([os.path.exists(os.getenv("YTMUSIC_OAUTH_PATH", "oauth.json"))]),
         "redisConfigured": redis_session is not None,
         "configDir": str(CONFIG_DIR),
         "logLevel": log_level,
