@@ -26,6 +26,7 @@ class PlexRepository(RemotePlaylistRepository):
         self.plex_endpoint = self.config.get("endpoint") or os.getenv("PLEX_ENDPOINT")
         self.plex_token = self.config.get("token") or os.getenv("PLEX_TOKEN")
         self.plex_library = self.config.get("library") or os.getenv("PLEX_LIBRARY", "Music")
+        self.playlist_name = self.config.get("playlist_name")
         
         if not self.plex_endpoint or not self.plex_token:
             raise ValueError("Plex endpoint and token must be provided")
@@ -207,3 +208,23 @@ class PlexRepository(RemotePlaylistRepository):
                 except Exception as e:
                     logging.error(f"Error removing {item.to_string()} from Plex playlist: {e}")
                     continue
+
+    def is_authenticated(self) -> bool:
+        """Check if the repository is authenticated"""
+        try:
+            self.server.account()
+            return True
+        except Exception as e:
+            logging.error(f"Plex authentication failed: {e}")
+            return False
+        
+        return False
+    
+    def clear_playlist(self) -> None:
+        """Clear all items from the Plex playlist"""
+        try:
+            playlist = self.server.playlist(self.playlist_name)
+            if playlist:
+                playlist.removeItems(playlist.items())
+        except Exception as e:
+            logging.error(f"Error clearing Plex playlist {self.playlist_name}: {e}")

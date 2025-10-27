@@ -10,6 +10,20 @@ from response_models import PlaylistSnapshot, PlaylistItem
 from lib.normalize import normalize_title
 from lib.match import TrackStub, get_match_score
 
+def get_video_id_from_track(track: Dict[str, Any]) -> Optional[str]:
+    """Extract video ID from a YouTube Music track dictionary"""
+    if not track:
+        return None
+    
+    # Check common fields for video ID
+    if "videoId" in track:
+        return track["videoId"]
+    
+    if "videoDetails" in track and "videoId" in track["videoDetails"]:
+        return track["videoDetails"]["videoId"]
+    
+    return None
+
 class YouTubeMusicRepository(RemotePlaylistRepository):
     """Repository for YouTube Music playlists"""
     
@@ -18,32 +32,28 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
         
         # Get the playlist ID from the config
         self.playlist_uri = self.config.get("playlist_uri")
-        if not self.playlist_uri:
-            raise ValueError("YouTube playlist URI must be provided in config")
-            
-        # Extract playlist ID from URL if needed
-        if "list=" in self.playlist_uri:
-            self.playlist_id = self.playlist_uri.split("list=")[1].split("&")[0]
-        else:
-            self.playlist_id = self.playlist_uri
+        if self.playlist_uri:
+            self.playlist_id = self.extract_playlist_id(self.playlist_uri)
+            logging.info(f"Editing YouTube Music playlist with ID: {self.playlist_id}")
         
         self.music_file_repo = music_file_repo
             
         # Set up authentication
-        # You may need to customize this based on your authentication method
-        # For now, using default authentication
         try:
             oauth_path = os.getenv("YTMUSIC_OAUTH_PATH", "oauth.json")
             if not os.path.exists(oauth_path):
                 raise FileNotFoundError(f"OAuth file not found at {oauth_path}")
             
-            if not os.getenv("YOUTUBE_CLIENT_ID") or not os.getenv("YOUTUBE_CLIENT_SECRET"):
-                raise ValueError("YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET must be set in environment variables")
+            # if not os.getenv("YOUTUBE_CLIENT_ID") or not os.getenv("YOUTUBE_CLIENT_SECRET"):
+            #     raise ValueError("YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET must be set in environment variables")
 
-            self.ytmusic = YTMusic(oauth_path, oauth_credentials=OAuthCredentials(
-                client_id=os.getenv("YOUTUBE_CLIENT_ID"),
-                client_secret=os.getenv("YOUTUBE_CLIENT_SECRET"))
-            )
+            # self.ytmusic = YTMusic(oauth_path, oauth_credentials=OAuthCredentials(
+            #     client_id=os.getenv("YOUTUBE_CLIENT_ID"),
+            #     client_secret=os.getenv("YOUTUBE_CLIENT_SECRET"))
+            # )
+
+            # simplified browser-based auth
+            self.ytmusic = YTMusic(oauth_path)
 
             logging.info("YouTube Music client initialized successfully")
         except Exception as e:
@@ -57,15 +67,37 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             
         try:
             # Test the connection with a simple API call
-            self.ytmusic.get_library_playlists(limit=1)
+            playlists = self.ytmusic.get_library_playlists(limit=None)
             return True
         except Exception as e:
             logging.error(f"YouTube Music authentication test failed: {e}")
             return False
     
+    def extract_playlist_id(self, id_string: str) -> str:
+        if "list=" in id_string:
+            return id_string.split("list=")[1].split("&")[0]
+        
+        return id_string
+    
+    def lookup_playlist_id_by_name(self, playlist_name: str) -> Optional[str]:
+        """Lookup a YouTube Music playlist ID by name"""
+        if not self.ytmusic:
+            logging.error("Not authenticated with YouTube Music")
+            return None
+            
+        try:
+            playlists = self.ytmusic.get_library_playlists(limit=None)
+            for playlist in playlists:
+                if playlist.get("title", "") == playlist_name:
+                    return playlist.get("playlistId")
+            return None
+        except Exception as e:
+            logging.error(f"Error looking up YouTube Music playlist by name {playlist_name}: {e}")
+            return None
+    
     def fetch_media_item(self, item: PlaylistItem) -> Any:
         """Search for a track on YouTube Music"""
-        if not self.is_authenticated():
+        if not self.ytmusic:
             logging.error("Not authenticated with YouTube Music")
             return None
         
@@ -84,7 +116,9 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             # Build search query
             query = f"{item.artist} - {item.title}"
             if item.album:
-                query += f" {item.album}"
+                query += f" - {item.album}"
+            
+            query = query[:100]
                 
             search_results = self.ytmusic.search(query, filter="songs", limit=10)
             
@@ -123,7 +157,7 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
                     if not music_file_db:
                         logging.warning(f"No music file DB entry found for ID {music_file.id}")
                     else:
-                        music_file_db.youtube_url = result.get("videoId")
+                        music_file_db.youtube_url = get_video_id_from_track(result)
                         self.session.commit()
 
             return result
@@ -134,7 +168,7 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
     
     def create_playlist(self, playlist_name: str, snapshot: PlaylistSnapshot) -> Any:
         """Create a new playlist on YouTube Music or update existing one"""
-        if not self.is_authenticated():
+        if not self.ytmusic:
             logging.error("Not authenticated with YouTube Music")
             return None
             
@@ -142,8 +176,11 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             # If we have a playlist ID in config, use that instead of creating a new one
             if self.playlist_id:
                 # Just add tracks to the existing playlist
+                logging.info(f"Using existing YouTube Music playlist ID: {self.playlist_id}")
                 return self._update_playlist_tracks(snapshot)
-            
+
+            logging.info(f"Creating new YouTube Music playlist: {playlist_name}")
+
             # Create a new playlist
             playlist_id = self.ytmusic.create_playlist(
                 title=playlist_name,
@@ -151,14 +188,15 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             )
             
             self.playlist_id = playlist_id
+            logging.info(f"Created YouTube Music playlist with ID: {playlist_id}")
             
             # Add all tracks
             track_ids = []
             for item in snapshot.items:
                 track = self.fetch_media_item(item)
-                if track and track.get("videoId"):
-                    track_ids.append(track["videoId"])
-            
+                if track and get_video_id_from_track(track):
+                    track_ids.append(get_video_id_from_track(track))
+
             # Add tracks in batches if needed
             if track_ids:
                 self.ytmusic.add_playlist_items(playlist_id, track_ids)
@@ -180,7 +218,7 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             
             # Remove all existing tracks
             if current_playlist.get("tracks"):
-                track_ids_to_remove = [track["setVideoId"] for track in current_playlist["tracks"] if track.get("setVideoId")]
+                track_ids_to_remove = [track for track in current_playlist["tracks"] if track.get("setVideoId")]
                 if track_ids_to_remove:
                     self.ytmusic.remove_playlist_items(self.playlist_id, track_ids_to_remove)
             
@@ -188,8 +226,8 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             track_ids = []
             for item in snapshot.items:
                 track = self.fetch_media_item(item)
-                if track and track.get("videoId"):
-                    track_ids.append(track["videoId"])
+                if track and get_video_id_from_track(track):
+                    track_ids.append(get_video_id_from_track(track))
             
             if track_ids:
                 self.ytmusic.add_playlist_items(self.playlist_id, track_ids)
@@ -202,8 +240,12 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
     
     def get_playlist_snapshot(self, playlist_name: str) -> Optional[PlaylistSnapshot]:
         """Get a snapshot of a YouTube Music playlist"""
-        if not self.is_authenticated():
+        if not self.ytmusic:
             logging.error("Not authenticated with YouTube Music")
+            return None
+        
+        if not self.playlist_id:
+            logging.error("No playlist ID configured for YouTube Music")
             return None
             
         try:
@@ -236,7 +278,7 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
                     artist=artist,
                     album=album,
                     title=track.get("title", "Unknown Title"),
-                    youtube_url=track.get("videoId", None)
+                    youtube_url=get_video_id_from_track(track)
                 )
                 result.add_item(playlist_item)
                 
@@ -249,10 +291,14 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
     
     def add_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
         """Add tracks to a YouTube Music playlist"""
-        if not self.is_authenticated():
+        if not self.ytmusic:
             logging.error("Not authenticated with YouTube Music")
             return
             
+        if not self.playlist_id:
+            logging.error("No playlist ID configured for YouTube Music")
+            return
+
         track_ids = []
         for item in items:
             track = self.fetch_media_item(item)
@@ -260,10 +306,7 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
                 logging.warning(f"No track found for item: {item.to_string()}")
                 continue
 
-            video_id = track.get("videoId")
-            if not video_id:
-                video_id = track.get("videoDetails").get("videoId")
-
+            video_id = get_video_id_from_track(track)
             if not video_id:
                 logging.warning(f"No videoId found for item: {item.to_string()}")
                 continue
@@ -279,8 +322,12 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
     
     def remove_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
         """Remove tracks from a YouTube Music playlist"""
-        if not self.is_authenticated():
+        if not self.ytmusic:
             logging.error("Not authenticated with YouTube Music")
+            return
+        
+        if not self.playlist_id:
+            logging.error("No playlist ID configured for YouTube Music")
             return
             
         try:
@@ -315,3 +362,29 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
                             
         except Exception as e:
             logging.error(f"Error removing tracks from YouTube Music playlist: {e}")
+    
+    def clear_playlist(self) -> None:
+        """Clear all items from the YouTube Music playlist"""
+        if not self.ytmusic:
+            logging.error("Not authenticated with YouTube Music")
+            return
+        
+        if not self.playlist_id:
+            logging.error("No playlist ID configured for YouTube Music")
+            return
+            
+        try:
+            # Get current playlist to find the tracks to remove
+            playlist = self.ytmusic.get_playlist(self.playlist_id, limit=None)
+
+            tracks = playlist.get("tracks", [])
+
+            track_ids_to_remove = [track for track in tracks if track.get("setVideoId")]
+            if track_ids_to_remove:
+                self.ytmusic.remove_playlist_items(self.playlist_id, track_ids_to_remove)
+                logging.info(f"Cleared all items from YouTube Music playlist ID: {self.playlist_id}")
+            else:
+                logging.info("YouTube Music playlist is already empty")
+                
+        except Exception as e:
+            logging.error(f"Error clearing YouTube Music playlist: {e}")

@@ -485,6 +485,31 @@ class SpotifyRepository(RemotePlaylistRepository):
                         logging.warning(f"Track not found in snapshot for item: {item.to_string(normalize=True)}")
                 else:
                     logging.warning(f"Snapshot not found for playlist: {playlist_name}")
+    
+    def is_authenticated(self) -> bool:
+        if self.sp is None:
+            return False
+
+        try:
+            self.sp.current_user_playlists()
+            return True
+        except Exception as e:
+            logging.error(f"Error checking Spotify authentication: {e}")
+            return False
+
+        return False
+    
+    def clear_playlist(self) -> None:
+        """Clear all items from the remote playlist"""
+        if not self.sp:
+            raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
+        
+        if not self.playlist_id:
+            raise ValueError("No playlist ID configured")
+        
+        # Remove all items by replacing with an empty list
+        self.sp.playlist_replace_items(self.playlist_id, [])
+        logging.info(f"Cleared all items from Spotify playlist ID: {self.playlist_id}")
 
 
 # Helper functions to get repository instances

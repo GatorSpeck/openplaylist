@@ -176,6 +176,16 @@ class RemotePlaylistRepository(ABC):
     def fetch_media_item(self, item: PlaylistItem) -> Any:
         """Fetch a media item from the remote service"""
         pass
+
+    @abstractmethod
+    def is_authenticated(self) -> bool:
+        """Check if the repository is authenticated"""
+        pass
+
+    @abstractmethod
+    def clear_playlist(self) -> None:
+        """Clear all items from the remote playlist"""
+        pass
     
     def create_force_push_sync_plan(self, 
                                    new_remote_snapshot: Optional[PlaylistSnapshot],
@@ -190,11 +200,6 @@ class RemotePlaylistRepository(ABC):
         if not sync_target.sendEntryAdds or not sync_target.sendEntryRemovals:
             logging.warning(f"Force push requires both sendEntryAdds and sendEntryRemovals to be enabled for target {sync_target.id}")
             return []
-        
-        # If remote playlist exists, remove all items from it first
-        if new_remote_snapshot and new_remote_snapshot.items:
-            for item in new_remote_snapshot.items:
-                plan.append(SyncChange('remove', item, 'local', 'Force push: clearing remote playlist'))
         
         # Add all local items to remote
         for item in new_local_snapshot.items:

@@ -104,8 +104,6 @@ ALLOW_ORIGINS=localhost  # for CORS
 
 ## Youtube Music configuration
 ## Must use browser-based auth! https://ytmusicapi.readthedocs.io/en/stable/setup/browser.html
-# YOUTUBE_CLIENT_ID="your client ID"
-# YOUTUBE_CLIENT_SECRET="your secret"
 # YTMUSIC_OAUTH_PATH="path to browser.json"
 ```
 

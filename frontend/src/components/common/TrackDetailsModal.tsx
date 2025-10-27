@@ -226,11 +226,11 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
 
       const fieldName = fieldMapping[sourceType] || sourceType;
       
-      // When unlinking a local file only
+      // Create the unlink request with the correct field
       const unlinkRequest = {
         track_id: entry.id,
         updates: {
-          local_path: null
+          [fieldName]: null  // Use the correct field name, not just local_path
         }
       };
 

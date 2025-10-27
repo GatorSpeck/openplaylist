@@ -542,6 +542,9 @@ def sync_playlist(
 
                 if remote_repo is None:
                     raise Exception(f"Unsupported service: {target.service}")
+                
+                if not remote_repo.is_authenticated():
+                    raise Exception(f"Authentication failed for service: {target.service}")
 
                 # Store the repository and target name for later use
                 remote_repos[target.id] = {
@@ -622,6 +625,9 @@ def sync_playlist(
                         new_local_snapshot=local_snapshot,
                         sync_target=target
                     )
+
+                    logging.info("Clearing remote playlist for force push")
+                    remote_repo.clear_playlist()
                 else:
                     # Use normal sync plan
                     sync_plan = remote_repo.create_sync_plan(
@@ -671,6 +677,10 @@ def sync_playlist(
         # If we don't have a unified plan, we can't proceed
         if unified_plan is None:
             raise HTTPException(status_code=500, detail="Failed to create any sync plans")
+        
+        logging.info("Unified sync plan:")
+        for change in unified_plan:
+            logging.info(f"{change.action} {change.item.to_string()} (source: {change.source}, reason: {change.reason})")
         
         # Step 4: Apply the unified sync plan
         for change in unified_plan:
