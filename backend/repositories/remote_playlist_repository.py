@@ -44,7 +44,7 @@ class SyncChange(NamedTuple):
 def create_snapshot(playlist: PlaylistDB) -> PlaylistSnapshot:
     """Create a snapshot from a local playlist"""
     result = PlaylistSnapshot(
-        name=playlist.name,
+        name=playlist.name[-49:],
         last_updated=playlist.updated_at.replace(tzinfo=get_local_tz()),
         items=[]
     )
@@ -93,7 +93,7 @@ class RemotePlaylistRepository(ABC):
             return None
         
         result = PlaylistSnapshot(
-            name=this_playlist.name,
+            name=this_playlist.name[-49:],
             last_updated=this_playlist.last_updated.astimezone(get_local_tz()),
             items=[]
         )
@@ -122,7 +122,7 @@ class RemotePlaylistRepository(ABC):
             self.session.commit()
 
         result = PlaylistSnapshotModel(
-            name=snapshot.name,
+            name=snapshot.name[-49:],
             last_updated=datetime.now(get_local_tz()),
             contents=[]
         )
@@ -430,14 +430,14 @@ class RemotePlaylistRepository(ABC):
                 self.create_playlist(target_name, local_snapshot)
                 # Update stored snapshot - create new snapshot with correct name
                 new_snapshot = PlaylistSnapshot(
-                    name=target_name,
+                    name=target_name[-49:],
                     last_updated=local_snapshot.last_updated,
                     items=local_snapshot.items
                 )
             else:
                 # Create empty playlist when sendEntryAdds is False
                 empty_snapshot = PlaylistSnapshot(
-                    name=target_name,
+                    name=target_name[-49:],
                     last_updated=local_snapshot.last_updated,
                     items=[]
                 )
