@@ -303,7 +303,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   useEffect(() => {
     // Set a timer to update the debounced filter after typing stops
     const timer = setTimeout(() => {
-      setDebouncedFilter(filter);
+      setDebouncedFilter(filter.trim());
     }, 500); // 500ms debounce delay
 
     // Clean up the timer if filter changes before timeout completes
@@ -1222,7 +1222,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           <span className="filter-count">
             {totalCount} tracks{" "}
             {filter
-              ? filter !== debouncedFilter
+              ? filter.trim() !== debouncedFilter.trim()
                 ? "(filtering...)"
                 : "(filtered)"
               : ""}{" "}
