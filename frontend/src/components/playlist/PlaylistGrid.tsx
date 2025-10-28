@@ -12,7 +12,7 @@ import playlistRepository from '../../repositories/PlaylistRepository';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import PlaylistEntryRow from './PlaylistEntryRow';
 import AutoSizer from 'react-virtualized-auto-sizer';
-import { FixedSizeList as List } from 'react-window';
+import { FixedSizeList as List, FixedSizeListProps } from 'react-window';
 import TrackDetailsModal from '../common/TrackDetailsModal';
 import openAIRepository from '../../repositories/OpenAIRepository';
 import lastFMRepository from '../../repositories/LastFMRepository';
@@ -179,6 +179,15 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       setIsRandomOrder(true);
     }
     
+    // Restore scroll position from cookies
+    const savedScrollPosition = getCookie(`playlist_${playlistID}_scrollPosition`);
+    if (savedScrollPosition && !isNaN(parseFloat(savedScrollPosition))) {
+      const position = parseFloat(savedScrollPosition);
+      setScrollPosition(position);
+      scrollPositionRef.current = position;
+      isRestoringScroll.current = true;
+    }
+    
     // Set the state values all at once
     setSortColumn(initialSortColumn);
     setSortDirection(initialSortDirection);
@@ -306,6 +315,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     // Only fetch data after params are initialized
     if (paramsInitialized) {
       setPage(0); // Reset page on filter/sort changes
+      
+      // Don't automatically clear scroll position on filter/sort changes
+      // Let the user manually scroll to where they want to be
+      
       fetchPlaylistArtGrid();
       fetchPlaylistDetails(true);
     }
@@ -444,6 +457,29 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       
       if (isInitialLoad) {
         setInitialFetchComplete(true); // Mark initial fetch as complete
+        
+        // Restore scroll position after initial load is complete and we have entries
+        if (isRestoringScroll.current && scrollPositionRef.current > 0 && mappedEntries.length > 0) {
+          // Use a timeout to ensure the virtual list is fully rendered with the new data
+          setTimeout(() => {
+            if (listRef.current && listRef.current.scrollTo) {
+              const targetPosition = scrollPositionRef.current;
+              listRef.current.scrollTo(targetPosition);
+              
+              // Keep the restoration flag active longer to prevent scroll events from saving
+              setTimeout(() => {
+                isRestoringScroll.current = false;
+              }, 2000);
+            } else {
+              isRestoringScroll.current = false;
+            }
+          }, 500);
+        } else {
+          // Reset the flag if we're not restoring
+          if (isRestoringScroll.current) {
+            isRestoringScroll.current = false;
+          }
+        }
       }
       
       return { 
@@ -852,7 +888,23 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     });
   };
 
-  const listRef = useRef(null);
+  const listRef = useRef<any>(null);
+  
+  // Add scroll position state and persistence
+  const [scrollPosition, setScrollPosition] = useState(0);
+  const scrollPositionRef = useRef(0);
+  const isRestoringScroll = useRef(false);
+  const scrollSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Save scroll position when component unmounts or playlist changes
+  useEffect(() => {
+    return () => {
+      // Save final scroll position on cleanup (only if > 0)
+      if (scrollPositionRef.current > 0) {
+        setCookie(`playlist_${playlistID}_scrollPosition`, scrollPositionRef.current.toString(), 7);
+      }
+    };
+  }, [playlistID]);
 
   // Replace loadMoreItems function with this smart pagination function
   const loadItemsForVisibleRange = useCallback(async (startIndex, stopIndex) => {
@@ -891,7 +943,6 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     
     // Case 3: User is scrolling backwards to unloaded entries
     if (startIndex < 20 && entries.length > 0 && (!entries[0] || !entries[0].details)) {
-      console.log(`Scrolling backwards to unloaded entries, fetching at position ${startIndex}`);
       await fetchPlaylistDetails(false, startIndex);
       return;
     }
@@ -1293,6 +1344,26 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                             visibleStopIndex
                           );
                         });
+                      }}
+                      onScroll={({ scrollOffset }) => {
+                        // During restoration, don't update the scroll position reference
+                        // to preserve the target restoration position
+                        if (!isRestoringScroll.current) {
+                          scrollPositionRef.current = scrollOffset;
+                          setScrollPosition(scrollOffset);
+                          
+                          // Debounce saving to cookies to avoid excessive writes
+                          // Only save non-zero positions to avoid overwriting with reset positions
+                          if (scrollOffset > 0) {
+                            if (scrollSaveTimeoutRef.current) {
+                              clearTimeout(scrollSaveTimeoutRef.current);
+                            }
+                            scrollSaveTimeoutRef.current = setTimeout(() => {
+                              // Set cookie to expire in 7 days for better persistence across browser sessions
+                              setCookie(`playlist_${playlistID}_scrollPosition`, scrollOffset.toString(), 7);
+                            }, 1000); // Save after 1 second of no scrolling
+                          }
+                        }
                       }}
                     >
                       {Row}
