@@ -1045,11 +1045,13 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 else_=None
             )
         elif filter.sortCriteria == PlaylistSortCriteria.RANDOM:
-            # Use a deterministic random function with the seed
+            # Use a deterministic pseudo-random function with the seed
             from sqlalchemy import func
             if filter.randomSeed is not None:
-                # Create a deterministic random sort using the ID and seed
-                sort_column = func.abs(func.random() * (poly_entity.id + filter.randomSeed))
+                # Copilot came up with this magic formula
+                sort_column = (
+                    (poly_entity.id * 1664525 + filter.randomSeed * 1013904223) % 2147483647
+                )
             else:
                 sort_column = func.random()
         else:
