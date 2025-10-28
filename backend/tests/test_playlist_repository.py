@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from repositories.playlist import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
+from repositories.playlist_repository import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
 from models import *
 from response_models import *
 import datetime

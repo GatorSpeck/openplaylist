@@ -1,6 +1,6 @@
 import pytest
 from repositories.music_file import MusicFileRepository
-from repositories.playlist import PlaylistRepository, PlaylistFilter
+from repositories.playlist_repository import PlaylistRepository, PlaylistFilter
 from response_models import MusicFileEntry, MusicFile
 from models import Base, MusicFileDB, TrackGenreDB, PlaylistDB, MusicFileEntryDB
 import datetime

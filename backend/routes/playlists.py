@@ -1,11 +1,11 @@
 from fastapi import APIRouter
 from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
-from repositories.playlist import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
+from repositories.playlist_repository import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
 from fastapi import Query, APIRouter, Depends, Body, File, UploadFile
 from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, LinkChangeRequest, MusicFileEntry, RequestedAlbumEntry, Album, TrackDetails, PlaylistEntryStub, SyncTarget, SyncLogEntry
 import json
-from repositories.playlist import PlaylistRepository
+from repositories.playlist_repository import PlaylistRepository
 from repositories.music_file import MusicFileRepository
 from repositories.last_fm_repository import get_last_fm_repo
 from repositories.plex_repository import PlexRepository

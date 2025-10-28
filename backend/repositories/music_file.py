@@ -6,7 +6,7 @@ from sqlalchemy import text, or_, func
 import time
 import urllib
 import logging
-from repositories.playlist import PlaylistRepository
+from repositories.playlist_repository import PlaylistRepository
 from lib.normalize import normalize_title
 from lib.match import TrackStub, get_match_score
 

@@ -25,7 +25,7 @@ import urllib
 from response_models import *
 from dependencies import get_music_file_repository, get_playlist_repository, get_plex_repository
 from repositories.music_file import MusicFileRepository
-from repositories.playlist import PlaylistRepository
+from repositories.playlist_repository import PlaylistRepository
 from repositories.open_ai_repository import open_ai_repository
 from repositories.last_fm_repository import last_fm_repository
 from repositories.plex_repository import PlexRepository
