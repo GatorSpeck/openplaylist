@@ -181,26 +181,6 @@ class SpotifyRepository(RemotePlaylistRepository):
             else:
                 logging.warning("No Spotify token available. Authentication required.")
                 self.sp = None
-    
-    def is_authenticated(self):
-        """
-        Check if we have a valid Spotify client
-        
-        Returns:
-            bool: True if authenticated, False otherwise
-        """
-        if not self.sp:
-            return False
-            
-        # Test the token with a simple API call
-        try:
-            self.sp.current_user()
-            return True
-        except Exception as e:
-            logging.error(f"Authentication test failed: {e}")
-            # Token might be invalid, force re-auth
-            self.sp = None
-            return False
             
     def get_auth_url(self):
         """Get the URL to start OAuth flow"""
@@ -241,7 +221,7 @@ class SpotifyRepository(RemotePlaylistRepository):
     
     def get_current_user(self):
         """Get the current authenticated user's info"""
-        if not self.is_authenticated():
+        if self.sp:
             raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
             
         return self.sp.current_user()
@@ -250,7 +230,7 @@ class SpotifyRepository(RemotePlaylistRepository):
     
     def fetch_media_item(self, item: PlaylistItem) -> Any:
         """Search for a track on Spotify"""
-        if not self.is_authenticated():
+        if not self.sp:
             raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
         
         if item.spotify_uri:
@@ -321,7 +301,7 @@ class SpotifyRepository(RemotePlaylistRepository):
     
     def create_playlist(self, playlist_name: str, snapshot: PlaylistSnapshot) -> Any:
         """Create a new playlist on Spotify or update existing one"""
-        if not self.is_authenticated():
+        if not self.sp:
             raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
             
         # If we have a playlist ID in config, use that instead of creating a new one
@@ -389,7 +369,7 @@ class SpotifyRepository(RemotePlaylistRepository):
     def get_playlist_snapshot(self, playlist_id: str) -> Optional[PlaylistSnapshot]:
         """Get a snapshot of a Spotify playlist for sync"""
         try:
-            if not self.is_authenticated():
+            if not self.sp:
                 logging.error("Not authenticated with Spotify")
                 return None
 
@@ -445,7 +425,7 @@ class SpotifyRepository(RemotePlaylistRepository):
     
     def add_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
         """Add tracks to a Spotify playlist"""
-        if not self.is_authenticated():
+        if not self.sp:
             raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
             
         track_uris = []
@@ -464,7 +444,7 @@ class SpotifyRepository(RemotePlaylistRepository):
     
     def remove_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
         """Remove tracks from a Spotify playlist"""
-        if not self.is_authenticated():
+        if not self.sp:
             raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
             
         for item in items:

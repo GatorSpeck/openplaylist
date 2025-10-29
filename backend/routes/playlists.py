@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from typing import Dict, Optional, List, Union, Any
 from repositories.remote_repository_factory import create_remote_repository
 from repositories.remote_playlist_repository import SyncChange, create_snapshot
+from profiling import profile_function
 
 router = APIRouter()
 
