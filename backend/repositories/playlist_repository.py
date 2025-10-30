@@ -1048,9 +1048,28 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             # Use a deterministic pseudo-random function with the seed
             from sqlalchemy import func
             if filter.randomSeed is not None:
-                # Copilot came up with this magic formula
+                # Improved pseudo-random formula that incorporates track metadata to prevent artist grouping
+                # Uses simple hash-like operations based on string length for cross-database compatibility
+                title_hash = case(
+                    (poly_entity.entry_type == "music_file", 
+                     func.coalesce(func.length(music_file_details.title), 0) * 31),
+                    (poly_entity.entry_type == "requested_album", 
+                     func.coalesce(func.length(requested_album_details.title), 0) * 31),
+                    else_=0
+                )
+                artist_hash = case(
+                    (poly_entity.entry_type == "music_file", 
+                     func.coalesce(func.length(music_file_details.artist), 0) * 37),
+                    (poly_entity.entry_type == "requested_album", 
+                     func.coalesce(func.length(requested_album_details.artist), 0) * 37),
+                    else_=0
+                )
+                # Combine entry ID with metadata hashes for better distribution
                 sort_column = (
-                    (poly_entity.id * 1664525 + filter.randomSeed * 1013904223) % 2147483647
+                    (poly_entity.id * 1664525 + 
+                     title_hash * 2654435761 + 
+                     artist_hash * 3266489917 + 
+                     filter.randomSeed * 1013904223) % 2147483647
                 )
             else:
                 sort_column = func.random()
