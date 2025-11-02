@@ -79,10 +79,8 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             [scoring.replace(":token", f":token{i}") for i in range(len(tokens))]
         )
 
-        # Build query with scoring, joining MusicFileDB to get genres
-        query = self.session.query(MusicFileDB, text(f"({score_sum}) as relevance")).join(
-            LocalFileDB, MusicFileDB.local_file
-        )
+        # Build query with scoring on LocalFileDB directly (includes unlinked files)
+        query = self.session.query(LocalFileDB, text(f"({score_sum}) as relevance"))
 
         # Add token parameters
         for i, token in enumerate(tokens):
@@ -108,9 +106,9 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             f"Search query: {search_query} returned {len(results)} results in {time.time() - start_time:.2f} seconds"
         )
 
-        # Extract just the MusicFileDB objects from results (first element of each tuple)
-        music_files = [result[0] for result in results]
-        return [to_music_file(music_file) for music_file in music_files]
+        # Extract just the LocalFileDB objects from results (first element of each tuple)
+        local_files = [result[0] for result in results]
+        return [MusicFile.from_local_file(local_file) for local_file in local_files]
 
     def filter(
         self,

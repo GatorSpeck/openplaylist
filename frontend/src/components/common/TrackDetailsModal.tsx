@@ -34,6 +34,8 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesValue, setNotesValue] = useState(() => entry.notes || entry.details?.notes || '');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [customSearchQuery, setCustomSearchQuery] = useState(() => `${entry.getArtist()} ${entry.getTitle()}`.trim());
+  const [hasSearched, setHasSearched] = useState(false);
   
   if (!entry) return null;
 
@@ -52,17 +54,33 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
     setNotesValue(entry.notes || entry.details?.notes || '');
   }, [entry.notes, entry.details?.notes]);
 
-  const searchForLocalFiles = async () => {
+  const searchForLocalFiles = async (searchQuery?: string) => {
     setIsSearching(true);
+    setHasSearched(true);
     try {
-      const searchQuery = `${entry.getArtist()} ${entry.getTitle()}`;
-      const results = await libraryRepository.searchLibrary(searchQuery);
+      const queryToUse = searchQuery || customSearchQuery || `${entry.getArtist()} ${entry.getTitle()}`;
+      const results = await libraryRepository.searchLibrary(queryToUse);
       setSearchResults(results || []);
     } catch (error) {
       console.error('Error searching for local files:', error);
       setSearchResults([]);
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const handleSearchQueryChange = (newQuery: string) => {
+    setCustomSearchQuery(newQuery);
+    // Reset results when query changes
+    if (hasSearched) {
+      setSearchResults([]);
+      setHasSearched(false);
+    }
+  };
+
+  const handleSearchKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && customSearchQuery.trim()) {
+      searchForLocalFiles(customSearchQuery.trim());
     }
   };
 
@@ -520,7 +538,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
             </div>
           ) : (
             playlistId && (
-              <div className="source-section">
+                              <div className="source-section">
                 <h3>Local File</h3>
                 <p>Not linked to a local file</p>
                 <button onClick={() => setShowLinkSection(!showLinkSection)}>
@@ -529,9 +547,37 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                 
                 {showLinkSection && (
                   <div className="link-section">
-                    <button onClick={searchForLocalFiles} disabled={isSearching}>
-                      {isSearching ? 'Searching...' : 'Search Library'}
-                    </button>
+                    <div className="search-input-group">
+                      <label htmlFor="search-query">Search Query:</label>
+                      <input
+                        id="search-query"
+                        type="text"
+                        value={customSearchQuery}
+                        onChange={(e) => handleSearchQueryChange(e.target.value)}
+                        onKeyDown={handleSearchKeyPress}
+                        placeholder="Enter artist and/or track name..."
+                        className="search-input"
+                      />
+                      <button 
+                        onClick={() => searchForLocalFiles()} 
+                        disabled={isSearching || !customSearchQuery.trim()}
+                        className="search-button"
+                      >
+                        {isSearching ? 'Searching...' : 'Search Library'}
+                      </button>
+                    </div>
+                    
+                    {hasSearched && searchResults.length === 0 && !isSearching && (
+                      <div className="no-results-message">
+                        <p>No local files found for "{customSearchQuery}". Try:</p>
+                        <ul>
+                          <li>Searching for just the artist name</li>
+                          <li>Searching for just the track title</li>
+                          <li>Using partial words or different spellings</li>
+                          <li>Removing special characters or punctuation</li>
+                        </ul>
+                      </div>
+                    )}
                     
                     {searchResults.length > 0 && (
                       <div className="search-results">
@@ -540,6 +586,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                           <div key={index} className="search-result-item">
                             <div>
                               <strong>{result.title || 'Unknown Title'}</strong> - {result.artist || 'Unknown Artist'}
+                              {result.album && <><br /><em>Album: {result.album}</em></>}
                               <br />
                               <small>{result.path}</small>
                             </div>
