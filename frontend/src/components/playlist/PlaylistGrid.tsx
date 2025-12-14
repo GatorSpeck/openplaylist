@@ -1664,31 +1664,82 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
               <h3 style={{ margin: '0', fontSize: '18px' }}>Configure Columns</h3>
             </div>
             <div className="column-config-content">
-              <p>Select which columns to display in the playlist:</p>
+              <p>Select which columns to display and drag to reorder:</p>
               <div className="column-checkboxes">
-                {availableColumns.map(column => (
-                  <label key={column.key} className="column-checkbox-item">
-                    <input
-                      type="checkbox"
-                      checked={visibleColumns.includes(column.key)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          updateColumnVisibility([...visibleColumns, column.key]);
-                        } else {
-                          // Don't allow removing all columns
-                          if (visibleColumns.length > 1) {
-                            updateColumnVisibility(visibleColumns.filter(col => col !== column.key));
-                          }
+                {visibleColumns.map((columnKey, index) => {
+                  const column = availableColumns.find(col => col.key === columnKey);
+                  if (!column) return null;
+                  
+                  return (
+                    <label 
+                      key={column.key} 
+                      className="column-checkbox-item draggable-column"
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', index.toString());
+                        e.currentTarget.style.opacity = '0.5';
+                      }}
+                      onDragEnd={(e) => {
+                        e.currentTarget.style.opacity = '1';
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                        const dropIndex = index;
+                        
+                        if (dragIndex !== dropIndex) {
+                          const newColumns = [...visibleColumns];
+                          const draggedColumn = newColumns[dragIndex];
+                          newColumns.splice(dragIndex, 1);
+                          newColumns.splice(dropIndex, 0, draggedColumn);
+                          updateColumnVisibility(newColumns);
                         }
                       }}
-                      disabled={visibleColumns.length === 1 && visibleColumns.includes(column.key)}
-                    />
-                    <div>
-                      <span className="column-label">{column.label}</span>
-                      <small className="column-description">{column.description}</small>
-                    </div>
-                  </label>
-                ))}
+                    >
+                      <span className="drag-handle" style={{ cursor: 'grab', marginRight: '8px' }}>⋮⋮</span>
+                      <input
+                        type="checkbox"
+                        checked={true}
+                        onChange={(e) => {
+                          if (!e.target.checked && visibleColumns.length > 1) {
+                            updateColumnVisibility(visibleColumns.filter(col => col !== column.key));
+                          }
+                        }}
+                        disabled={visibleColumns.length === 1}
+                      />
+                      <div>
+                        <span className="column-label">{column.label}</span>
+                        <small className="column-description">{column.description}</small>
+                      </div>
+                    </label>
+                  );
+                })}
+                
+                {/* Hidden columns that can be added */}
+                {availableColumns
+                  .filter(column => !visibleColumns.includes(column.key))
+                  .map(column => (
+                    <label key={column.key} className="column-checkbox-item hidden-column">
+                      <span style={{ width: '20px', marginRight: '8px' }}></span>
+                      <input
+                        type="checkbox"
+                        checked={false}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            updateColumnVisibility([...visibleColumns, column.key]);
+                          }
+                        }}
+                      />
+                      <div>
+                        <span className="column-label" style={{ opacity: 0.6 }}>{column.label}</span>
+                        <small className="column-description" style={{ opacity: 0.6 }}>{column.description}</small>
+                      </div>
+                    </label>
+                  ))
+                }
               </div>
               <div className="column-config-actions">
                 <button 

@@ -573,6 +573,34 @@
   background-color: #f5f5f5;
 }
 
+.column-checkbox-item.draggable-column {
+  cursor: grab;
+  border: 1px solid transparent;
+}
+
+.column-checkbox-item.draggable-column:hover {
+  background-color: #e8f4fd;
+  border-color: #007bff;
+}
+
+.column-checkbox-item.hidden-column {
+  opacity: 0.7;
+}
+
+.column-checkbox-item.hidden-column:hover {
+  background-color: #f0f8f0;
+}
+
+.drag-handle {
+  color: #999;
+  font-size: 12px;
+  user-select: none;
+}
+
+.column-checkbox-item:hover .drag-handle {
+  color: #666;
+}
+
 .column-checkbox-item input[type="checkbox"] {
   margin-top: 2px;
   cursor: pointer;
