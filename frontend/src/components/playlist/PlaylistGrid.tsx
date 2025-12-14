@@ -1733,14 +1733,6 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           playlistName={name}
         />
       )}
-
-      {/* Column Configuration Modal */}
-      {(() => {
-        console.log('Modal render check - columnConfigOpen:', columnConfigOpen);
-        console.log('availableColumns:', availableColumns);
-        console.log('visibleColumns:', visibleColumns);
-        return null;
-      })()}
       
       {/* Column Configuration Modal */}
       {columnConfigOpen && (
