@@ -10,10 +10,10 @@
 
 .playlist-grid-header-row,
 .playlist-grid-row {
-  grid-template-columns: 0.1fr 2fr 2fr;
   display: grid;
   gap: 8px;
   margin: 0px;
+  /* Grid template columns will be set dynamically via style attribute */
 }
 
 .playlist-grid-header-row {
@@ -23,6 +23,9 @@
   position: sticky;
   top: 0;
   z-index: 2;
+  display: grid;
+  gap: 8px;
+  margin: 0px;
 }
 
 .playlist-controls {
@@ -90,6 +93,34 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   padding: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.column-config-btn {
+  background: #f8f9fa;
+  border: 1px solid #ddd;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+  color: #666;
+  transition: all 0.2s;
+  padding: 2px 6px;
+  border-radius: 3px;
+  min-width: 32px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+.column-config-btn:hover {
+  background: #e9ecef;
+  border-color: #999;
+  color: #333;
 }
 
 .clickable {
@@ -504,4 +535,110 @@
   background-color: #e3f2fd;
   border-color: #2196f3;
   color: #1976d2;
+}
+
+/* Column Configuration Modal Styles */
+.column-config-modal {
+  max-width: 500px;
+  width: 90vw;
+}
+
+.column-config-content {
+  padding: 20px;
+}
+
+.column-config-content p {
+  margin: 0 0 20px 0;
+  color: #666;
+}
+
+.column-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.column-checkbox-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  cursor: pointer;
+}
+
+.column-checkbox-item:hover {
+  background-color: #f5f5f5;
+}
+
+.column-checkbox-item input[type="checkbox"] {
+  margin-top: 2px;
+  cursor: pointer;
+}
+
+.column-checkbox-item input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.column-label {
+  font-weight: 500;
+  color: #333;
+  margin-right: 8px;
+}
+
+.column-description {
+  color: #666;
+  font-size: 12px;
+  line-height: 1.3;
+  display: block;
+  margin-top: 2px;
+}
+
+.column-config-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 16px;
+  border-top: 1px solid #eee;
+}
+
+.reset-columns-btn,
+.close-config-btn {
+  padding: 8px 16px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.reset-columns-btn {
+  color: #666;
+}
+
+.reset-columns-btn:hover {
+  background: #f5f5f5;
+  border-color: #ccc;
+}
+
+.close-config-btn {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.close-config-btn:hover {
+  background: #0056b3;
+  border-color: #0056b3;
+}
+
+/* Notes column styling */
+.notes-cell {
+  font-style: italic;
+  color: #666;
+  font-size: 12px;
 }

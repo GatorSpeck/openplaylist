@@ -12,7 +12,8 @@ interface PlaylistEntryRowProps {
   className?: string;
   style?: React.CSSProperties;
   isDragging?: boolean;
-  dragHandleProps?: any; // Add this prop to receive drag handle props
+  dragHandleProps?: any;
+  visibleColumns?: ('artistAlbum' | 'artist' | 'album' | 'title' | 'notes')[];
   [key: string]: any;
 }
 
@@ -25,6 +26,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
   style,
   isDragging,
   dragHandleProps,
+  visibleColumns = ['artistAlbum', 'title'],
   ...props 
 }, ref) => {
   const [imageUrl, setImageUrl] = useState(null);
@@ -274,41 +276,82 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
         ))}
       </div>
       
-      <div className="grid-cell artist-cell">
-        <div className="track-info">
-          <div className="artist scrolling-text">
-            <div 
-              ref={artistRef}
-              className={`scrolling ${shouldScrollArtist ? 'should-scroll' : ''}`}
-            >
-              <span>{artist}</span>
-            </div>
-          </div>
-          <div className="album scrolling-text">
-            <div 
-              ref={albumRef}
-              className={`scrolling ${shouldScrollAlbum ? 'should-scroll' : ''}`}
-            >
-              <span><i>{album}</i></span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="grid-cell scrolling-text">
-        <div 
-          ref={scrollingRef}
-          className={`scrolling ${shouldScroll ? 'should-scroll' : ''}`}
-        >
-          <span>{contentsHidden}</span>
-        </div>
-        {isMobile && (<button 
-          className="mobile-menu-button"
-          onClick={handleMenuClick}
-          aria-label="More options"
-        >
-          ⋮
-        </button>)}
-      </div>
+      {/* Render columns based on visibleColumns configuration */}
+      {visibleColumns.map((column, index) => {
+        switch (column) {
+          case 'artistAlbum':
+            return (
+              <div key={`${column}-${index}`} className="grid-cell artist-cell">
+                <div className="track-info">
+                  <div className="artist scrolling-text">
+                    <div 
+                      ref={artistRef}
+                      className={`scrolling ${shouldScrollArtist ? 'should-scroll' : ''}`}
+                    >
+                      <span>{artist}</span>
+                    </div>
+                  </div>
+                  <div className="album scrolling-text">
+                    <div 
+                      ref={albumRef}
+                      className={`scrolling ${shouldScrollAlbum ? 'should-scroll' : ''}`}
+                    >
+                      <span><i>{album}</i></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          case 'artist':
+            return (
+              <div key={`${column}-${index}`} className="grid-cell scrolling-text">
+                <div 
+                  ref={artistRef}
+                  className={`scrolling ${shouldScrollArtist ? 'should-scroll' : ''}`}
+                >
+                  <span>{artist}</span>
+                </div>
+              </div>
+            );
+          case 'album':
+            return (
+              <div key={`${column}-${index}`} className="grid-cell scrolling-text">
+                <div 
+                  ref={albumRef}
+                  className={`scrolling ${shouldScrollAlbum ? 'should-scroll' : ''}`}
+                >
+                  <span><i>{album}</i></span>
+                </div>
+              </div>
+            );
+          case 'title':
+            return (
+              <div key={`${column}-${index}`} className="grid-cell scrolling-text">
+                <div 
+                  ref={scrollingRef}
+                  className={`scrolling ${shouldScroll ? 'should-scroll' : ''}`}
+                >
+                  <span>{contentsHidden}</span>
+                </div>
+                {isMobile && (<button 
+                  className="mobile-menu-button"
+                  onClick={handleMenuClick}
+                  aria-label="More options"
+                >
+                  ⋮
+                </button>)}
+              </div>
+            );
+          case 'notes':
+            return (
+              <div key={`${column}-${index}`} className="grid-cell notes-cell">
+                <span>{entry.getNotes()}</span>
+              </div>
+            );
+          default:
+            return null;
+        }
+      })}
     </div>
   );
 });

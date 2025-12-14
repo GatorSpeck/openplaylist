@@ -53,7 +53,9 @@ const Row = memo(({ data, index, style }) => {
     selectedEntries,
     sortColumn,
     provided,
-    totalCount
+    totalCount,
+    visibleColumns,
+    gridTemplate
   } = data;
 
   if (index >= totalCount) {
@@ -70,12 +72,18 @@ const Row = memo(({ data, index, style }) => {
     // Return a placeholder/loading row
     return (
       <div 
-        style={style}
+        style={{
+          ...style,
+          gridTemplateColumns: gridTemplate,
+        }}
         className={`playlist-grid-row loading-row ${index % 2 === 0 ? 'even-row' : 'odd-row'}`}
       >
         <div className="grid-cell">{selectedEntries.includes(index) ? "✔" : index + 1}</div>
-        <div className="grid-cell">Loading...</div>
-        <div className="grid-cell"></div>
+        {visibleColumns.map((column, columnIndex) => (
+          <div key={`loading-${column}-${columnIndex}`} className="grid-cell">
+            {columnIndex === 0 ? "Loading..." : ""}
+          </div>
+        ))}
       </div>
     );
   }
@@ -94,6 +102,7 @@ const Row = memo(({ data, index, style }) => {
           style={{
             ...style,
             ...provided.draggableProps.style,
+            gridTemplateColumns: gridTemplate,
           }}
           className={`playlist-grid-row ${track.order % 2 === 0 ? 'even-row' : 'odd-row'} ${sortColumn !== 'order' ? 'drag-disabled' : ''}`}
           isDragging={snapshot.isDragging}
@@ -102,6 +111,7 @@ const Row = memo(({ data, index, style }) => {
           isChecked={selectedEntries.includes(track.id)} // Use track.id consistently
           entry={track}
           dragHandleProps={provided.dragHandleProps}
+          visibleColumns={visibleColumns}
         />
       )}
     </Draggable>
@@ -298,6 +308,58 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   // Add this near your other state declarations around line 255
   const [randomSeed, setRandomSeed] = useState<number | null>(null);
   const [isRandomOrder, setIsRandomOrder] = useState(false);
+
+  // Column configuration
+  type ColumnType = 'artistAlbum' | 'artist' | 'album' | 'title' | 'notes';
+  
+  const defaultColumns: ColumnType[] = ['artistAlbum', 'title'];
+  
+  const [visibleColumns, setVisibleColumns] = useState<ColumnType[]>(() => {
+    const saved = getCookie(`playlist_${playlistID}_columns`);
+    return saved ? JSON.parse(saved) : defaultColumns;
+  });
+  
+  const [columnConfigOpen, setColumnConfigOpen] = useState(false);
+  
+  // Column configuration options
+  const availableColumns = [
+    { key: 'artistAlbum' as ColumnType, label: 'Artist/Album', description: 'Combined artist and album info' },
+    { key: 'artist' as ColumnType, label: 'Artist', description: 'Artist name only' },
+    { key: 'album' as ColumnType, label: 'Album', description: 'Album name only' },
+    { key: 'title' as ColumnType, label: 'Title', description: 'Song/track title' },
+    { key: 'notes' as ColumnType, label: 'Notes', description: 'Additional notes or comments' }
+  ];
+  
+  // Update column visibility and save to cookies
+  const updateColumnVisibility = (columns: ColumnType[]) => {
+    setVisibleColumns(columns);
+    setCookie(`playlist_${playlistID}_columns`, JSON.stringify(columns));
+  };
+  
+  // Generate CSS grid template based on visible columns
+  const getGridTemplate = () => {
+    const baseColumns = ['0.1fr']; // Checkbox/art column always visible
+    
+    visibleColumns.forEach(col => {
+      switch (col) {
+        case 'artistAlbum':
+          baseColumns.push('2fr');
+          break;
+        case 'artist':
+        case 'album':
+          baseColumns.push('1.5fr');
+          break;
+        case 'title':
+          baseColumns.push('2fr');
+          break;
+        case 'notes':
+          baseColumns.push('1fr');
+          break;
+      }
+    });
+    
+    return baseColumns.join(' ');
+  };
 
   // Apply debouncing to the filter
   useEffect(() => {
@@ -1267,8 +1329,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
       <div className="playlist-container">
         <DragDropContext onDragEnd={onDragEnd}>
-          <div className="playlist-grid-header-row">
-            <div className="grid-cell">
+          <div className="playlist-grid-header-row" style={{ gridTemplateColumns: getGridTemplate() }}>
+            <div className="grid-cell" style={{ overflow: 'visible' }}>
               <input
                 type="checkbox"
                 checked={allPlaylistEntriesSelected}
@@ -1277,20 +1339,56 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
               <span className="clickable" onClick={() => handleSort("order")}>
                 # {getSortIndicator("order")}
               </span>
+              <button 
+                className="column-config-btn"
+                onClick={() => {
+                  console.log('Column config button clicked');
+                  console.log('Current columnConfigOpen state:', columnConfigOpen);
+                  setColumnConfigOpen(true);
+                  console.log('Set columnConfigOpen to true');
+                }}
+                title="Configure columns"
+              >
+                Cols
+              </button>
             </div>
-
-            <div
-              className="grid-cell clickable"
-              onClick={() => handleSort("artist")}
-            >
-              Artist {getSortIndicator("artist")}
-            </div>
-            <div
-              className="grid-cell clickable"
-              onClick={() => handleSort("title")}
-            >
-              Song {getSortIndicator("title")}
-            </div>
+            
+            {visibleColumns.map(column => {
+              switch (column) {
+                case 'artistAlbum':
+                  return (
+                    <div key={column} className="grid-cell clickable" onClick={() => handleSort("artist")}>
+                      Artist/Album {getSortIndicator("artist")}
+                    </div>
+                  );
+                case 'artist':
+                  return (
+                    <div key={column} className="grid-cell clickable" onClick={() => handleSort("artist")}>
+                      Artist {getSortIndicator("artist")}
+                    </div>
+                  );
+                case 'album':
+                  return (
+                    <div key={column} className="grid-cell clickable" onClick={() => handleSort("album")}>
+                      Album {getSortIndicator("album")}
+                    </div>
+                  );
+                case 'title':
+                  return (
+                    <div key={column} className="grid-cell clickable" onClick={() => handleSort("title")}>
+                      Title {getSortIndicator("title")}
+                    </div>
+                  );
+                case 'notes':
+                  return (
+                    <div key={column} className="grid-cell">
+                      Notes
+                    </div>
+                  );
+                default:
+                  return null;
+              }
+            })}
           </div>
 
           <Droppable
@@ -1301,11 +1399,13 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                 ref={provided.innerRef}
                 {...provided.draggableProps}
                 className="playlist-grid-row"
+                style={{ gridTemplateColumns: getGridTemplate() }}
                 isDragging={snapshot.isDragging}
                 entry={new PlaylistEntry(entries[rubric.source.index])}
                 isChecked={selectedEntries.includes(rubric.source.index)}
                 handleContextMenu={handleContextMenu}
                 dragHandleProps={provided.dragHandleProps}
+                visibleColumns={visibleColumns}
               />
             )}
           >
@@ -1327,6 +1427,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                         handleContextMenu: handleContextMenu,
                         isDraggingOver: snapshot.isDraggingOver,
                         totalCount: totalCount,
+                        visibleColumns,
+                        gridTemplate: getGridTemplate(),
                       }}
                       overscanCount={50} // Increased from 20 to handle fast scrolling better
                       onItemsRendered={({
@@ -1520,6 +1622,91 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           syncResult={syncResult}
           playlistName={name}
         />
+      )}
+
+      {/* Column Configuration Modal */}
+      {(() => {
+        console.log('Modal render check - columnConfigOpen:', columnConfigOpen);
+        console.log('availableColumns:', availableColumns);
+        console.log('visibleColumns:', visibleColumns);
+        return null;
+      })()}
+      
+      {/* Column Configuration Modal */}
+      {columnConfigOpen && (
+        <div style={{
+          position: 'fixed',
+          top: '0',
+          left: '0',
+          right: '0',
+          bottom: '0',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000
+        }} onClick={() => setColumnConfigOpen(false)}>
+          <div 
+            className="column-config-modal"
+            style={{
+              background: 'white',
+              borderRadius: '8px',
+              padding: '0',
+              maxWidth: '500px',
+              width: '90vw',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '20px', borderBottom: '1px solid #eee' }}>
+              <h3 style={{ margin: '0', fontSize: '18px' }}>Configure Columns</h3>
+            </div>
+            <div className="column-config-content">
+              <p>Select which columns to display in the playlist:</p>
+              <div className="column-checkboxes">
+                {availableColumns.map(column => (
+                  <label key={column.key} className="column-checkbox-item">
+                    <input
+                      type="checkbox"
+                      checked={visibleColumns.includes(column.key)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          updateColumnVisibility([...visibleColumns, column.key]);
+                        } else {
+                          // Don't allow removing all columns
+                          if (visibleColumns.length > 1) {
+                            updateColumnVisibility(visibleColumns.filter(col => col !== column.key));
+                          }
+                        }
+                      }}
+                      disabled={visibleColumns.length === 1 && visibleColumns.includes(column.key)}
+                    />
+                    <div>
+                      <span className="column-label">{column.label}</span>
+                      <small className="column-description">{column.description}</small>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <div className="column-config-actions">
+                <button 
+                  onClick={() => updateColumnVisibility(defaultColumns)}
+                  className="reset-columns-btn"
+                >
+                  Reset to Default
+                </button>
+                <button 
+                  onClick={() => setColumnConfigOpen(false)}
+                  className="close-config-btn"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

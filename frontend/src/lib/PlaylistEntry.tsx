@@ -119,6 +119,10 @@ class PlaylistEntry extends PlaylistEntryStub {
     return this.details.title;
   }
 
+  getNotes() {
+    return this.notes || this.details.notes || '';
+  }
+
   getAlbum() {
     return this.isAlbum() ? this.details.title : this.details.album;
   }
