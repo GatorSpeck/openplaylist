@@ -321,6 +321,27 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   
   const [columnConfigOpen, setColumnConfigOpen] = useState(false);
   
+  // Column widths state
+  const defaultColumnWidths = {
+    artistAlbum: 300,
+    artist: 200,
+    album: 200,
+    title: 300,
+    notes: 150
+  };
+  
+  const [columnWidths, setColumnWidths] = useState(() => {
+    const saved = getCookie(`playlist_${playlistID}_columnWidths`);
+    return saved ? JSON.parse(saved) : defaultColumnWidths;
+  });
+  
+  // Update column widths and save to cookies
+  const updateColumnWidth = (column: ColumnType, width: number) => {
+    const newWidths = { ...columnWidths, [column]: Math.max(80, width) }; // Min width 80px
+    setColumnWidths(newWidths);
+    setCookie(`playlist_${playlistID}_columnWidths`, JSON.stringify(newWidths));
+  };
+  
   // Column configuration options
   const availableColumns = [
     { key: 'artistAlbum' as ColumnType, label: 'Artist/Album', description: 'Combined artist and album info' },
@@ -336,26 +357,13 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     setCookie(`playlist_${playlistID}_columns`, JSON.stringify(columns));
   };
   
-  // Generate CSS grid template based on visible columns
+  // Generate CSS grid template based on visible columns and their widths
   const getGridTemplate = () => {
-    const baseColumns = ['0.1fr']; // Checkbox/art column always visible
+    const baseColumns = ['80px']; // Fixed width for checkbox/art column
     
     visibleColumns.forEach(col => {
-      switch (col) {
-        case 'artistAlbum':
-          baseColumns.push('2fr');
-          break;
-        case 'artist':
-        case 'album':
-          baseColumns.push('1.5fr');
-          break;
-        case 'title':
-          baseColumns.push('2fr');
-          break;
-        case 'notes':
-          baseColumns.push('1fr');
-          break;
-      }
+      const width = columnWidths[col] || defaultColumnWidths[col];
+      baseColumns.push(`${width}px`);
     });
     
     return baseColumns.join(' ');
@@ -1245,6 +1253,19 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         >
           ...
         </button>
+        
+        <button
+          className="column-config-btn"
+          onClick={() => {
+            console.log('Column config button clicked');
+            console.log('Current columnConfigOpen state:', columnConfigOpen);
+            setColumnConfigOpen(true);
+            console.log('Set columnConfigOpen to true');
+          }}
+          title="Configure columns"
+        >
+          Columns
+        </button>
 
         <div className="filter-container">
           <input
@@ -1339,55 +1360,95 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
               <span className="clickable" onClick={() => handleSort("order")}>
                 # {getSortIndicator("order")}
               </span>
-              <button 
-                className="column-config-btn"
-                onClick={() => {
-                  console.log('Column config button clicked');
-                  console.log('Current columnConfigOpen state:', columnConfigOpen);
-                  setColumnConfigOpen(true);
-                  console.log('Set columnConfigOpen to true');
-                }}
-                title="Configure columns"
-              >
-                Cols
-              </button>
             </div>
             
-            {visibleColumns.map(column => {
-              switch (column) {
-                case 'artistAlbum':
-                  return (
-                    <div key={column} className="grid-cell clickable" onClick={() => handleSort("artist")}>
-                      Artist/Album {getSortIndicator("artist")}
+            {visibleColumns.map((column, index) => {
+              const isLastColumn = index === visibleColumns.length - 1;
+              
+              const headerContent = (() => {
+                switch (column) {
+                  case 'artistAlbum':
+                    return (
+                      <span className="clickable" onClick={() => handleSort("artist")}>
+                        Artist/Album {getSortIndicator("artist")}
+                      </span>
+                    );
+                  case 'artist':
+                    return (
+                      <span className="clickable" onClick={() => handleSort("artist")}>
+                        Artist {getSortIndicator("artist")}
+                      </span>
+                    );
+                  case 'album':
+                    return (
+                      <span className="clickable" onClick={() => handleSort("album")}>
+                        Album {getSortIndicator("album")}
+                      </span>
+                    );
+                  case 'title':
+                    return (
+                      <span className="clickable" onClick={() => handleSort("title")}>
+                        Title {getSortIndicator("title")}
+                      </span>
+                    );
+                  case 'notes':
+                    return <span>Notes</span>;
+                  default:
+                    return null;
+                }
+              })();
+              
+              return (
+                <div key={column} className="grid-cell resizable-header" style={{ position: 'relative' }}>
+                  {headerContent}
+                  {!isLastColumn && (
+                    <div 
+                      className="resize-handle"
+                      style={{
+                        position: 'absolute',
+                        right: '-2px',
+                        top: '0',
+                        bottom: '0',
+                        width: '4px',
+                        cursor: 'col-resize',
+                        backgroundColor: 'transparent',
+                        zIndex: 10
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const startX = e.clientX;
+                        const startWidth = columnWidths[column] || defaultColumnWidths[column];
+                        
+                        const handleMouseMove = (moveEvent: MouseEvent) => {
+                          const diff = moveEvent.clientX - startX;
+                          const newWidth = startWidth + diff;
+                          updateColumnWidth(column, newWidth);
+                        };
+                        
+                        const handleMouseUp = () => {
+                          document.removeEventListener('mousemove', handleMouseMove);
+                          document.removeEventListener('mouseup', handleMouseUp);
+                        };
+                        
+                        document.addEventListener('mousemove', handleMouseMove);
+                        document.addEventListener('mouseup', handleMouseUp);
+                      }}
+                    >
+                      {/* Visual resize indicator */}
+                      <div style={{
+                        position: 'absolute',
+                        right: '1px',
+                        top: '20%',
+                        bottom: '20%',
+                        width: '2px',
+                        backgroundColor: '#ddd',
+                        opacity: 0,
+                        transition: 'opacity 0.2s'
+                      }} className="resize-indicator" />
                     </div>
-                  );
-                case 'artist':
-                  return (
-                    <div key={column} className="grid-cell clickable" onClick={() => handleSort("artist")}>
-                      Artist {getSortIndicator("artist")}
-                    </div>
-                  );
-                case 'album':
-                  return (
-                    <div key={column} className="grid-cell clickable" onClick={() => handleSort("album")}>
-                      Album {getSortIndicator("album")}
-                    </div>
-                  );
-                case 'title':
-                  return (
-                    <div key={column} className="grid-cell clickable" onClick={() => handleSort("title")}>
-                      Title {getSortIndicator("title")}
-                    </div>
-                  );
-                case 'notes':
-                  return (
-                    <div key={column} className="grid-cell">
-                      Notes
-                    </div>
-                  );
-                default:
-                  return null;
-              }
+                  )}
+                </div>
+              );
             })}
           </div>
 
@@ -1743,7 +1804,11 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
               </div>
               <div className="column-config-actions">
                 <button 
-                  onClick={() => updateColumnVisibility(defaultColumns)}
+                  onClick={() => {
+                    updateColumnVisibility(defaultColumns);
+                    setColumnWidths(defaultColumnWidths);
+                    setCookie(`playlist_${playlistID}_columnWidths`, JSON.stringify(defaultColumnWidths));
+                  }}
                   className="reset-columns-btn"
                 >
                   Reset to Default
