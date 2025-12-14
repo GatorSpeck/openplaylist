@@ -10,10 +10,10 @@
 
 .playlist-grid-header-row,
 .playlist-grid-row {
-  grid-template-columns: 0.1fr 2fr 2fr;
   display: grid;
   gap: 8px;
   margin: 0px;
+  /* Grid template columns will be set dynamically via style attribute */
 }
 
 .playlist-grid-header-row {
@@ -23,6 +23,9 @@
   position: sticky;
   top: 0;
   z-index: 2;
+  display: grid;
+  gap: 8px;
+  margin: 0px;
 }
 
 .playlist-controls {
@@ -90,6 +93,32 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   padding: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.column-config-btn {
+  background: #f8f9fa;
+  border: 1px solid #ddd;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: normal;
+  color: #666;
+  transition: all 0.2s;
+  padding: 8px 12px;
+  border-radius: 4px;
+  height: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.column-config-btn:hover {
+  background: #e9ecef;
+  border-color: #999;
+  color: #333;
 }
 
 .clickable {
@@ -504,4 +533,221 @@
   background-color: #e3f2fd;
   border-color: #2196f3;
   color: #1976d2;
+}
+
+/* Column Configuration Modal Styles */
+.column-config-modal {
+  max-width: 500px;
+  width: 90vw;
+}
+
+.column-config-content {
+  padding: 20px;
+}
+
+.column-config-content p {
+  margin: 0 0 20px 0;
+  color: #666;
+}
+
+.column-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.column-checkbox-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  cursor: pointer;
+}
+
+.column-checkbox-item:hover {
+  background-color: #f5f5f5;
+}
+
+.column-checkbox-item.draggable-column {
+  cursor: grab;
+  border: 1px solid transparent;
+}
+
+.column-checkbox-item.draggable-column:hover {
+  background-color: #e8f4fd;
+  border-color: #007bff;
+}
+
+.column-checkbox-item.hidden-column {
+  opacity: 0.7;
+}
+
+.column-checkbox-item.hidden-column:hover {
+  background-color: #f0f8f0;
+}
+
+.drag-handle {
+  color: #999;
+  font-size: 12px;
+  user-select: none;
+}
+
+.column-checkbox-item:hover .drag-handle {
+  color: #666;
+}
+
+.column-checkbox-item input[type="checkbox"] {
+  margin-top: 2px;
+  cursor: pointer;
+}
+
+.column-checkbox-item input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.column-label {
+  font-weight: 500;
+  color: #333;
+  margin-right: 8px;
+}
+
+.column-description {
+  color: #666;
+  font-size: 12px;
+  line-height: 1.3;
+  display: block;
+  margin-top: 2px;
+}
+
+.column-config-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 16px;
+  border-top: 1px solid #eee;
+}
+
+.reset-columns-btn,
+.close-config-btn {
+  padding: 8px 16px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.reset-columns-btn {
+  color: #666;
+}
+
+.reset-columns-btn:hover {
+  background: #f5f5f5;
+  border-color: #ccc;
+}
+
+.close-config-btn {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.close-config-btn:hover {
+  background: #0056b3;
+  border-color: #0056b3;
+}
+
+/* Notes column styling */
+.notes-cell {
+  font-style: italic;
+  color: #666;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.notes-cell:hover {
+  background-color: #f0f8ff;
+}
+
+.notes-display {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 2px;
+  transition: background-color 0.2s;
+  display: block;
+  min-height: 16px;
+  line-height: 16px;
+  width: 100%;
+}
+
+.notes-display:hover {
+  background-color: #f0f8ff;
+  color: #333;
+}
+
+.notes-input {
+  width: 100%;
+  border: 1px solid #007bff;
+  border-radius: 2px;
+  padding: 2px 4px;
+  font-size: 12px;
+  font-style: italic;
+  background: white !important;
+  color: #333 !important;
+  outline: none;
+  box-shadow: 0 0 3px rgba(0, 123, 255, 0.3);
+}
+
+.notes-input::placeholder {
+  color: #999;
+}
+
+/* Column resizing styles */
+.resizable-header {
+  position: relative;
+}
+
+.resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  background-color: rgba(0, 0, 0, 0.1);
+  border-left: 1px solid rgba(0, 0, 0, 0.2);
+  transition: background-color 0.2s;
+}
+
+.resize-handle:hover {
+  background-color: rgba(0, 123, 255, 0.3);
+  border-left: 1px solid rgba(0, 123, 255, 0.5);
+}
+  background: transparent;
+  z-index: 10;
+}
+
+.resize-handle:hover .resize-indicator {
+  opacity: 1 !important;
+}
+
+.resize-indicator {
+  position: absolute;
+  right: 1px;
+  top: 20%;
+  bottom: 20%;
+  width: 2px;
+  background-color: #007bff;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+/* Improve grid cell overflow for resizing */
+.playlist-grid-header-row .grid-cell {
+  overflow: visible;
 }

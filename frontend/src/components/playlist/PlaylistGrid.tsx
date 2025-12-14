@@ -53,7 +53,10 @@ const Row = memo(({ data, index, style }) => {
     selectedEntries,
     sortColumn,
     provided,
-    totalCount
+    totalCount,
+    visibleColumns,
+    gridTemplate,
+    updateEntryNotes
   } = data;
 
   if (index >= totalCount) {
@@ -70,12 +73,18 @@ const Row = memo(({ data, index, style }) => {
     // Return a placeholder/loading row
     return (
       <div 
-        style={style}
+        style={{
+          ...style,
+          gridTemplateColumns: gridTemplate,
+        }}
         className={`playlist-grid-row loading-row ${index % 2 === 0 ? 'even-row' : 'odd-row'}`}
       >
         <div className="grid-cell">{selectedEntries.includes(index) ? "✔" : index + 1}</div>
-        <div className="grid-cell">Loading...</div>
-        <div className="grid-cell"></div>
+        {visibleColumns.map((column, columnIndex) => (
+          <div key={`loading-${column}-${columnIndex}`} className="grid-cell">
+            {columnIndex === 0 ? "Loading..." : ""}
+          </div>
+        ))}
       </div>
     );
   }
@@ -94,6 +103,7 @@ const Row = memo(({ data, index, style }) => {
           style={{
             ...style,
             ...provided.draggableProps.style,
+            gridTemplateColumns: gridTemplate,
           }}
           className={`playlist-grid-row ${track.order % 2 === 0 ? 'even-row' : 'odd-row'} ${sortColumn !== 'order' ? 'drag-disabled' : ''}`}
           isDragging={snapshot.isDragging}
@@ -102,6 +112,8 @@ const Row = memo(({ data, index, style }) => {
           isChecked={selectedEntries.includes(track.id)} // Use track.id consistently
           entry={track}
           dragHandleProps={provided.dragHandleProps}
+          visibleColumns={visibleColumns}
+          onNotesUpdate={updateEntryNotes}
         />
       )}
     </Draggable>
@@ -298,6 +310,66 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   // Add this near your other state declarations around line 255
   const [randomSeed, setRandomSeed] = useState<number | null>(null);
   const [isRandomOrder, setIsRandomOrder] = useState(false);
+
+  // Column configuration
+  type ColumnType = 'artistAlbum' | 'artist' | 'album' | 'title' | 'notes';
+  
+  const defaultColumns: ColumnType[] = ['artistAlbum', 'title'];
+  
+  const [visibleColumns, setVisibleColumns] = useState<ColumnType[]>(() => {
+    const saved = getCookie(`playlist_${playlistID}_columns`);
+    return saved ? JSON.parse(saved) : defaultColumns;
+  });
+  
+  const [columnConfigOpen, setColumnConfigOpen] = useState(false);
+  
+  // Column widths state
+  const defaultColumnWidths = {
+    artistAlbum: 300,
+    artist: 200,
+    album: 200,
+    title: 300,
+    notes: 150
+  };
+  
+  const [columnWidths, setColumnWidths] = useState(() => {
+    const saved = getCookie(`playlist_${playlistID}_columnWidths`);
+    return saved ? JSON.parse(saved) : defaultColumnWidths;
+  });
+  
+  // Update column widths and save to cookies
+  const updateColumnWidth = (column: ColumnType, width: number) => {
+    const newWidths = { ...columnWidths, [column]: Math.max(80, width) }; // Min width 80px
+    setColumnWidths(newWidths);
+    setCookie(`playlist_${playlistID}_columnWidths`, JSON.stringify(newWidths));
+  };
+  
+  // Column configuration options
+  const availableColumns = [
+    { key: 'artistAlbum' as ColumnType, label: 'Artist/Album', description: 'Combined artist and album info' },
+    { key: 'artist' as ColumnType, label: 'Artist', description: 'Artist name only' },
+    { key: 'album' as ColumnType, label: 'Album', description: 'Album name only' },
+    { key: 'title' as ColumnType, label: 'Title', description: 'Song/track title' },
+    { key: 'notes' as ColumnType, label: 'Notes', description: 'Additional notes or comments' }
+  ];
+  
+  // Update column visibility and save to cookies
+  const updateColumnVisibility = (columns: ColumnType[]) => {
+    setVisibleColumns(columns);
+    setCookie(`playlist_${playlistID}_columns`, JSON.stringify(columns));
+  };
+  
+  // Generate CSS grid template based on visible columns and their widths
+  const getGridTemplate = () => {
+    const baseColumns = ['80px']; // Fixed width for checkbox/art column
+    
+    visibleColumns.forEach(col => {
+      const width = columnWidths[col] || defaultColumnWidths[col];
+      baseColumns.push(`${width}px`);
+    });
+    
+    return baseColumns.join(' ');
+  };
 
   // Apply debouncing to the filter
   useEffect(() => {
@@ -1149,6 +1221,51 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     }
   };
 
+  // Add function to update notes
+  const updateEntryNotes = useCallback(async (entryId: number, notes: string) => {
+    try {
+      // Find the entry to update
+      const entryIndex = entries.findIndex(entry => entry.id === entryId);
+      if (entryIndex === -1) return;
+      
+      const originalEntry = entries[entryIndex];
+      
+      // Create updated entry with new notes
+      const updatedEntry = new PlaylistEntry({
+        ...originalEntry,
+        notes,
+        details: { ...originalEntry.details, notes }
+      });
+      
+      // Optimistically update local state first
+      pushToHistory(entries);
+      const newEntries = [...entries];
+      newEntries[entryIndex] = updatedEntry;
+      setEntries(newEntries);
+      
+      // Update backend using the new updateEntryNotes method
+      await playlistRepository.updateEntryNotes(playlistID, entryId, notes);
+      
+      setSnackbar({
+        open: true,
+        message: 'Notes updated',
+        severity: 'success'
+      });
+      
+    } catch (error) {
+      console.error('Error updating notes:', error);
+      
+      // Revert the optimistic update on error
+      setEntries(entries);
+      
+      setSnackbar({
+        open: true,
+        message: `Error updating notes: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  }, [entries, pushToHistory, setEntries, setSnackbar, playlistID]);
+
   // Update BatchActions to include hide option
   const BatchActions = ({ selectedCount, onRemove, onClear, onHide }) => (
     <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -1182,6 +1299,19 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           onClick={() => setPlaylistModalVisible(true)}
         >
           ...
+        </button>
+        
+        <button
+          className="column-config-btn"
+          onClick={() => {
+            console.log('Column config button clicked');
+            console.log('Current columnConfigOpen state:', columnConfigOpen);
+            setColumnConfigOpen(true);
+            console.log('Set columnConfigOpen to true');
+          }}
+          title="Configure columns"
+        >
+          Columns
         </button>
 
         <div className="filter-container">
@@ -1267,8 +1397,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
       <div className="playlist-container">
         <DragDropContext onDragEnd={onDragEnd}>
-          <div className="playlist-grid-header-row">
-            <div className="grid-cell">
+          <div className="playlist-grid-header-row" style={{ gridTemplateColumns: getGridTemplate() }}>
+            <div className="grid-cell" style={{ overflow: 'visible' }}>
               <input
                 type="checkbox"
                 checked={allPlaylistEntriesSelected}
@@ -1278,19 +1408,95 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                 # {getSortIndicator("order")}
               </span>
             </div>
-
-            <div
-              className="grid-cell clickable"
-              onClick={() => handleSort("artist")}
-            >
-              Artist {getSortIndicator("artist")}
-            </div>
-            <div
-              className="grid-cell clickable"
-              onClick={() => handleSort("title")}
-            >
-              Song {getSortIndicator("title")}
-            </div>
+            
+            {visibleColumns.map((column, index) => {
+              const isLastColumn = index === visibleColumns.length - 1;
+              
+              const headerContent = (() => {
+                switch (column) {
+                  case 'artistAlbum':
+                    return (
+                      <span className="clickable" onClick={() => handleSort("artist")}>
+                        Artist/Album {getSortIndicator("artist")}
+                      </span>
+                    );
+                  case 'artist':
+                    return (
+                      <span className="clickable" onClick={() => handleSort("artist")}>
+                        Artist {getSortIndicator("artist")}
+                      </span>
+                    );
+                  case 'album':
+                    return (
+                      <span className="clickable" onClick={() => handleSort("album")}>
+                        Album {getSortIndicator("album")}
+                      </span>
+                    );
+                  case 'title':
+                    return (
+                      <span className="clickable" onClick={() => handleSort("title")}>
+                        Title {getSortIndicator("title")}
+                      </span>
+                    );
+                  case 'notes':
+                    return <span>Notes</span>;
+                  default:
+                    return null;
+                }
+              })();
+              
+              return (
+                <div key={column} className="grid-cell resizable-header" style={{ position: 'relative' }}>
+                  {headerContent}
+                  {(!isLastColumn || column === 'notes') && (
+                    <div 
+                      className="resize-handle"
+                      style={{
+                        position: 'absolute',
+                        right: '-2px',
+                        top: '0',
+                        bottom: '0',
+                        width: '4px',
+                        cursor: 'col-resize',
+                        backgroundColor: 'transparent',
+                        zIndex: 10
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const startX = e.clientX;
+                        const startWidth = columnWidths[column] || defaultColumnWidths[column];
+                        
+                        const handleMouseMove = (moveEvent: MouseEvent) => {
+                          const diff = moveEvent.clientX - startX;
+                          const newWidth = startWidth + diff;
+                          updateColumnWidth(column, newWidth);
+                        };
+                        
+                        const handleMouseUp = () => {
+                          document.removeEventListener('mousemove', handleMouseMove);
+                          document.removeEventListener('mouseup', handleMouseUp);
+                        };
+                        
+                        document.addEventListener('mousemove', handleMouseMove);
+                        document.addEventListener('mouseup', handleMouseUp);
+                      }}
+                    >
+                      {/* Visual resize indicator */}
+                      <div style={{
+                        position: 'absolute',
+                        right: '1px',
+                        top: '20%',
+                        bottom: '20%',
+                        width: '2px',
+                        backgroundColor: '#ddd',
+                        opacity: 0,
+                        transition: 'opacity 0.2s'
+                      }} className="resize-indicator" />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <Droppable
@@ -1301,11 +1507,14 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                 ref={provided.innerRef}
                 {...provided.draggableProps}
                 className="playlist-grid-row"
+                style={{ gridTemplateColumns: getGridTemplate() }}
                 isDragging={snapshot.isDragging}
                 entry={new PlaylistEntry(entries[rubric.source.index])}
                 isChecked={selectedEntries.includes(rubric.source.index)}
                 handleContextMenu={handleContextMenu}
                 dragHandleProps={provided.dragHandleProps}
+                visibleColumns={visibleColumns}
+                onNotesUpdate={updateEntryNotes}
               />
             )}
           >
@@ -1327,6 +1536,9 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                         handleContextMenu: handleContextMenu,
                         isDraggingOver: snapshot.isDraggingOver,
                         totalCount: totalCount,
+                        visibleColumns,
+                        gridTemplate: getGridTemplate(),
+                        updateEntryNotes,
                       }}
                       overscanCount={50} // Increased from 20 to handle fast scrolling better
                       onItemsRendered={({
@@ -1520,6 +1732,138 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           syncResult={syncResult}
           playlistName={name}
         />
+      )}
+      
+      {/* Column Configuration Modal */}
+      {columnConfigOpen && (
+        <div style={{
+          position: 'fixed',
+          top: '0',
+          left: '0',
+          right: '0',
+          bottom: '0',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000
+        }} onClick={() => setColumnConfigOpen(false)}>
+          <div 
+            className="column-config-modal"
+            style={{
+              background: 'white',
+              borderRadius: '8px',
+              padding: '0',
+              maxWidth: '500px',
+              width: '90vw',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '20px', borderBottom: '1px solid #eee' }}>
+              <h3 style={{ margin: '0', fontSize: '18px' }}>Configure Columns</h3>
+            </div>
+            <div className="column-config-content">
+              <p>Select which columns to display and drag to reorder:</p>
+              <div className="column-checkboxes">
+                {visibleColumns.map((columnKey, index) => {
+                  const column = availableColumns.find(col => col.key === columnKey);
+                  if (!column) return null;
+                  
+                  return (
+                    <label 
+                      key={column.key} 
+                      className="column-checkbox-item draggable-column"
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', index.toString());
+                        e.currentTarget.style.opacity = '0.5';
+                      }}
+                      onDragEnd={(e) => {
+                        e.currentTarget.style.opacity = '1';
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                        const dropIndex = index;
+                        
+                        if (dragIndex !== dropIndex) {
+                          const newColumns = [...visibleColumns];
+                          const draggedColumn = newColumns[dragIndex];
+                          newColumns.splice(dragIndex, 1);
+                          newColumns.splice(dropIndex, 0, draggedColumn);
+                          updateColumnVisibility(newColumns);
+                        }
+                      }}
+                    >
+                      <span className="drag-handle" style={{ cursor: 'grab', marginRight: '8px' }}>⋮⋮</span>
+                      <input
+                        type="checkbox"
+                        checked={true}
+                        onChange={(e) => {
+                          if (!e.target.checked && visibleColumns.length > 1) {
+                            updateColumnVisibility(visibleColumns.filter(col => col !== column.key));
+                          }
+                        }}
+                        disabled={visibleColumns.length === 1}
+                      />
+                      <div>
+                        <span className="column-label">{column.label}</span>
+                        <small className="column-description">{column.description}</small>
+                      </div>
+                    </label>
+                  );
+                })}
+                
+                {/* Hidden columns that can be added */}
+                {availableColumns
+                  .filter(column => !visibleColumns.includes(column.key))
+                  .map(column => (
+                    <label key={column.key} className="column-checkbox-item hidden-column">
+                      <span style={{ width: '20px', marginRight: '8px' }}></span>
+                      <input
+                        type="checkbox"
+                        checked={false}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            updateColumnVisibility([...visibleColumns, column.key]);
+                          }
+                        }}
+                      />
+                      <div>
+                        <span className="column-label" style={{ opacity: 0.6 }}>{column.label}</span>
+                        <small className="column-description" style={{ opacity: 0.6 }}>{column.description}</small>
+                      </div>
+                    </label>
+                  ))
+                }
+              </div>
+              <div className="column-config-actions">
+                <button 
+                  onClick={() => {
+                    updateColumnVisibility(defaultColumns);
+                    setColumnWidths(defaultColumnWidths);
+                    setCookie(`playlist_${playlistID}_columnWidths`, JSON.stringify(defaultColumnWidths));
+                  }}
+                  className="reset-columns-btn"
+                >
+                  Reset to Default
+                </button>
+                <button 
+                  onClick={() => setColumnConfigOpen(false)}
+                  className="close-config-btn"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
