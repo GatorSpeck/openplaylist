@@ -667,6 +667,44 @@
   font-style: italic;
   color: #666;
   font-size: 12px;
+  cursor: pointer;
+}
+
+.notes-cell:hover {
+  background-color: #f0f8ff;
+}
+
+.notes-display {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 2px;
+  transition: background-color 0.2s;
+  display: block;
+  min-height: 16px;
+  line-height: 16px;
+  width: 100%;
+}
+
+.notes-display:hover {
+  background-color: #f0f8ff;
+  color: #333;
+}
+
+.notes-input {
+  width: 100%;
+  border: 1px solid #007bff;
+  border-radius: 2px;
+  padding: 2px 4px;
+  font-size: 12px;
+  font-style: italic;
+  background: white !important;
+  color: #333 !important;
+  outline: none;
+  box-shadow: 0 0 3px rgba(0, 123, 255, 0.3);
+}
+
+.notes-input::placeholder {
+  color: #999;
 }
 
 /* Column resizing styles */
@@ -681,6 +719,15 @@
   bottom: 0;
   width: 4px;
   cursor: col-resize;
+  background-color: rgba(0, 0, 0, 0.1);
+  border-left: 1px solid rgba(0, 0, 0, 0.2);
+  transition: background-color 0.2s;
+}
+
+.resize-handle:hover {
+  background-color: rgba(0, 123, 255, 0.3);
+  border-left: 1px solid rgba(0, 123, 255, 0.5);
+}
   background: transparent;
   z-index: 10;
 }

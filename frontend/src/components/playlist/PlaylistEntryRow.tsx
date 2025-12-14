@@ -14,6 +14,7 @@ interface PlaylistEntryRowProps {
   isDragging?: boolean;
   dragHandleProps?: any;
   visibleColumns?: ('artistAlbum' | 'artist' | 'album' | 'title' | 'notes')[];
+  onNotesUpdate?: (entryId: number, notes: string) => void;
   [key: string]: any;
 }
 
@@ -27,6 +28,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
   isDragging,
   dragHandleProps,
   visibleColumns = ['artistAlbum', 'title'],
+  onNotesUpdate,
   ...props 
 }, ref) => {
   const [imageUrl, setImageUrl] = useState(null);
@@ -37,9 +39,12 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
   const [shouldScroll, setShouldScroll] = useState(false);
   const [shouldScrollArtist, setShouldScrollArtist] = useState(false);
   const [shouldScrollAlbum, setShouldScrollAlbum] = useState(false);
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [notesValue, setNotesValue] = useState(entry.getNotes());
   const scrollingRef = useRef<HTMLDivElement>(null);
   const artistRef = useRef<HTMLDivElement>(null);
   const albumRef = useRef<HTMLDivElement>(null);
+  const notesInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fetchAlbumArt = async () => {
@@ -250,6 +255,50 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
     return () => window.removeEventListener('resize', checkOverflow);
   }, [contentsHidden, isMobile, artist, album]); // Re-run when content changes
 
+  // Focus input when editing starts
+  useEffect(() => {
+    if (isEditingNotes && notesInputRef.current) {
+      notesInputRef.current.focus();
+      notesInputRef.current.select();
+    }
+  }, [isEditingNotes]);
+
+  // Reset notes value when entry changes
+  useEffect(() => {
+    setNotesValue(entry.getNotes());
+  }, [entry]);
+
+  const handleNotesClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsEditingNotes(true);
+  };
+
+  const handleNotesKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      saveNotes();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelNotesEdit();
+    }
+  };
+
+  const handleNotesBlur = () => {
+    saveNotes();
+  };
+
+  const saveNotes = () => {
+    if (notesValue !== entry.getNotes()) {
+      onNotesUpdate?.(entry.id, notesValue);
+    }
+    setIsEditingNotes(false);
+  };
+
+  const cancelNotesEdit = () => {
+    setNotesValue(entry.getNotes());
+    setIsEditingNotes(false);
+  };
+
   return (
     <div
       ref={ref}
@@ -344,8 +393,25 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
             );
           case 'notes':
             return (
-              <div key={`${column}-${index}`} className="grid-cell notes-cell">
-                <span>{entry.getNotes()}</span>
+              <div key={`${column}-${index}`} className="grid-cell notes-cell" onClick={!isEditingNotes ? handleNotesClick : undefined}>
+                {isEditingNotes ? (
+                  <input
+                    ref={notesInputRef}
+                    type="text"
+                    value={notesValue}
+                    onChange={(e) => setNotesValue(e.target.value)}
+                    onKeyDown={handleNotesKeyDown}
+                    onBlur={handleNotesBlur}
+                    className="notes-input"
+                    placeholder="Add notes..."
+                  />
+                ) : (
+                  <span 
+                    className="notes-display"
+                  >
+                    {entry.getNotes()}
+                  </span>
+                )}
               </div>
             );
           default:

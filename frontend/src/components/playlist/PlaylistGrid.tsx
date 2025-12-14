@@ -55,7 +55,8 @@ const Row = memo(({ data, index, style }) => {
     provided,
     totalCount,
     visibleColumns,
-    gridTemplate
+    gridTemplate,
+    updateEntryNotes
   } = data;
 
   if (index >= totalCount) {
@@ -112,6 +113,7 @@ const Row = memo(({ data, index, style }) => {
           entry={track}
           dragHandleProps={provided.dragHandleProps}
           visibleColumns={visibleColumns}
+          onNotesUpdate={updateEntryNotes}
         />
       )}
     </Draggable>
@@ -1219,6 +1221,51 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     }
   };
 
+  // Add function to update notes
+  const updateEntryNotes = useCallback(async (entryId: number, notes: string) => {
+    try {
+      // Find the entry to update
+      const entryIndex = entries.findIndex(entry => entry.id === entryId);
+      if (entryIndex === -1) return;
+      
+      const originalEntry = entries[entryIndex];
+      
+      // Create updated entry with new notes
+      const updatedEntry = new PlaylistEntry({
+        ...originalEntry,
+        notes,
+        details: { ...originalEntry.details, notes }
+      });
+      
+      // Optimistically update local state first
+      pushToHistory(entries);
+      const newEntries = [...entries];
+      newEntries[entryIndex] = updatedEntry;
+      setEntries(newEntries);
+      
+      // Update backend using the new updateEntryNotes method
+      await playlistRepository.updateEntryNotes(playlistID, entryId, notes);
+      
+      setSnackbar({
+        open: true,
+        message: 'Notes updated',
+        severity: 'success'
+      });
+      
+    } catch (error) {
+      console.error('Error updating notes:', error);
+      
+      // Revert the optimistic update on error
+      setEntries(entries);
+      
+      setSnackbar({
+        open: true,
+        message: `Error updating notes: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  }, [entries, pushToHistory, setEntries, setSnackbar, playlistID]);
+
   // Update BatchActions to include hide option
   const BatchActions = ({ selectedCount, onRemove, onClear, onHide }) => (
     <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
@@ -1401,7 +1448,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
               return (
                 <div key={column} className="grid-cell resizable-header" style={{ position: 'relative' }}>
                   {headerContent}
-                  {!isLastColumn && (
+                  {(!isLastColumn || column === 'notes') && (
                     <div 
                       className="resize-handle"
                       style={{
@@ -1467,6 +1514,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                 handleContextMenu={handleContextMenu}
                 dragHandleProps={provided.dragHandleProps}
                 visibleColumns={visibleColumns}
+                onNotesUpdate={updateEntryNotes}
               />
             )}
           >
@@ -1490,6 +1538,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                         totalCount: totalCount,
                         visibleColumns,
                         gridTemplate: getGridTemplate(),
+                        updateEntryNotes,
                       }}
                       overscanCount={50} // Increased from 20 to handle fast scrolling better
                       onItemsRendered={({
