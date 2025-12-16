@@ -132,64 +132,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   // Add this new state to track parameter initialization
   const [paramsInitialized, setParamsInitialized] = useState(false);
 
-  // Get sort parameters from URL or use defaults
-  const getSortColumnFromParam = (param: string | null): string => {
-    const validColumns = ['order', 'title', 'artist', 'album', 'random'];
-    
-    // First check URL params
-    if (param && validColumns.includes(param)) {
-      return param;
-    }
-    
-    // Then fall back to cookies
-    const cookieValue = getCookie(`playlist_${playlistID}_sortColumn`);
-    if (cookieValue && validColumns.includes(cookieValue)) {
-      return cookieValue;
-    }
-    
-    // Default if neither exists
-    return 'order';
-  };
-
-  const getSortDirectionFromParam = (param: string | null): string => {
-    // First check URL params
-    if (param === 'asc' || param === 'desc') {
-      return param;
-    }
-    
-    // Then fall back to cookies
-    const cookieValue = getCookie(`playlist_${playlistID}_sortDirection`);
-    if (cookieValue === 'asc' || cookieValue === 'desc') {
-      return cookieValue;
-    }
-    
-    // Default if neither exists
-    return 'asc';
-  };
-
   // Replace your current parameter initialization useEffect with this one
   useEffect(() => {
-    // Process URL params and cookies only once at component initialization
-    const initialSortColumn = getSortColumnFromParam(searchParams.get('sort'));
-    const initialSortDirection = getSortDirectionFromParam(searchParams.get('dir'));
+    // Process URL params for filter (sort is handled separately now)
     const initialFilter = searchParams.get('filter') || '';
-    
-    // Handle random seed
-    const urlSeed = searchParams.get('seed');
-    const cookieSeed = getCookie(`playlist_${playlistID}_randomSeed`);
-    let initialSeed = null;
-    
-    if (initialSortColumn === 'random') {
-      if (urlSeed && !isNaN(parseInt(urlSeed))) {
-        initialSeed = parseInt(urlSeed);
-      } else if (cookieSeed && !isNaN(parseInt(cookieSeed))) {
-        initialSeed = parseInt(cookieSeed);
-      } else {
-        initialSeed = Math.floor(Math.random() * 1000000);
-      }
-      setRandomSeed(initialSeed);
-      setIsRandomOrder(true);
-    }
     
     // Restore scroll position from cookies
     const savedScrollPosition = getCookie(`playlist_${playlistID}_scrollPosition`);
@@ -200,42 +146,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       isRestoringScroll.current = true;
     }
     
-    // Set the state values all at once
-    setSortColumn(initialSortColumn);
-    setSortDirection(initialSortDirection);
+    // Set filter from URL
     setFilter(initialFilter);
-    
-    // Update URL params to match the resolved values WITHOUT triggering navigation
-    // This ensures URL and state are in sync without causing a re-render
-    const newParams = new URLSearchParams(searchParams);
-    let urlNeedsUpdate = false;
-    
-    if (searchParams.get('sort') !== initialSortColumn) {
-      newParams.set('sort', initialSortColumn);
-      urlNeedsUpdate = true;
-    }
-    
-    if (searchParams.get('dir') !== initialSortDirection) {
-      newParams.set('dir', initialSortDirection);
-      urlNeedsUpdate = true;
-    }
-    
-    if (initialFilter && searchParams.get('filter') !== initialFilter) {
-      newParams.set('filter', initialFilter);
-      urlNeedsUpdate = true;
-    }
-    
-    if (initialSortColumn === 'random' && initialSeed !== null && searchParams.get('seed') !== initialSeed.toString()) {
-      newParams.set('seed', initialSeed.toString());
-      urlNeedsUpdate = true;
-    }
-    
-    // Only update URL if it needs updating, and do it silently
-    if (urlNeedsUpdate) {
-      // Use navigate with the current pathname to ensure we don't lose the playlist name
-      const currentPath = window.location.pathname;
-      navigate(`${currentPath}?${newParams.toString()}`, { replace: true });
-    }
     
     // Mark parameters as initialized
     setParamsInitialized(true);
@@ -395,6 +307,84 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       fetchPlaylistDetails(true);
     }
   }, [playlistID, debouncedFilter, sortColumn, sortDirection, paramsInitialized, showHidden]); // Add showHidden here
+
+  // Update column preferences when playlistID changes
+  useEffect(() => {
+    const savedColumns = getCookie(`playlist_${playlistID}_columns`);
+    if (savedColumns) {
+      setVisibleColumns(JSON.parse(savedColumns));
+    } else {
+      setVisibleColumns(defaultColumns);
+    }
+  }, [playlistID]);
+
+  // Update column widths when playlistID changes  
+  useEffect(() => {
+    const savedWidths = getCookie(`playlist_${playlistID}_columnWidths`);
+    if (savedWidths) {
+      setColumnWidths(JSON.parse(savedWidths));
+    } else {
+      setColumnWidths(defaultColumnWidths);
+    }
+  }, [playlistID]);
+
+  // Update sort column and direction when playlistID changes
+  useEffect(() => {
+    // Check URL params first, then fall back to cookies
+    const urlSort = searchParams.get('sort');
+    const urlDir = searchParams.get('dir');
+    
+    const validColumns = ['order', 'title', 'artist', 'album', 'year', 'length', 'random'];
+    
+    let newSortColumn = 'order';
+    let newSortDirection = 'asc';
+    
+    // Use URL params if present and valid
+    if (urlSort && validColumns.includes(urlSort)) {
+      newSortColumn = urlSort;
+    } else {
+      // Fall back to cookies
+      const cookieSortColumn = getCookie(`playlist_${playlistID}_sortColumn`);
+      if (cookieSortColumn && validColumns.includes(cookieSortColumn)) {
+        newSortColumn = cookieSortColumn;
+      }
+    }
+    
+    if (urlDir === 'asc' || urlDir === 'desc') {
+      newSortDirection = urlDir;
+    } else {
+      // Fall back to cookies
+      const cookieSortDirection = getCookie(`playlist_${playlistID}_sortDirection`);
+      if (cookieSortDirection === 'asc' || cookieSortDirection === 'desc') {
+        newSortDirection = cookieSortDirection;
+      }
+    }
+    
+    setSortColumn(newSortColumn);
+    setSortDirection(newSortDirection);
+    
+    // Handle random seed for random sort
+    if (newSortColumn === 'random') {
+      const urlSeed = searchParams.get('seed');
+      const cookieSeed = getCookie(`playlist_${playlistID}_randomSeed`);
+      let seed = null;
+      
+      if (urlSeed && !isNaN(parseInt(urlSeed))) {
+        seed = parseInt(urlSeed);
+      } else if (cookieSeed && !isNaN(parseInt(cookieSeed))) {
+        seed = parseInt(cookieSeed);
+      } else {
+        seed = Math.floor(Math.random() * 1000000);
+        setCookie(`playlist_${playlistID}_randomSeed`, seed.toString());
+      }
+      
+      setRandomSeed(seed);
+      setIsRandomOrder(true);
+    } else {
+      setIsRandomOrder(false);
+      setRandomSeed(null);
+    }
+  }, [playlistID, searchParams]);
 
   const fetchPlaylistArtGrid = async () => {
     try {
