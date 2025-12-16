@@ -252,7 +252,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             'spotify_uri': 'spotify_uri', 
             'youtube_url': 'youtube_url',
             'mbid': 'mbid',
-            'plex_rating_key': 'plex_rating_key'
+            'plex_rating_key': 'plex_rating_key',
+            'art_url': 'art_url'
         }
 
         for field_name, column_name in external_source_mappings.items():

@@ -4,6 +4,7 @@ import { formatDate, formatDuration, formatSize } from '../../lib/misc';
 import playlistRepository from '../../repositories/PlaylistRepository';
 import libraryRepository from '../../repositories/LibraryRepository';
 import PlaylistEntry from '../../lib/PlaylistEntry';
+import { LastFMRepository } from '../../repositories/LastFMRepository';
 
 interface TrackDetailsModalProps {
   entry: PlaylistEntry;
@@ -36,8 +37,13 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
   const [savingNotes, setSavingNotes] = useState(false);
   const [customSearchQuery, setCustomSearchQuery] = useState(() => `${entry.getArtist()} ${entry.getTitle()}`.trim());
   const [hasSearched, setHasSearched] = useState(false);
+  const [lastFmSearchResults, setLastFmSearchResults] = useState([]);
+  const [isSearchingLastFm, setIsSearchingLastFm] = useState(false);
+  const [showLastFmSearch, setShowLastFmSearch] = useState(false);
   
   if (!entry) return null;
+
+  const lastFMRepository = new LastFMRepository();
 
   useEffect(() => {
     const fn = async () => {
@@ -316,6 +322,107 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
     }));
   };
 
+  const handleSearchLastFm = async () => {
+    setIsSearchingLastFm(true);
+    try {
+      let results = [];
+      const title = entry.getTitle();
+      const artist = entry.getArtist();
+      
+      if (entry.isAlbum()) {
+        // Search for albums
+        results = await lastFMRepository.searchAlbum(title, artist);
+      } else {
+        // Search for tracks
+        results = await lastFMRepository.searchTrack(title, artist);
+      }
+      
+      setLastFmSearchResults(results || []);
+      setShowLastFmSearch(true);
+    } catch (error) {
+      console.error('Error searching Last.fm:', error);
+      alert('Failed to search Last.fm. Please try again.');
+    } finally {
+      setIsSearchingLastFm(false);
+    }
+  };
+
+  const handleSelectLastFmResult = async (result: PlaylistEntry) => {
+    if (!playlistId) {
+      console.error('Cannot link without playlist ID');
+      return;
+    }
+
+    const lastFmUrl = result.details.last_fm_url;
+    if (!lastFmUrl) {
+      alert('Selected result does not have a Last.fm URL');
+      return;
+    }
+
+    setLinkingExternal('last_fm_url');
+    
+    try {
+      // Build the update request with both Last.fm URL and metadata
+      const updates = {
+        last_fm_url: lastFmUrl
+      };
+      
+      // Add other metadata if available from the Last.fm result
+      if (result.details.art_url) {
+        updates.art_url = result.details.art_url;
+      }
+      if (result.details.mbid) {
+        updates.mbid = result.details.mbid;
+      }
+
+      const linkRequest = {
+        track_id: entry.id,
+        updates: updates
+      };
+
+      const response = await fetch(`/api/playlists/${playlistId}/links`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(linkRequest)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Create updated entry with new metadata from Last.fm result
+      const updatedEntry = new PlaylistEntry({
+        ...entry,
+        details: {
+          ...entry.details,
+          last_fm_url: lastFmUrl,
+          art_url: result.details.art_url || entry.details.art_url,
+          mbid: result.details.mbid || entry.details.mbid,
+          // Update other metadata if the result has better/more complete info
+          ...(result.getTitle() && { title: result.getTitle() }),
+          ...(result.getArtist() && { artist: result.getArtist() }),
+          ...(result.getAlbum() && { album: result.getAlbum() })
+        }
+      });
+
+      if (onEntryUpdated) {
+        onEntryUpdated(updatedEntry);
+      }
+      
+      // Close search results and modal
+      setShowLastFmSearch(false);
+      setLastFmSearchResults([]);
+      setLinkingExternal(null);
+      
+    } catch (error) {
+      console.error('Error linking Last.fm result:', error);
+      alert('Failed to link Last.fm result. Please try again.');
+      setLinkingExternal(null);
+    }
+  };
+
   const handleSaveNotes = async () => {
     if (!playlistId) {
       console.error('Cannot save notes without playlist ID');
@@ -434,6 +541,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
     };
     
     const unlinkType = unlinkTypeMapping[sourceType];
+    const isLastFm = sourceType === 'last_fm_url';
     
     return (
       <div className="external-source-item" key={sourceType}>
@@ -479,7 +587,69 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                 >
                   {linkingExternal === sourceType ? 'Linking...' : 'Link'}
                 </button>
+                {isLastFm && (
+                  <button 
+                    onClick={handleSearchLastFm}
+                    disabled={isSearchingLastFm}
+                    className="search-button"
+                  >
+                    {isSearchingLastFm ? 'Searching...' : 'Search Last.fm'}
+                  </button>
+                )}
               </div>
+              
+              {/* Last.fm Search Results */}
+              {isLastFm && showLastFmSearch && (
+                <div className="lastfm-search-results">
+                  <div className="search-header">
+                    <h4>Last.fm Search Results:</h4>
+                    <button 
+                      onClick={() => setShowLastFmSearch(false)}
+                      className="close-search-button"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  
+                  {lastFmSearchResults.length > 0 ? (
+                    <div className="search-results-list">
+                      {lastFmSearchResults.map((result, index) => (
+                        <div key={index} className="search-result-item">
+                          <div className="result-content">
+                            {result.details.art_url && (
+                              <img 
+                                src={result.details.art_url} 
+                                alt="Album art" 
+                                className="result-thumbnail"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                            )}
+                            <div className="result-info">
+                              <strong>{result.getTitle()}</strong>
+                              {result.getArtist() && <><br /><em>by {result.getArtist()}</em></>}
+                              {result.getAlbum() && <><br /><span>Album: {result.getAlbum()}</span></>}
+                              {result.details.last_fm_url && (
+                                <><br /><a href={result.details.last_fm_url} target="_blank" rel="noopener noreferrer" className="lastfm-link">View on Last.fm</a></>
+                              )}
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => handleSelectLastFmResult(result)}
+                            className="select-button"
+                            disabled={linkingExternal === 'last_fm_url'}
+                          >
+                            {linkingExternal === 'last_fm_url' ? 'Linking...' : 'Select'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="no-results">No results found. Try searching with different terms or enter the URL manually.</p>
+                  )}
+                </div>
+              )}
             </div>
           )
         )}

@@ -317,3 +317,133 @@
 .no-results-message li {
   margin: 4px 0;
 }
+
+/* Last.fm Search Styles */
+.search-button {
+  background-color: #007bff;
+  margin-left: 8px;
+}
+
+.search-button:hover:not(:disabled) {
+  background-color: #0056b3;
+}
+
+.lastfm-search-results {
+  margin-top: 15px;
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  background-color: #fff;
+}
+
+.search-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.search-header h4 {
+  margin: 0;
+  color: #333;
+}
+
+.close-search-button {
+  background: #f44336;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-search-button:hover {
+  background: #da190b;
+}
+
+.search-results-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.search-result-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 12px;
+  margin: 8px 0;
+  border: 1px solid #eee;
+  border-radius: 5px;
+  background-color: #f9f9f9;
+}
+
+.result-content {
+  display: flex;
+  align-items: flex-start;
+  flex: 1;
+  margin-right: 10px;
+  gap: 12px;
+}
+
+.result-thumbnail {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  flex-shrink: 0;
+}
+
+.result-info {
+  flex: 1;
+}
+
+.result-info strong {
+  color: #333;
+}
+
+.result-info em {
+  color: #666;
+}
+
+.lastfm-link {
+  color: #007bff;
+  text-decoration: none;
+  font-size: 0.9em;
+}
+
+.lastfm-link:hover {
+  text-decoration: underline;
+}
+
+.select-button {
+  padding: 6px 12px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+.select-button:hover:not(:disabled) {
+  background-color: #218838;
+}
+
+.select-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.no-results {
+  color: #666;
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}
