@@ -1257,6 +1257,74 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   }, [entries, pushToHistory, setEntries, setSnackbar, playlistID]);
 
   // Update BatchActions to include hide option
+  // Add state for scroll position to handle floating button positioning
+  const [isAtBottom, setIsAtBottom] = useState(false);
+  const gridRef = useRef(null);
+
+  // Add scroll listener to detect when at bottom
+  useEffect(() => {
+    const handleScroll = () => {
+      if (listRef.current) {
+        const list = listRef.current;
+        const { scrollTop, scrollHeight, clientHeight } = list._outerRef; // Access the scroll container of FixedSizeList
+        const threshold = 50; // pixels from bottom
+        setIsAtBottom(scrollTop + clientHeight >= scrollHeight - threshold);
+      }
+    };
+
+    // Attach scroll listener to the List component's scroll container
+    if (listRef.current && listRef.current._outerRef) {
+      const scrollElement = listRef.current._outerRef;
+      scrollElement.addEventListener('scroll', handleScroll);
+      return () => scrollElement.removeEventListener('scroll', handleScroll);
+    }
+  }, [entries]); // Re-attach when entries change
+
+  // Add state for batch actions modal
+  const [batchActionsModalVisible, setBatchActionsModalVisible] = useState(false);
+
+  // Update BatchActions to be a modal component
+  const BatchActionsModal = ({ selectedCount, onRemove, onClear, onHide, visible, onClose }) => {
+    console.log('BatchActionsModal render:', { visible, selectedCount }); // Debug log
+    return (
+      <Modal
+        open={visible}
+        onClose={onClose}
+        title={`Batch Actions (${selectedCount} selected)`}
+      >
+        <div className="batch-actions-modal-content">
+          <button 
+            className="batch-action-button hide-button" 
+            onClick={() => {
+              onHide();
+              onClose();
+            }}
+          >
+            Hide {selectedCount} Selected Entries
+          </button>
+          <button 
+            className="batch-action-button remove-button" 
+            onClick={() => {
+              onRemove();
+              onClose();
+            }}
+          >
+            Remove {selectedCount} Selected Entries
+          </button>
+          <button 
+            className="batch-action-button clear-button" 
+            onClick={() => {
+              onClear();
+              onClose();
+            }}
+          >
+            Clear Selection
+          </button>
+        </div>
+      </Modal>
+    );
+  };
+
   const BatchActions = ({ selectedCount, onRemove, onClear, onHide }) => (
     <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
       <button onClick={onHide}>
@@ -1378,16 +1446,19 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           </span>
         </div>
 
-        <BatchActions
-          selectedCount={selectedEntries.length}
-          onRemove={removeSelectedTracks}
-          onClear={clearTrackSelection}
-          onHide={hideSelectedTracks} // Add this line
-        />
+        {/* Hide the original batch actions */}
+        <div style={{ display: 'none' }}>
+          <BatchActions
+            selectedCount={selectedEntries.length}
+            onRemove={removeSelectedTracks}
+            onClear={clearTrackSelection}
+            onHide={hideSelectedTracks}
+          />
+        </div>
 
       </div>
 
-      <div className="playlist-container">
+      <div className={`playlist-container ${isAtBottom ? 'at-bottom' : ''}`} ref={gridRef}>
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="playlist-grid-header-row" style={{ gridTemplateColumns: getGridTemplate() }}>
             <div className="grid-cell" style={{ overflow: 'visible' }}>
@@ -1726,7 +1797,32 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         />
       )}
       
-      {/* Column Configuration Modal */}
+      {/* Floating batch actions button */}
+      {selectedEntries.length > 0 && (
+        <button
+          className="floating-batch-button"
+          onClick={() => {
+            console.log('Floating button clicked, setting modal to true'); // Debug log
+            setBatchActionsModalVisible(true);
+          }}
+          title={`${selectedEntries.length} items selected - Click for batch actions`}
+        >
+          <span className="batch-count">{selectedEntries.length}</span>
+          <span className="batch-icon">⚡</span>
+        </button>
+      )}
+
+      {/* Batch Actions Modal */}
+      <BatchActionsModal
+        selectedCount={selectedEntries.length}
+        onRemove={removeSelectedTracks}
+        onClear={clearTrackSelection}
+        onHide={hideSelectedTracks}
+        visible={batchActionsModalVisible}
+        onClose={() => setBatchActionsModalVisible(false)}
+      />
+
+      {/* Other existing modals */}
       {columnConfigOpen && (
         <div style={{
           position: 'fixed',

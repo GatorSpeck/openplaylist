@@ -72,6 +72,13 @@
   height: 100%;
 }
 
+/* Add bottom padding to playlist container when at bottom to create space for button */
+.playlist-container.at-bottom {
+  padding-bottom: 80px;
+  box-sizing: border-box;
+  transition: padding-bottom 0.3s ease;
+}
+
 .playlist-grid-row {
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   background: white;
@@ -550,6 +557,189 @@
 .random-button:hover {
   background-color: #e9ecef;
   color: #111;
+}
+
+/* Floating Batch Actions Button */
+.floating-batch-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: #2196f3;
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
+  z-index: 1000;
+  transition: all 0.3s ease;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.floating-batch-button:hover {
+  background: #1976d2;
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(33, 150, 243, 0.5);
+}
+
+.floating-batch-button .batch-count {
+  font-size: 14px;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.floating-batch-button .batch-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Batch Actions Modal */
+.batch-actions-modal-content {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 300px;
+}
+
+.batch-action-button {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.batch-action-button.hide-button {
+  background: #ff9800;
+  color: white;
+}
+
+.batch-action-button.hide-button:hover {
+  background: #f57c00;
+}
+
+.batch-action-button.remove-button {
+  background: #f44336;
+  color: white;
+}
+
+.batch-action-button.remove-button:hover {
+  background: #d32f2f;
+}
+
+.batch-action-button.clear-button {
+  background: #9e9e9e;
+  color: white;
+}
+
+.batch-action-button.clear-button:hover {
+  background: #757575;
+}
+
+/* Floating Batch Actions Button */
+.floating-batch-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: #2196f3;
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
+  z-index: 1000;
+  transition: all 0.3s ease;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.floating-batch-button:hover {
+  background: #1976d2;
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(33, 150, 243, 0.5);
+}
+
+.floating-batch-button .batch-count {
+  font-size: 14px;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.floating-batch-button .batch-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Batch Actions Modal */
+.batch-actions-modal-content {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 300px;
+}
+
+.batch-action-button {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.batch-action-button.hide-button {
+  background: #ff9800;
+  color: white;
+}
+
+.batch-action-button.hide-button:hover {
+  background: #f57c00;
+}
+
+.batch-action-button.remove-button {
+  background: #f44336;
+  color: white;
+}
+
+.batch-action-button.remove-button:hover {
+  background: #d32f2f;
+}
+
+.batch-action-button.clear-button {
+  background: #9e9e9e;
+  color: white;
+}
+
+.batch-action-button.clear-button:hover {
+  background: #757575;
+}
+
+/* Hide original batch actions */
+.batch-actions {
+  display: none !important;
 }
 
 .random-button.active {
