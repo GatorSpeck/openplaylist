@@ -1283,26 +1283,54 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         <h2 className="playlist-name">{name}</h2>
       </div>
       <div className="playlist-controls">
-        {historyEnabled && historyControls}
-        <button
-          className="playlist-options"
-          onClick={() => setPlaylistModalVisible(true)}
-        >
-          ...
-        </button>
-        
-        <button
-          className="column-config-btn"
-          onClick={() => {
-            console.log('Column config button clicked');
-            console.log('Current columnConfigOpen state:', columnConfigOpen);
-            setColumnConfigOpen(true);
-            console.log('Set columnConfigOpen to true');
-          }}
-          title="Configure columns"
-        >
-          Columns
-        </button>
+        <div className="playlist-controls-top">
+          {historyEnabled && historyControls}
+          <button
+            className="playlist-options"
+            onClick={() => setPlaylistModalVisible(true)}
+          >
+            ...
+          </button>
+          
+          <button
+            className="column-config-btn"
+            onClick={() => {
+              console.log('Column config button clicked');
+              console.log('Current columnConfigOpen state:', columnConfigOpen);
+              setColumnConfigOpen(true);
+              console.log('Set columnConfigOpen to true');
+            }}
+            title="Configure columns"
+          >
+            Columns
+          </button>
+
+          <button
+            className={`random-button ${isRandomOrder ? "active" : ""}`}
+            onClick={() => {
+              if (isRandomOrder) {
+                // Return to original order
+                setSortColumn("order");
+                setSortDirection("asc");
+                setIsRandomOrder(false);
+                setRandomSeed(null);
+
+                const newParams = new URLSearchParams(searchParams);
+                newParams.set("sort", "order");
+                newParams.set("dir", "asc");
+                newParams.delete("seed");
+                setSearchParams(newParams, { replace: true });
+              } else {
+                shufflePlaylist();
+              }
+            }}
+            title={
+              isRandomOrder ? "Return to original order" : "Shuffle playlist"
+            }
+          >
+            {isRandomOrder ? "🔁" : "🔀"} {isRandomOrder ? "Unshuffle" : "Shuffle"}
+          </button>
+        </div>
 
         <div className="filter-container">
           <input
@@ -1357,32 +1385,6 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           onHide={hideSelectedTracks} // Add this line
         />
 
-        {/* Add random order button */}
-        <button
-          className={`random-button ${isRandomOrder ? "active" : ""}`}
-          onClick={() => {
-            if (isRandomOrder) {
-              // Return to original order
-              setSortColumn("order");
-              setSortDirection("asc");
-              setIsRandomOrder(false);
-              setRandomSeed(null);
-
-              const newParams = new URLSearchParams(searchParams);
-              newParams.set("sort", "order");
-              newParams.set("dir", "asc");
-              newParams.delete("seed");
-              setSearchParams(newParams, { replace: true });
-            } else {
-              shufflePlaylist();
-            }
-          }}
-          title={
-            isRandomOrder ? "Return to original order" : "Shuffle playlist"
-          }
-        >
-          {isRandomOrder ? "🔁" : "🔀"} {isRandomOrder ? "Unshuffle" : "Shuffle"}
-        </button>
       </div>
 
       <div className="playlist-container">
