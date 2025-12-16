@@ -108,7 +108,18 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
 
         # Extract just the LocalFileDB objects from results (first element of each tuple)
         local_files = [result[0] for result in results]
-        return [MusicFile.from_local_file(local_file) for local_file in local_files]
+        
+        # Convert to MusicFile objects, preferring MusicFileDB if it exists
+        music_files = []
+        for local_file in local_files:
+            if local_file.music_file:
+                # Use the associated MusicFileDB which has user-edited data and genres
+                music_files.append(to_music_file(local_file.music_file))
+            else:
+                # Fall back to creating from LocalFileDB only
+                music_files.append(MusicFile.from_local_file(local_file))
+        
+        return music_files
 
     def filter(
         self,
