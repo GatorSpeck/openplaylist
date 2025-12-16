@@ -120,6 +120,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  background: inherit; /* Inherit background from parent row */
 }
 
 .column-config-btn {
@@ -193,6 +194,22 @@
     grid-template-columns: 20% 40% 40%;
     gap: 1px;
     font-size: 0.8em;
+  }
+
+  /* Ensure proper backgrounds are maintained on mobile */
+  .playlist-grid-row {
+    background: white;
+    color: black;
+  }
+
+  .playlist-grid-row:nth-child(odd) {
+    background-color: #f9f9f9;
+    color: black;
+  }
+
+  .playlist-grid-row .grid-cell {
+    background: inherit;
+    color: inherit;
   }
 }
 
