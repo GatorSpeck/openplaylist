@@ -41,6 +41,7 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
         # Set up authentication
         try:
             oauth_path = os.getenv("YTMUSIC_OAUTH_PATH", "oauth.json")
+            logging.info(f"Using YouTube Music OAuth path: {os.path.abspath(oauth_path)}")
             if not os.path.exists(oauth_path):
                 raise FileNotFoundError(f"OAuth file not found at {oauth_path}")
             
@@ -54,6 +55,9 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
 
             # simplified browser-based auth
             self.ytmusic = YTMusic(oauth_path)
+            account_info = self.ytmusic.get_account_info()
+            if not account_info or not account_info.get("accountName"):
+                raise ValueError("YouTube Music authentication failed - invalid account info")
 
             logging.info("YouTube Music client initialized successfully")
         except Exception as e:
@@ -72,6 +76,38 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
         except Exception as e:
             logging.error(f"YouTube Music authentication test failed: {e}")
             return False
+    
+    def validate_playlist_edit_permissions(self) -> bool:
+        """Validate that we can edit YouTube Music playlists - fail fast if not properly authenticated"""
+        if not self.ytmusic:
+            raise ValueError("YouTube Music client not initialized - check authentication credentials")
+        
+        if not self.playlist_id:
+            # If no specific playlist ID is configured, just check if we can access our library
+            try:
+                playlists = self.ytmusic.get_library_playlists(limit=1)
+                logging.info("YouTube Music authentication validated - can access playlist library")
+                return True
+            except Exception as e:
+                raise ValueError(f"YouTube Music authentication failed - cannot access playlist library: {e}")
+        
+        # If we have a specific playlist ID, validate we can access and edit it
+        try:
+            playlist = self.ytmusic.get_playlist(self.playlist_id, limit=1)
+            if not playlist:
+                raise ValueError(f"Cannot access YouTube Music playlist with ID: {self.playlist_id}")
+            
+            # Check if we can edit this playlist (it should be editable if we own it)
+            if playlist.get("privacy") == "PRIVATE" or playlist.get("owned"):
+                logging.info(f"YouTube Music authentication validated - can edit playlist '{playlist.get('title', self.playlist_id)}'")
+                return True
+            else:
+                raise ValueError(f"Cannot edit YouTube Music playlist '{playlist.get('title', self.playlist_id)}' - insufficient permissions or not owned by authenticated user")
+                
+        except Exception as e:
+            if "Cannot access" in str(e) or "Cannot edit" in str(e):
+                raise  # Re-raise our custom errors
+            raise ValueError(f"YouTube Music authentication validation failed: {e}")
     
     def extract_playlist_id(self, id_string: str) -> str:
         if "list=" in id_string:
@@ -168,6 +204,9 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
     
     def create_playlist(self, playlist_name: str, snapshot: PlaylistSnapshot) -> Any:
         """Create a new playlist on YouTube Music or update existing one"""
+        # Validate authentication and permissions before starting sync
+        self.validate_playlist_edit_permissions()
+        
         if not self.ytmusic:
             logging.error("Not authenticated with YouTube Music")
             return None
@@ -209,6 +248,9 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
     
     def _update_playlist_tracks(self, snapshot: PlaylistSnapshot):
         """Replace all tracks in a playlist with the ones from the snapshot"""
+        # Validate authentication and permissions before making changes
+        self.validate_playlist_edit_permissions()
+        
         if not self.playlist_id:
             raise ValueError("No playlist ID configured")
             
@@ -291,6 +333,9 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
     
     def add_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
         """Add tracks to a YouTube Music playlist"""
+        # Validate authentication and permissions before making changes
+        self.validate_playlist_edit_permissions()
+        
         if not self.ytmusic:
             logging.error("Not authenticated with YouTube Music")
             return
@@ -322,6 +367,9 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
     
     def remove_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
         """Remove tracks from a YouTube Music playlist"""
+        # Validate authentication and permissions before making changes
+        self.validate_playlist_edit_permissions()
+        
         if not self.ytmusic:
             logging.error("Not authenticated with YouTube Music")
             return
@@ -365,6 +413,9 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
     
     def clear_playlist(self) -> None:
         """Clear all items from the YouTube Music playlist"""
+        # Validate authentication and permissions before making changes
+        self.validate_playlist_edit_permissions()
+        
         if not self.ytmusic:
             logging.error("Not authenticated with YouTube Music")
             return
