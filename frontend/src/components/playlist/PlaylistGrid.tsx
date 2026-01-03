@@ -334,7 +334,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     const urlSort = searchParams.get('sort');
     const urlDir = searchParams.get('dir');
     
-    const validColumns = ['order', 'title', 'artist', 'album', 'year', 'length', 'random'];
+    const validColumns = ['order', 'title', 'artist', 'album', 'year', 'length', 'random', 'notes'];
     
     let newSortColumn = 'order';
     let newSortDirection = 'asc';
@@ -1543,7 +1543,11 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                       </span>
                     );
                   case 'notes':
-                    return <span>Notes</span>;
+                    return (
+                      <span className="clickable" onClick={() => handleSort("notes")}>
+                        Notes {getSortIndicator("notes")}
+                      </span>
+                    );
                   default:
                     return null;
                 }

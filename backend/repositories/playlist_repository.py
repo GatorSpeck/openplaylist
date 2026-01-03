@@ -80,6 +80,7 @@ class PlaylistSortCriteria(IntEnum):
     ARTIST = 2
     ALBUM = 3
     RANDOM = 4  # Add this line
+    NOTES = 5
 
     @classmethod
     def from_str(cls, s):
@@ -96,6 +97,8 @@ class PlaylistSortCriteria(IntEnum):
             return cls.ALBUM
         elif s == "random":
             return cls.RANDOM
+        elif s == "notes":
+            return cls.NOTES
         else:
             return cls.ORDER
 
@@ -981,7 +984,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                     music_file_details.album.ilike(f"%{filter.filter}%"),
                     # AlbumDB conditions
                     requested_album_details.title.ilike(f"%{filter.filter}%"),
-                    requested_album_details.artist.ilike(f"%{filter.filter}%")
+                    requested_album_details.artist.ilike(f"%{filter.filter}%"),
+                    # Notes conditions
+                    PlaylistEntryDB.notes.ilike(f"%{filter.filter}%")
                 )
             )
         elif filter.criteria is not None:
@@ -1074,6 +1079,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 )
             else:
                 sort_column = func.random()
+        elif filter.sortCriteria == PlaylistSortCriteria.NOTES:
+            sort_column = poly_entity.notes
         else:
             # default to order
             sort_column = poly_entity.order
