@@ -1,0 +1,196 @@
+/* Duplicate selection modal specific styles */
+.duplicate-selection-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-height: 65vh;
+    /* Remove padding since Modal already has modal-body padding */
+}
+
+.duplicate-selection-header {
+    padding: 0 0 16px 0;
+    border-bottom: 1px solid #e0e0e0;
+    flex-shrink: 0;
+}
+
+.duplicate-warning {
+    color: #f57c00;
+    font-weight: bold;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.selection-controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.selection-controls .btn-secondary {
+    padding: 6px 12px;
+    font-size: 14px;
+}
+
+.track-selection-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+    margin: 0;
+}
+
+.track-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.track-item:hover {
+    background-color: #f8f9fa;
+}
+
+.track-item.selected {
+    background-color: #e3f2fd;
+}
+
+.track-item.duplicate {
+    border-left: 4px solid #f57c00;
+    background-color: #fff8e1;
+}
+
+.track-item.duplicate:hover {
+    background-color: #fff3c4;
+}
+
+.track-item.duplicate.selected {
+    background-color: #ffecb3;
+}
+
+.track-checkbox {
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+
+.track-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.track-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.track-title {
+    font-weight: 500;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.duplicate-badge {
+    background-color: #f57c00;
+    color: white;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 12px;
+    font-weight: normal;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.track-artist {
+    font-size: 14px;
+    color: #666;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.duplicate-selection-footer {
+    padding: 16px 0 0 0;
+    border-top: 1px solid #e0e0e0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.selection-summary {
+    font-size: 14px;
+    color: #666;
+    font-weight: 500;
+}
+
+.modal-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-primary, .btn-secondary {
+    padding: 8px 16px;
+    border: 1px solid;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background-color: #2196f3;
+    color: white;
+    border-color: #2196f3;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background-color: #1976d2;
+    border-color: #1976d2;
+}
+
+.btn-primary:disabled {
+    background-color: #ccc;
+    border-color: #ccc;
+    color: #999;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background-color: #f8f9fa;
+    color: #333;
+    border-color: #ddd;
+}
+
+.btn-secondary:hover {
+    background-color: #e9ecef;
+    border-color: #bbb;
+}
+
+/* Responsive design */
+@media (max-width: 480px) {
+    .duplicate-selection-header,
+    .duplicate-selection-footer {
+        padding: 12px 0;
+    }
+    
+    .track-item {
+        padding: 10px 0;
+    }
+    
+    .selection-controls {
+        flex-direction: column;
+    }
+    
+    .modal-buttons {
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    .btn-primary, .btn-secondary {
+        width: 100%;
+        justify-content: center;
+    }
+}

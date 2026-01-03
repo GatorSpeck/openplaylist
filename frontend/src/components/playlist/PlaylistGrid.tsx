@@ -27,6 +27,7 @@ import MatchAlbumModal from './MatchAlbumModal';
 import EditItemModal from './EditItemModal';
 import PlaylistEntry, {PlaylistEntryStub} from '../../lib/PlaylistEntry';
 import SelectPlaylistModal from './SelectPlaylistModal';
+import DuplicateSelectionModal from './DuplicateSelectionModal';
 import { setCookie, getCookie } from '../../lib/cookieUtils';
 import SyncConfig from './SyncConfig'; // Import the SyncConfig component
 import SyncLogModal from './SyncLogModal';
@@ -176,6 +177,12 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const [historyIndex, setHistoryIndex] = useState(0);
   const [playlistModalVisible, setPlaylistModalVisible] = useState(false);
   const [selectPlaylistModalVisible, setSelectPlaylistModalVisible] = useState(false);
+  
+  // Duplicate selection modal state
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [pendingTracks, setPendingTracks] = useState<PlaylistEntry[]>([]);
+  const [duplicateTracks, setDuplicateTracks] = useState<PlaylistEntry[]>([]);
+  
   const gridContentRef = useRef(null);
   const [displayedItems, setDisplayedItems] = useState(50);
   const [hasMore, setHasMore] = useState(true);
@@ -646,15 +653,30 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   }
 
   const addSongsToPlaylist = async (songs: PlaylistEntry[]) => {
+    console.log('addSongsToPlaylist called with', songs.length, 'songs');
     const dupsResult = await playlistRepository.checkForDuplicates(playlistID, songs);
+    console.log('Duplicates found:', dupsResult.length);
+    
     if (dupsResult.length > 0) {
-      const dups = dupsResult.map(e => `${e.getArtist()} - ${e.getTitle()}`);
-      if (!window.confirm(`The following entries already exist in the playlist: ${dups.join(", ")}. Do you want to continue?`)) {
-        return;
-      }
+      // Show duplicate selection modal
+      console.log('Opening duplicate selection modal');
+      setPendingTracks(songs);
+      setDuplicateTracks(dupsResult);
+      setDuplicateModalOpen(true);
+    } else {
+      // No duplicates, add all tracks directly
+      console.log('No duplicates, adding tracks directly');
+      await addTracksToPlaylist(songs);
     }
+  };
 
-    await addTracksToPlaylist(songs);
+  const handleDuplicateSelection = async (selectedTracks: PlaylistEntry[]) => {
+    if (selectedTracks.length > 0) {
+      await addTracksToPlaylist(selectedTracks);
+    }
+    // Reset modal state
+    setPendingTracks([]);
+    setDuplicateTracks([]);
   };
 
   const removeSongsFromPlaylist = async (indexes: number[]) => {
@@ -1832,6 +1854,14 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           setSnackbar={setSnackbar}
         />
       )}
+
+      <DuplicateSelectionModal
+        isOpen={duplicateModalOpen}
+        onClose={() => setDuplicateModalOpen(false)}
+        tracks={pendingTracks}
+        duplicates={duplicateTracks}
+        onConfirm={handleDuplicateSelection}
+      />
 
       {syncLogModalOpen && (
         <SyncLogModal
