@@ -18,7 +18,7 @@ import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import PlaylistEntry from '../../lib/PlaylistEntry';
 
-const secondsToDaysHoursMins = (seconds) => {
+const secondsToDaysHoursMins = (seconds: number) => {
   const days = Math.floor(seconds / (3600 * 24));
   const hours = Math.floor(seconds % (3600 * 24) / 3600);
   const minutes = Math.floor(seconds % 3600 / 60);
@@ -41,11 +41,11 @@ interface SearchResultsGridProps {
 }
 
 const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSongs, visible, playlistID, setSnackbar, onPanelClose }) => {
-  const [selectedSearchResults, setSelectedSearchResults] = useState([]);
+  const [selectedSearchResults, setSelectedSearchResults] = useState<PlaylistEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [allSearchResultsSelected, setAllSongsSelected] = useState(false);
+  const [allSearchResultsSelected, setAllSearchResultsSelected] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState<PlaylistEntry | null>(null);
-  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, track: null });
+  const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; track: PlaylistEntry | null; options?: any[] }>({ visible: false, x: 0, y: 0, track: null });
   const [showLastFMSearch, setShowLastFMSearch] = useState(false);
   const [searchResults, setSearchResults] = useState<PlaylistEntry[]>([]);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -81,8 +81,8 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
 
   const ITEMS_PER_PAGE = 50;
 
-  const extractSearchResults = (response) => {
-    const results = response.data.map(s => new PlaylistEntry({...s, music_file_id: s.id, entry_type: "music_file"}));
+  const extractSearchResults = (response: any) => {
+    const results = response.data.map(s => new PlaylistEntry({...s, id: s.id, music_file_id: s.id, entry_type: "music_file"}));
     return results;
   }
 
@@ -117,8 +117,8 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     }
   };
 
-  const handleFilterByAlbum = async (album) => {
-    setContextMenu({ visible: false });
+  const handleFilterByAlbum = async (album: string) => {
+    setContextMenu({ visible: false, x: 0, y: 0, track: null });
     try {
       const response = await axios.get(`/api/filter`, {
         params: { album }
@@ -153,12 +153,12 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     // prefer local files
     setSimilarTracks(localFiles.map(t => new PlaylistEntry(t)));
 
-    setPosition({ xj: e.clientX, y: e.clientY });
+    setPosition({ x: e.clientX, y: e.clientY });
     setIsLoading(false);
   };
 
-  const handleFilterByArtist = async (artist) => {
-    setContextMenu({ visible: false });
+  const handleFilterByArtist = async (artist: string) => {
+    setContextMenu({ visible: false, x: 0, y: 0, track: null });
     
     try {
       const response = await axios.get(`/api/filter`, {
@@ -171,18 +171,19 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     }
   };
 
-  const toggleSongSelection = (song) => {
+  const toggleSongSelection = (song: PlaylistEntry) => {
     setSelectedSearchResults(prev => {
       const newSelection = prev.some(s => s.id === song.id)
         ? prev.filter(s => s.id !== song.id)
         : [...prev, song];
-      setAllSongsSelected(newSelection.length === searchResults.length);
+      setAllSearchResultsSelected(newSelection.length === searchResults.length);
       return newSelection;
     });
   };
 
   const clearSelectedSongs = () => {
     setSelectedSearchResults([]);
+    setAllSearchResultsSelected(false);
   };
 
   const toggleAllSongs = () => {
@@ -191,11 +192,11 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     } else {
       setSelectedSearchResults(searchResults);
     }
-    setAllSongsSelected(!allSearchResultsSelected);
+    setAllSearchResultsSelected(!allSearchResultsSelected);
   };
 
   // Add this function to handle advanced filter changes
-  const handleAdvancedFilterChange = (e) => {
+  const handleAdvancedFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     
     setFilters(prev => ({
@@ -434,6 +435,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
       visible: true,
       x,
       y,
+      track,
       options
     });
   }
@@ -452,7 +454,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
 
   useEffect(() => {
     const handleClickOutside = () => {
-      setContextMenu({ visible: false });
+      setContextMenu({ visible: false, x: 0, y: 0, track: null });
     };
 
     document.addEventListener('click', handleClickOutside);
@@ -774,11 +776,28 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           </div>
         </div>
 
-        <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedSearchResults.length > 0 ? 'visible' : 'hidden' }}>
-          <button onClick={() => addSongs(selectedSearchResults)}>
+        <div 
+          style={{ 
+            minHeight: '40px', 
+            display: selectedSearchResults.length > 0 ? 'block' : 'none',
+            backgroundColor: '#f0f0f0',
+            padding: '10px',
+            border: '1px solid #ccc',
+            margin: '10px 0',
+            zIndex: 9999,
+            position: 'relative'
+          }}
+        >
+          <button 
+            onClick={() => addSongs(selectedSearchResults)}
+            style={{ marginRight: '10px', padding: '8px 16px', backgroundColor: 'lightblue' }}
+          >
             Add {selectedSearchResults.length} Selected to Playlist
           </button>
-          <button onClick={() => clearSelectedSongs()}>
+          <button 
+            onClick={() => clearSelectedSongs()}
+            style={{ padding: '8px 16px', backgroundColor: 'lightcoral' }}
+          >
             Clear Selection
           </button>
         </div>
@@ -819,7 +838,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
             x={contextMenu.x}
             y={contextMenu.y}
             track={contextMenu.track}
-            onClose={() => setContextMenu({ visible: false })}
+            onClose={() => setContextMenu({ visible: false, x: 0, y: 0, track: null })}
           />
         )}
 
