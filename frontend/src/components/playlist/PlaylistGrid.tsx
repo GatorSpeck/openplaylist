@@ -1408,6 +1408,32 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           >
             🔄 Refresh
           </button>
+
+          <button
+            className="scroll-button"
+            onClick={() => {
+              if (listRef.current) {
+                listRef.current.scrollToItem(0, 'start');
+              }
+            }}
+            title="Scroll to top"
+            disabled={totalCount === 0}
+          >
+            ⬆️ Top
+          </button>
+
+          <button
+            className="scroll-button"
+            onClick={() => {
+              if (listRef.current && totalCount > 0) {
+                listRef.current.scrollToItem(totalCount - 1, 'end');
+              }
+            }}
+            title="Scroll to bottom"
+            disabled={totalCount === 0}
+          >
+            ⬇️ Bottom
+          </button>
         </div>
 
         <div className="filter-container">

@@ -786,6 +786,34 @@
   color: #111;
 }
 
+.scroll-button {
+  background: #f8f9fa;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 32px;
+  font-size: 14px;
+  color: #333;
+  transition: all 0.2s;
+}
+
+.scroll-button:hover:not(:disabled) {
+  background-color: #e9ecef;
+  color: #111;
+}
+
+.scroll-button:disabled {
+  background-color: #f8f9fa;
+  color: #ccc;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 /* Column Configuration Modal Styles */
 .column-config-modal {
   max-width: 500px;
