@@ -765,6 +765,27 @@
   color: #1976d2;
 }
 
+.refresh-button {
+  background: #f8f9fa;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 32px;
+  font-size: 14px;
+  color: #333;
+  transition: all 0.2s;
+}
+
+.refresh-button:hover {
+  background-color: #e9ecef;
+  color: #111;
+}
+
 /* Column Configuration Modal Styles */
 .column-config-modal {
   max-width: 500px;

@@ -1398,6 +1398,16 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           >
             {isRandomOrder ? "🔁" : "🔀"} {isRandomOrder ? "Unshuffle" : "Shuffle"}
           </button>
+
+          <button
+            className="refresh-button"
+            onClick={() => {
+              window.location.reload();
+            }}
+            title="Refresh page"
+          >
+            🔄 Refresh
+          </button>
         </div>
 
         <div className="filter-container">
