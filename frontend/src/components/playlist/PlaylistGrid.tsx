@@ -1422,7 +1422,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             </button>
           )}
 
-          <label className="show-hidden-label">
+          <label 
+            className="show-hidden-label"
+            style={{ display: 'inline-block' }}
+          >
             <input
               type="checkbox"
               checked={showHidden}
@@ -1434,6 +1437,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             />
             Show Hidden
           </label>
+
+          <br />
 
           <span className="filter-count">
             {totalCount} tracks{" "}
