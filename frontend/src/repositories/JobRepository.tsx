@@ -88,7 +88,7 @@ export class JobRepository {
   }
 
   async syncPlaylist(playlistId: number, forcePush = false): Promise<{ message: string; job_id: string }> {
-    const response = await axios.post(`/api/playlists/${playlistId}/sync`, { force_push: forcePush });
+    const response = await axios.post(`/api/playlists/${playlistId}/sync?force_push=${forcePush}`);
     return response.data;
   }
 }
