@@ -5,6 +5,7 @@ import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Tabs, Tab, B
 import { MusicNote as SpotifyIcon, YouTube as YouTubeIcon } from '@mui/icons-material';
 import PathSelector from './PathSelector';
 import LogsPanel from './LogsPanel';
+import JobsPanel from '../job/JobsPanel';
 import axios from 'axios';
 
 function TabPanel(props) {
@@ -354,6 +355,7 @@ const SettingsModal = ({ open, onClose }) => {
       <DialogTitle>Settings</DialogTitle>
       <Tabs value={activeTab} onChange={handleTabChange} centered>
         <Tab label="Music Paths" />
+        <Tab label="Jobs" />
         <Tab label="Last.fm" />
         <Tab label="Plex" />
         <Tab label="OpenAI" />
@@ -373,26 +375,30 @@ const SettingsModal = ({ open, onClose }) => {
         </TabPanel>
         
         <TabPanel value={activeTab} index={1}>
+          <JobsPanel />
+        </TabPanel>
+        
+        <TabPanel value={activeTab} index={2}>
           <h3>Last.fm Settings</h3>
           <strong>Last.fm API Configured:</strong>{settings.lastFmApiKeyConfigured ? ' Yes' : ' No'}
         </TabPanel>
         
-        <TabPanel value={activeTab} index={2}>
+        <TabPanel value={activeTab} index={3}>
           <h3>Plex Settings</h3>
           <strong>Plex Configured:</strong>{settings.plexConfigured ? ' Yes' : ' No'}
         </TabPanel>
         
-        <TabPanel value={activeTab} index={3}>
+        <TabPanel value={activeTab} index={4}>
           <h3>OpenAI Settings</h3>
           <strong>OpenAI API Configured:</strong>{settings.openAiApiKeyConfigured ? ' Yes' : ' No'}
         </TabPanel>
 
-        <TabPanel value={activeTab} index={4}>
+        <TabPanel value={activeTab} index={5}>
           <h3>Redis Settings</h3>
           <strong>Redis Configured:</strong>{settings.redisConfigured ? ' Yes' : ' No'}
         </TabPanel>
 
-        <TabPanel value={activeTab} index={5}>
+        <TabPanel value={activeTab} index={6}>
           <h3>Spotify Settings</h3>
           <Box mb={2}>
             <Typography variant="body2">
@@ -402,7 +408,7 @@ const SettingsModal = ({ open, onClose }) => {
           <SpotifyConnectionPanel />
         </TabPanel>
 
-        <TabPanel value={activeTab} index={6}>
+        <TabPanel value={activeTab} index={7}>
           <h3>YouTube Music Settings</h3>
           <Box mb={2}>
             <Typography variant="body2">
@@ -412,14 +418,14 @@ const SettingsModal = ({ open, onClose }) => {
           <YouTubeMusicConnectionPanel />
         </TabPanel>
 
-        <TabPanel value={activeTab} index={7}>
+        <TabPanel value={activeTab} index={8}>
           <LogsPanel />
         </TabPanel>
       </DialogContent>
       
       <DialogActions>
         <Button onClick={onClose}>Close</Button>
-        {activeTab !== 7 && (
+        {activeTab !== 1 && activeTab !== 8 && (
           <Button 
             onClick={saveSettings} 
             variant="contained" 
