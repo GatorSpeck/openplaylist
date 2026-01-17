@@ -120,8 +120,8 @@ const JobsPanel: React.FC = () => {
                   <Box display="flex" alignItems="center" mb={1}>
                     {getStatusIcon(job.status)}
                     <ListItemText
-                      primary={job.name}
-                      secondary={job.status_message}
+                      primary={job.title || job.type}
+                      secondary={job.progress_message || job.description}
                       sx={{ ml: 1 }}
                     />
                     <Chip 
@@ -164,11 +164,11 @@ const JobsPanel: React.FC = () => {
                   <Box display="flex" alignItems="center" width="100%">
                     {getStatusIcon(job.status)}
                     <ListItemText
-                      primary={job.name}
+                      primary={job.title || job.type}
                       secondary={
                         <Box>
                           <Typography variant="body2" component="div">
-                            {job.status_message}
+                            {job.type} - {job.progress_message || job.description}
                           </Typography>
                           {job.created_at && (
                             <Typography variant="caption" color="textSecondary">
