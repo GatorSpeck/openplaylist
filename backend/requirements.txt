@@ -10,7 +10,7 @@ colorama==0.4.6
 distro==1.9.0
 exceptiongroup==1.2.2
 fastapi==0.115.8
-greenlet==3.1.1
+greenlet==3.3.0
 h11==0.14.0
 hiredis==3.1.0
 hishel==0.1.1
