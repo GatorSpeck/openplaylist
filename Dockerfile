@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Build backend dependencies
-FROM python:3.11-slim AS backend-build
+FROM python:3.14-slim AS backend-build
 WORKDIR /app
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -16,7 +16,7 @@ COPY backend/requirements.txt .
 RUN pip wheel --no-cache-dir --no-deps --wheel-dir /app/wheels -r requirements.txt
 
 # Stage 3: Final image
-FROM python:3.11-slim
+FROM python:3.14-slim
 WORKDIR /app
 
 # Install Nginx and Supervisor
