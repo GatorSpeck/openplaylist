@@ -12,7 +12,7 @@ import {
   Sync as SyncIcon,
   Work as WorkIcon,
 } from '@mui/icons-material';
-import { useJobTracker } from '../lib/useJobTracker';
+import { useJobTracker } from '../../lib/useJobTracker';
 
 interface JobActionsMenuProps {
   anchorEl: HTMLElement | null;

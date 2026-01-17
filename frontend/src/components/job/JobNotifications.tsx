@@ -6,8 +6,8 @@ import {
   Box,
   Typography,
 } from '@mui/material';
-import { useJobTracker } from '../lib/useJobTracker';
-import { Job } from '../repositories/JobRepository';
+import { useJobTracker } from '../../lib/useJobTracker';
+import { Job } from '../../repositories/JobRepository';
 
 interface JobNotificationsProps {
   autoHideDuration?: number;

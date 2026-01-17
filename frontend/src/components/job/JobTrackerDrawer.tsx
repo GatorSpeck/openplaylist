@@ -25,8 +25,8 @@ import {
   LibraryMusic as LibraryIcon,
   Sync as SyncIcon,
 } from '@mui/icons-material';
-import { useJobTracker } from '../lib/useJobTracker';
-import { Job } from '../repositories/JobRepository';
+import { useJobTracker } from '../../lib/useJobTracker';
+import { Job } from '../../repositories/JobRepository';
 
 interface JobTrackerDrawerProps {
   open: boolean;
