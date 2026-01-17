@@ -9,6 +9,7 @@ import { FaUndo, FaRedo } from 'react-icons/fa';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import BaseModal from '../common/BaseModal';
 import playlistRepository from '../../repositories/PlaylistRepository';
+import jobRepository from '../../repositories/JobRepository';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import PlaylistEntryRow from './PlaylistEntryRow';
 import AutoSizer from 'react-virtualized-auto-sizer';
@@ -709,20 +710,49 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   const onSyncToPlex = async (forcePush: boolean = false) => {
     try {
-      const response = await playlistRepository.syncToPlex(playlistID, forcePush);
-      
-      // Store the sync result for the log modal
-      setSyncResult(response);
-      setSyncLogModalOpen(true);
+      // Start the sync job
+      const jobResponse = await playlistRepository.syncToPlex(playlistID, forcePush);
+      const jobId = jobResponse.job_id;
 
       const playlistName = (await playlistRepository.getPlaylistDetails(playlistID)).name;
 
       setSnackbar({
         open: true,
-        message: `'${playlistName}' synced to Plex - Click to view details`,
-        severity: 'success',
-        action: () => setSyncLogModalOpen(true)
+        message: `'${playlistName}' sync started - View progress in Settings > Jobs`,
+        severity: 'info'
       });
+
+      // Poll for job completion and then get result
+      const pollInterval = setInterval(async () => {
+        try {
+          const job = await jobRepository.getJob(jobId);
+          if (job.status === 'completed') {
+            clearInterval(pollInterval);
+            // Store the sync result for the log modal
+            setSyncResult(job.result);
+            setSyncLogModalOpen(true);
+            
+            setSnackbar({
+              open: true,
+              message: `'${playlistName}' synced to Plex successfully`,
+              severity: 'success'
+            });
+          } else if (job.status === 'failed') {
+            clearInterval(pollInterval);
+            setSnackbar({
+              open: true,
+              message: `'${playlistName}' sync failed: ${job.error || 'Unknown error'}`,
+              severity: 'error'
+            });
+          }
+        } catch (error) {
+          console.error('Error checking job status:', error);
+          clearInterval(pollInterval);
+        }
+      }, 2000); // Check every 2 seconds
+
+      // Clean up interval after 5 minutes to prevent memory leaks
+      setTimeout(() => clearInterval(pollInterval), 300000);
 
       // refresh view
       await refreshPlaylist();
