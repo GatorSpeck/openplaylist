@@ -105,6 +105,22 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
           </div>
         </div>
 
+        {/* Global Errors Section */}
+        {syncResult.failed && syncResult.failed.length > 0 && (
+          <div className="sync-errors">
+            <h4>⚠️ Sync Errors</h4>
+            {syncResult.failed.map((failure, index) => (
+              <div key={index} className="error-item">
+                <div className="error-service">
+                  {getTargetIcon(failure.service)} {failure.service}
+                  {failure.target_id && <span className="target-id"> (Target {failure.target_id})</span>}
+                </div>
+                <div className="error-message">{failure.error}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Detailed Log Section */}
         <div className="sync-log-details">
           <h4>Sync Details</h4>

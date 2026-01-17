@@ -168,3 +168,50 @@
   margin: 0;
   font-style: italic;
 }
+
+/* Global Errors Section */
+.sync-errors {
+  background-color: #ffeaa7;
+  border: 1px solid #fdcb6e;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.sync-errors h4 {
+  margin: 0 0 15px 0;
+  color: #e17055;
+  font-size: 1.1rem;
+}
+
+.error-item {
+  background-color: #fff;
+  border-left: 4px solid #e17055;
+  padding: 12px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+}
+
+.error-item:last-child {
+  margin-bottom: 0;
+}
+
+.error-service {
+  font-weight: 600;
+  color: #2d3436;
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.target-id {
+  color: #636e72;
+  font-weight: normal;
+  font-size: 0.9rem;
+}
+
+.error-message {
+  color: #e17055;
+  font-size: 0.95rem;
+}
