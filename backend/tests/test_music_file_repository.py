@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from repositories.music_file import MusicFileRepository
-from repositories.playlist import PlaylistRepository
+from repositories.playlist_repository import PlaylistRepository
 from models import Base, MusicFileDB, TrackGenreDB
 from response_models import MusicFile, Playlist, MusicFileEntry
 

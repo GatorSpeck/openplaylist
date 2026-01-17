@@ -6,8 +6,9 @@ from sqlalchemy import text, or_, func
 import time
 import urllib
 import logging
-from repositories.playlist import PlaylistRepository
+from repositories.playlist_repository import PlaylistRepository
 from lib.normalize import normalize_title
+from lib.match import TrackStub, get_match_score
 
 def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
     return MusicFile(
@@ -78,7 +79,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             [scoring.replace(":token", f":token{i}") for i in range(len(tokens))]
         )
 
-        # Build query with scoring
+        # Build query with scoring on LocalFileDB directly (includes unlinked files)
         query = self.session.query(LocalFileDB, text(f"({score_sum}) as relevance"))
 
         # Add token parameters
@@ -107,7 +108,18 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
 
         # Extract just the LocalFileDB objects from results (first element of each tuple)
         local_files = [result[0] for result in results]
-        return [MusicFile.from_local_file(local_file) for local_file in local_files]
+        
+        # Convert to MusicFile objects, preferring MusicFileDB if it exists
+        music_files = []
+        for local_file in local_files:
+            if local_file.music_file:
+                # Use the associated MusicFileDB which has user-edited data and genres
+                music_files.append(to_music_file(local_file.music_file))
+            else:
+                # Fall back to creating from LocalFileDB only
+                music_files.append(MusicFile.from_local_file(local_file))
+        
+        return music_files
 
     def filter(
         self,
@@ -160,8 +172,8 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         return [to_music_file(music_file) for music_file in results]
 
     def add_music_file(self, music_file: MusicFile) -> MusicFile:
+        # Create the MusicFileDB object first
         music_file_db = MusicFileDB(
-            path=music_file.path,
             title=music_file.title,
             artist=music_file.artist,
             album_artist=music_file.album_artist,
@@ -169,19 +181,38 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             year=music_file.year,
             length=music_file.length,
             publisher=music_file.publisher,
-            kind=music_file.kind,
-            last_scanned=music_file.last_scanned,
             track_number=music_file.track_number,
             disc_number=music_file.disc_number,
         )
 
+        # Create LocalFileDB if path is provided
+        if music_file.path:
+            local_file_db = LocalFileDB(
+                path=music_file.path,
+                kind=music_file.kind,
+                last_scanned=music_file.last_scanned,
+                file_title=music_file.title,
+                file_artist=music_file.artist,
+                file_album_artist=music_file.album_artist,
+                file_album=music_file.album,
+                file_year=music_file.year,
+                file_length=music_file.length,
+                file_publisher=music_file.publisher,
+                file_track_number=music_file.track_number,
+                file_disc_number=music_file.disc_number,
+            )
+            music_file_db.local_file = local_file_db
+
+        # Add genres if they exist
+        if music_file.genres:
+            for genre in music_file.genres:
+                genre_db = TrackGenreDB(
+                    parent_type="music_file",
+                    genre=genre
+                )
+                music_file_db.genres.append(genre_db)
+
         self.session.add(music_file_db)
-        self.session.commit()
-
-        # Add genres
-        for genre in music_file.genres:
-            music_file_db.genres.append(TrackGenreDB(parent_type="music_file", genre=genre))
-
         self.session.commit()
         self.session.refresh(music_file_db)
 
@@ -367,19 +398,10 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             .all()
         )
 
-        for music_file in matches:
-            score = 0
+        match_stub = TrackStub(artist=item.artist, title=item.title, album=item.album)
 
-            if music_file.get_artist().lower() == item.artist.lower():
-                score += 10
-            elif normalize_title(music_file.get_artist().lower()) == normalize_title(item.artist.lower()):
-                score += 5
-            
-            if (music_file.album and item.album) and (music_file.album.lower() == item.album.lower()):
-                score += 10
-            elif (music_file.album and item.album) and normalize_title(music_file.album.lower()) == normalize_title(item.album.lower()):
-                score += 5
-            
+        for music_file in matches:
+            score = get_match_score(match_stub, music_file)
             music_file._score = score  # Use a temporary attribute (not persisted)
         
         matches = sorted(matches, key=lambda x: getattr(x, "_score", 0), reverse=True)

@@ -39,6 +39,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 from enum import IntEnum
 from lib.normalize import normalize_title
+from lib.match import TrackStub, get_match_score, AlbumStub, get_album_match_score, get_artist_match_score
 
 import dotenv
 dotenv.load_dotenv(override=True)
@@ -79,6 +80,7 @@ class PlaylistSortCriteria(IntEnum):
     ARTIST = 2
     ALBUM = 3
     RANDOM = 4  # Add this line
+    NOTES = 5
 
     @classmethod
     def from_str(cls, s):
@@ -95,6 +97,8 @@ class PlaylistSortCriteria(IntEnum):
             return cls.ALBUM
         elif s == "random":
             return cls.RANDOM
+        elif s == "notes":
+            return cls.NOTES
         else:
             return cls.ORDER
 
@@ -251,7 +255,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             'spotify_uri': 'spotify_uri', 
             'youtube_url': 'youtube_url',
             'mbid': 'mbid',
-            'plex_rating_key': 'plex_rating_key'
+            'plex_rating_key': 'plex_rating_key',
+            'art_url': 'art_url'
         }
 
         for field_name, column_name in external_source_mappings.items():
@@ -385,7 +390,11 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         for entry_idx, entry in enumerate(entries):
             if entry.entry_type == "requested_album":
                 album_entries.append((entry_idx, entry))
-            else:
+            elif entry.entry_type == "music_file" and hasattr(entry, 'music_file_id') and entry.music_file_id:
+                # Skip entries that already reference existing music files
+                continue
+            elif hasattr(entry, 'details') and entry.details:
+                # Only add entries that have details for dependency creation
                 requested_entries.append((entry_idx, entry))
 
         if requested_entries:
@@ -735,19 +744,14 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 .all()
             )
 
-            for music_file in matches:
-                score = 0
+            match_stub = TrackStub(artist=i.artist, title=i.title, album=i.album)
 
-                if music_file.get_artist().lower() == i.artist.lower():
-                    score += 10
-                elif normalize_title(music_file.get_artist().lower()) == normalize_title(i.artist.lower()):
-                    score += 5
-                
-                if music_file.album and (music_file.album.lower() == i.album.lower()):
-                    score += 10
-                elif music_file.album and normalize_title(music_file.album.lower()) == normalize_title(i.album.lower()):
-                    score += 5
-                
+            for music_file in matches:
+                score = get_match_score(match_stub, TrackStub(
+                    artist=music_file.artist,
+                    title=music_file.title,
+                    album=music_file.album
+                ))
                 music_file.score = score
             
             matches = sorted(matches, key=lambda x: x.score, reverse=True)
@@ -811,22 +815,16 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 logging.warning(f"No matching music file entry found for {i.artist} - {i.album} - {i.title} in playlist {playlist_id}")
                 continue
 
+            match_stub = TrackStub(artist=i.artist, title=i.title, album=i.album)
+
             for entry in entries:
-                score = 0
-                if entry.details.title.lower() == title_to_use.lower():
-                    score += 10
-                elif normalize_title(entry.details.title.lower()) == normalize_title(title_to_use.lower()):
-                    score += 5
-
-                if entry.details.artist.lower() == i.artist.lower():
-                    score += 10
-
-                if entry.details.album and (entry.details.album.lower() == i.album.lower()):
-                    score += 10
-                elif entry.details.album and normalize_title(entry.details.album.lower()) == normalize_title(i.album.lower()):
-                    score += 5
-
-                if score < 10:
+                score = get_match_score(match_stub, TrackStub(
+                    artist=entry.details.artist,
+                    title=entry.details.title,
+                    album=entry.details.album
+                ))
+                
+                if score < 20:
                     continue
                 
                 logging.info(f"Removing music file entry {entry.id} from playlist {playlist_id}")
@@ -986,7 +984,9 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                     music_file_details.album.ilike(f"%{filter.filter}%"),
                     # AlbumDB conditions
                     requested_album_details.title.ilike(f"%{filter.filter}%"),
-                    requested_album_details.artist.ilike(f"%{filter.filter}%")
+                    requested_album_details.artist.ilike(f"%{filter.filter}%"),
+                    # Notes conditions
+                    PlaylistEntryDB.notes.ilike(f"%{filter.filter}%")
                 )
             )
         elif filter.criteria is not None:
@@ -1051,13 +1051,36 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 else_=None
             )
         elif filter.sortCriteria == PlaylistSortCriteria.RANDOM:
-            # Use a deterministic random function with the seed
+            # Use a deterministic pseudo-random function with the seed
             from sqlalchemy import func
             if filter.randomSeed is not None:
-                # Create a deterministic random sort using the ID and seed
-                sort_column = func.abs(func.random() * (poly_entity.id + filter.randomSeed))
+                # Improved pseudo-random formula that incorporates track metadata to prevent artist grouping
+                # Uses simple hash-like operations based on string length for cross-database compatibility
+                title_hash = case(
+                    (poly_entity.entry_type == "music_file", 
+                     func.coalesce(func.length(music_file_details.title), 0) * 31),
+                    (poly_entity.entry_type == "requested_album", 
+                     func.coalesce(func.length(requested_album_details.title), 0) * 31),
+                    else_=0
+                )
+                artist_hash = case(
+                    (poly_entity.entry_type == "music_file", 
+                     func.coalesce(func.length(music_file_details.artist), 0) * 37),
+                    (poly_entity.entry_type == "requested_album", 
+                     func.coalesce(func.length(requested_album_details.artist), 0) * 37),
+                    else_=0
+                )
+                # Combine entry ID with metadata hashes for better distribution
+                sort_column = (
+                    (poly_entity.id * 1664525 + 
+                     title_hash * 2654435761 + 
+                     artist_hash * 3266489917 + 
+                     filter.randomSeed * 1013904223) % 2147483647
+                )
             else:
                 sort_column = func.random()
+        elif filter.sortCriteria == PlaylistSortCriteria.NOTES:
+            sort_column = poly_entity.notes
         else:
             # default to order
             sort_column = poly_entity.order

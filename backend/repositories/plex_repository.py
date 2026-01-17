@@ -9,6 +9,7 @@ import plexapi
 from typing import List, Optional, Dict, Any
 from tqdm import tqdm
 from lib.normalize   import normalize_title
+from lib.match import TrackStub, get_match_score
 
 from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz
 
@@ -25,6 +26,7 @@ class PlexRepository(RemotePlaylistRepository):
         self.plex_endpoint = self.config.get("endpoint") or os.getenv("PLEX_ENDPOINT")
         self.plex_token = self.config.get("token") or os.getenv("PLEX_TOKEN")
         self.plex_library = self.config.get("library") or os.getenv("PLEX_LIBRARY", "Music")
+        self.playlist_name = self.config.get("playlist_name")
         
         if not self.plex_endpoint or not self.plex_token:
             raise ValueError("Plex endpoint and token must be provided")
@@ -47,23 +49,26 @@ class PlexRepository(RemotePlaylistRepository):
             normalized_album = normalize_title(item.album) if item.album else None
 
             def score_plex_results(items):
+                match_stub = TrackStub(artist=item.artist, title=item.title, album=item.album)
                 for plex_item in items:
-                    score = 0
-                    if plex_item.title.lower() == item.title.lower():
-                        score += 20
-                    elif normalized_title == normalize_title(plex_item.title):
-                        score += 10
-
-                    if plex_item.artist().title.lower() == item.artist.lower():
-                        score += 5
-
-                    if item.album and normalized_album == normalize_title(plex_item.album().title):
-                        score += 5
+                    artist = plex_item.artist()
+                    if artist:
+                        artist = artist.title
+                    
+                    album = plex_item.album()
+                    if album:
+                        album = album.title
+                        
+                    score = get_match_score(match_stub, TrackStub(
+                        artist=artist,
+                        title=plex_item.title,
+                        album=album
+                    ))
                         
                     plex_item.score = score
                     logging.info(f"Score for {plex_item.title}: {score}")
 
-                    if score == 30:
+                    if score >= 80:
                         logging.info(f"Exact match found for {item.to_string()}: {plex_item.title}")
                         return [plex_item]
                 
@@ -203,3 +208,23 @@ class PlexRepository(RemotePlaylistRepository):
                 except Exception as e:
                     logging.error(f"Error removing {item.to_string()} from Plex playlist: {e}")
                     continue
+
+    def is_authenticated(self) -> bool:
+        """Check if the repository is authenticated"""
+        try:
+            self.server.account()
+            return True
+        except Exception as e:
+            logging.error(f"Plex authentication failed: {e}")
+            return False
+        
+        return False
+    
+    def clear_playlist(self) -> None:
+        """Clear all items from the Plex playlist"""
+        try:
+            playlist = self.server.playlist(self.playlist_name)
+            if playlist:
+                playlist.removeItems(playlist.items())
+        except Exception as e:
+            logging.error(f"Error clearing Plex playlist {self.playlist_name}: {e}")

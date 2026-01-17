@@ -135,8 +135,10 @@ export class PlaylistRepository {
         }
     }
 
-    async syncToPlex(id: number) {
-        const response = await axios.get(`/api/playlists/${id}/sync`);
+    async syncToPlex(id: number, forcePush: boolean = false) {
+        const response = await axios.get(`/api/playlists/${id}/sync`, {
+            params: { force_push: forcePush }
+        });
         return response.data;
     }
 
@@ -219,6 +221,23 @@ export class PlaylistRepository {
             track_id: existingTrackID,
             updates: updates
         });
+    }
+
+    async updateEntryNotes(playlistId: number, entryId: number, notes: string) {
+        console.log(`Updating notes for entry: ${entryId} in playlist: ${playlistId}`);
+        
+        try {
+            // Use the existing update-entry endpoint
+            await axios.put(`/api/playlists/${playlistId}/update-entry`, {
+                track_id: entryId,
+                updates: {
+                    notes: notes
+                }
+            });
+        } catch (error) {
+            console.error('Error updating entry notes:', error);
+            throw error;
+        }
     }
 
     async getArtGrid(id: number) {

@@ -38,8 +38,6 @@ services:
       - DB_NAME=${DB_NAME}
       - DB_USER=${MARIADB_USER}
       - DB_PASSWORD=${MARIADB_PASSWORD}
-      - YTMUSIC_CLIENT_ID=${YTMUSIC_CLIENT_ID}
-      - YTMUSIC_CLIENT_SECRET=${YTMUSIC_CLIENT_SECRET}
       - YTMUSIC_OAUTH_PATH=${YTMUSIC_OAUTH_PATH}
     healthcheck:
       test: ["CMD", "/app/healthcheck.sh"]

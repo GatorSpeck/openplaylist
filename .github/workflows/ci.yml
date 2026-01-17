@@ -1,0 +1,67 @@
+name: Frontend CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'frontend/**'
+      - 'Dockerfile'
+      - 'compose.yml'
+      - '.github/workflows/ci.yml'
+  push:
+    branches: [main, develop]
+    paths:
+      - 'frontend/**'
+      - 'Dockerfile'
+      - 'compose.yml'
+      - '.github/workflows/ci.yml'
+
+jobs:
+  frontend-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install dependencies
+      run: |
+        cd frontend
+        npm ci
+
+    - name: Run frontend tests
+      run: |
+        cd frontend
+        npm test
+
+    - name: Run frontend linting (optional)
+      continue-on-error: true  # Allow workflow to continue even if linting fails
+      run: |
+        cd frontend
+        npm run lint
+
+  build-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image (backend)
+      run: |
+        docker build -f Dockerfile -t playlist-backend:test .
+
+    - name: Test Docker image runs
+      run: |
+        # Quick smoke test to ensure the image starts
+        docker run --rm -d --name test-container playlist-backend:test
+        sleep 10
+        docker stop test-container || true

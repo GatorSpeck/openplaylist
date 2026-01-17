@@ -18,6 +18,9 @@ def normalize_title(title: str) -> str:
 
         if token.startswith("remaster"):
             continue
+
+        if token.startswith("remix"):
+            continue
             
         if token in ["edition", "deluxe", "special", "version", "album", "single", "remix", "mono", "stereo", "mix"]:
             continue
@@ -28,7 +31,7 @@ def normalize_title(title: str) -> str:
     if not normalized_tokens:
         return title
     
-    return ' '.join(normalized_tokens)
+    return ' '.join(normalized_tokens).strip()
 
 def normalize_artist(artist: str) -> str:
     """
@@ -40,12 +43,13 @@ def normalize_artist(artist: str) -> str:
 
     for token in normalized_artist:
         token = token.strip("-()[]")
-
-        if token == "the":
+        
+        if token in ["the", "&", "and", "band", "orchestra", "ensemble", "group", "trio", "quartet", "quintet", "sextet", "septet", "octet"]:
             continue
 
-        normalized_tokens.append(token)
-    
+        if token:
+            normalized_tokens.append(token)
+
     if not normalized_tokens:
         return artist
 

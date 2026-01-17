@@ -12,7 +12,9 @@ interface PlaylistEntryRowProps {
   className?: string;
   style?: React.CSSProperties;
   isDragging?: boolean;
-  dragHandleProps?: any; // Add this prop to receive drag handle props
+  dragHandleProps?: any;
+  visibleColumns?: ('artistAlbum' | 'artist' | 'album' | 'title' | 'notes')[];
+  onNotesUpdate?: (entryId: number, notes: string) => void;
   [key: string]: any;
 }
 
@@ -25,6 +27,8 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
   style,
   isDragging,
   dragHandleProps,
+  visibleColumns = ['artistAlbum', 'title'],
+  onNotesUpdate,
   ...props 
 }, ref) => {
   const [imageUrl, setImageUrl] = useState(null);
@@ -35,9 +39,12 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
   const [shouldScroll, setShouldScroll] = useState(false);
   const [shouldScrollArtist, setShouldScrollArtist] = useState(false);
   const [shouldScrollAlbum, setShouldScrollAlbum] = useState(false);
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [notesValue, setNotesValue] = useState(entry.getNotes());
   const scrollingRef = useRef<HTMLDivElement>(null);
   const artistRef = useRef<HTMLDivElement>(null);
   const albumRef = useRef<HTMLDivElement>(null);
+  const notesInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fetchAlbumArt = async () => {
@@ -248,10 +255,54 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
     return () => window.removeEventListener('resize', checkOverflow);
   }, [contentsHidden, isMobile, artist, album]); // Re-run when content changes
 
+  // Focus input when editing starts
+  useEffect(() => {
+    if (isEditingNotes && notesInputRef.current) {
+      notesInputRef.current.focus();
+      notesInputRef.current.select();
+    }
+  }, [isEditingNotes]);
+
+  // Reset notes value when entry changes
+  useEffect(() => {
+    setNotesValue(entry.getNotes());
+  }, [entry]);
+
+  const handleNotesClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsEditingNotes(true);
+  };
+
+  const handleNotesKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      saveNotes();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelNotesEdit();
+    }
+  };
+
+  const handleNotesBlur = () => {
+    saveNotes();
+  };
+
+  const saveNotes = () => {
+    if (notesValue !== entry.getNotes()) {
+      onNotesUpdate?.(entry.id, notesValue);
+    }
+    setIsEditingNotes(false);
+  };
+
+  const cancelNotesEdit = () => {
+    setNotesValue(entry.getNotes());
+    setIsEditingNotes(false);
+  };
+
   return (
     <div
       ref={ref}
-      className={`playlist-entry-row ${className} ${hiddenClass}`}
+      className={`playlist-entry-row ${className} ${hiddenClass} ${isDragging ? 'dragging' : ''}`}
       style={style}
       onContextMenu={onContextMenu}
       {...props}
@@ -274,41 +325,99 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
         ))}
       </div>
       
-      <div className="grid-cell artist-cell">
-        <div className="track-info">
-          <div className="artist scrolling-text">
-            <div 
-              ref={artistRef}
-              className={`scrolling ${shouldScrollArtist ? 'should-scroll' : ''}`}
-            >
-              <span>{artist}</span>
-            </div>
-          </div>
-          <div className="album scrolling-text">
-            <div 
-              ref={albumRef}
-              className={`scrolling ${shouldScrollAlbum ? 'should-scroll' : ''}`}
-            >
-              <span><i>{album}</i></span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="grid-cell scrolling-text">
-        <div 
-          ref={scrollingRef}
-          className={`scrolling ${shouldScroll ? 'should-scroll' : ''}`}
-        >
-          <span>{contentsHidden}</span>
-        </div>
-        {isMobile && (<button 
-          className="mobile-menu-button"
-          onClick={handleMenuClick}
-          aria-label="More options"
-        >
-          ⋮
-        </button>)}
-      </div>
+      {/* Render columns based on visibleColumns configuration */}
+      {visibleColumns.map((column, index) => {
+        switch (column) {
+          case 'artistAlbum':
+            return (
+              <div key={`${column}-${index}`} className="grid-cell artist-cell">
+                <div className="track-info">
+                  <div className="artist scrolling-text">
+                    <div 
+                      ref={artistRef}
+                      className={`scrolling ${shouldScrollArtist ? 'should-scroll' : ''}`}
+                    >
+                      <span>{artist}</span>
+                    </div>
+                  </div>
+                  <div className="album scrolling-text">
+                    <div 
+                      ref={albumRef}
+                      className={`scrolling ${shouldScrollAlbum ? 'should-scroll' : ''}`}
+                    >
+                      <span><i>{album}</i></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          case 'artist':
+            return (
+              <div key={`${column}-${index}`} className="grid-cell scrolling-text">
+                <div 
+                  ref={artistRef}
+                  className={`scrolling ${shouldScrollArtist ? 'should-scroll' : ''}`}
+                >
+                  <span>{artist}</span>
+                </div>
+              </div>
+            );
+          case 'album':
+            return (
+              <div key={`${column}-${index}`} className="grid-cell scrolling-text">
+                <div 
+                  ref={albumRef}
+                  className={`scrolling ${shouldScrollAlbum ? 'should-scroll' : ''}`}
+                >
+                  <span><i>{album}</i></span>
+                </div>
+              </div>
+            );
+          case 'title':
+            return (
+              <div key={`${column}-${index}`} className="grid-cell scrolling-text">
+                <div 
+                  ref={scrollingRef}
+                  className={`scrolling ${shouldScroll ? 'should-scroll' : ''}`}
+                >
+                  <span>{contentsHidden}</span>
+                </div>
+                {isMobile && (<button 
+                  className="mobile-menu-button"
+                  onClick={handleMenuClick}
+                  aria-label="More options"
+                >
+                  ⋮
+                </button>)}
+              </div>
+            );
+          case 'notes':
+            return (
+              <div key={`${column}-${index}`} className="grid-cell notes-cell" onClick={!isEditingNotes ? handleNotesClick : undefined}>
+                {isEditingNotes ? (
+                  <input
+                    ref={notesInputRef}
+                    type="text"
+                    value={notesValue}
+                    onChange={(e) => setNotesValue(e.target.value)}
+                    onKeyDown={handleNotesKeyDown}
+                    onBlur={handleNotesBlur}
+                    className="notes-input"
+                    placeholder="Add notes..."
+                  />
+                ) : (
+                  <span 
+                    className="notes-display"
+                  >
+                    {entry.getNotes()}
+                  </span>
+                )}
+              </div>
+            );
+          default:
+            return null;
+        }
+      })}
     </div>
   );
 });
