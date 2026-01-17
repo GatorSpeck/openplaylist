@@ -62,7 +62,7 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
     return success ? 'success' : 'error';
   };
 
-  const groupedLogs = syncResult.log.reduce((groups, entry) => {
+  const groupedLogs = (syncResult.log || []).reduce((groups, entry) => {
     const key = `${entry.target}-${entry.target_name || 'default'}`;
     if (!groups[key]) {
       groups[key] = [];
@@ -81,29 +81,45 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
       <div className="sync-log-modal">
         {/* Summary Section */}
         <div className="sync-summary">
-          <div className={`sync-status ${syncResult.status}`}>
+          <div className={`sync-status ${syncResult.status || 'unknown'}`}>
             <h3>
               {syncResult.status === 'success' ? '✅' : 
                syncResult.status === 'partial' ? '⚠️' : '❌'} 
-              Sync {syncResult.status.charAt(0).toUpperCase() + syncResult.status.slice(1)}
+              Sync {(syncResult.status || 'unknown').charAt(0).toUpperCase() + (syncResult.status || 'unknown').slice(1)}
             </h3>
           </div>
           
           <div className="sync-stats">
             <div className="stat">
-              <span className="stat-value">{syncResult.summary.total_targets}</span>
+              <span className="stat-value">{syncResult.summary?.total_targets || 0}</span>
               <span className="stat-label">Total Targets</span>
             </div>
             <div className="stat">
-              <span className="stat-value success">{syncResult.summary.successful}</span>
+              <span className="stat-value success">{syncResult.summary?.successful || 0}</span>
               <span className="stat-label">Successful</span>
             </div>
             <div className="stat">
-              <span className="stat-value error">{syncResult.summary.failed}</span>
+              <span className="stat-value error">{syncResult.summary?.failed || 0}</span>
               <span className="stat-label">Failed</span>
             </div>
           </div>
         </div>
+
+        {/* Global Errors Section */}
+        {syncResult.failed && syncResult.failed.length > 0 && (
+          <div className="sync-errors">
+            <h4>⚠️ Sync Errors</h4>
+            {syncResult.failed.map((failure, index) => (
+              <div key={index} className="error-item">
+                <div className="error-service">
+                  {getTargetIcon(failure.service)} {failure.service}
+                  {failure.target_id && <span className="target-id"> (Target {failure.target_id})</span>}
+                </div>
+                <div className="error-message">{failure.error}</div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Detailed Log Section */}
         <div className="sync-log-details">
@@ -149,7 +165,7 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
             );
           })}
           
-          {syncResult.log.length === 0 && (
+          {(!syncResult.log || syncResult.log.length === 0) && (
             <div className="no-changes">
               <p>No changes were made during this sync.</p>
             </div>

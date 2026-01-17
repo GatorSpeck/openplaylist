@@ -14,6 +14,14 @@ import time
 from tqdm import tqdm
 from datetime import datetime
 from fastapi.exceptions import HTTPException, RequestValidationError
+from job_tracker import (
+    job_tracker, JobType, JobStatus, JobSubmission, JobResponse, 
+    JobUpdate, JobContext, as_job
+)
+from job_tracker import (
+    job_tracker, JobType, JobStatus, JobSubmission, JobResponse, 
+    JobUpdate, JobContext, as_job
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
@@ -37,6 +45,9 @@ from pydantic import BaseModel
 import sys
 from routes import router
 from routes.spotify_router import spotify_router
+
+# Create a router for job management
+job_router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 import asyncio
 from fastapi.responses import StreamingResponse
 from typing import AsyncGenerator
@@ -236,21 +247,37 @@ def extract_metadata(file_path, extractor) -> Optional[MusicFile]:
 # singleton
 scan_results = ScanResults()
 
-def scan_directory(directory: str, full=False):
+def scan_directory(directory: str, full=False, job_id: str = None):
+    """Scan the music directory for music files and save them to the database.
+
+    Args:
+        directory: The directory to scan for music files.
+        full: Whether to perform a full scan (rescan all files) or incremental scan (only new files).
+        job_id: Optional job ID for tracking progress.
+    """
     directory = pathlib.Path(directory)
     if not directory.exists():
         logging.error(f"Directory {directory} does not exist")
+        if job_id:
+            job_tracker.fail_job(job_id, f"Directory {directory} does not exist")
         return
     
     if scan_results.in_progress:
+        if job_id:
+            job_tracker.fail_job(job_id, "Scan already in progress")
         return
     
     scan_results.in_progress = True
     scan_results.files_missing = 0
     scan_results.files_updated = 0
+    
+    job_context = JobContext(job_id) if job_id else None
 
     logging.info(f"Scanning directory {directory}, full={full}")
     start_time = time.time()
+    
+    if job_context:
+        job_context.update_progress(0.0, f"Starting {'full' if full else 'incremental'} scan")
 
     # read directory paths from config file
     all_files = []
@@ -276,6 +303,11 @@ def scan_directory(directory: str, full=False):
         try:
             files_seen += 1
             scan_results.progress = round(files_seen / total_files * 100, 1)
+            
+            # Update job progress every 10 files or for the last file
+            if job_context and (files_seen % 10 == 0 or files_seen == len(all_files)):
+                progress = files_seen / total_files
+                job_context.update_progress(progress, f"Processing file {files_seen} of {len(all_files)}")
 
             if not full_path.lower().endswith(SUPPORTED_FILETYPES):
                 continue
@@ -420,6 +452,18 @@ def scan_directory(directory: str, full=False):
     db.close()
 
     scan_results.in_progress = False
+    
+    # Complete job tracking if job_id was provided
+    if job_context:
+        duration = time.time() - start_time
+        result_message = f"Scan completed in {duration:.2f} seconds. Added {scan_results.files_added} new files, updated {scan_results.files_updated} existing files."
+        job_context.update_progress(1.0, result_message)
+        job_tracker.complete_job(job_id, {
+            "added_count": scan_results.files_added,
+            "updated_count": scan_results.files_updated,
+            "duration_seconds": duration,
+            "total_files": len(all_files)
+        })
 
 @router.get("/logs/recent")
 def get_recent_logs(level: Optional[str] = None, since: Optional[float] = None):
@@ -468,6 +512,96 @@ def full_scan(background_tasks: BackgroundTasks):
     background_tasks.add_task(prune_music_files)
 
     return HTTPException(status_code=202, detail="Scan started")
+
+# New job-tracked scan endpoints
+@app.post("/api/scan")
+def scan_with_job(background_tasks: BackgroundTasks):
+    """Scan the music directory for new files with job tracking."""
+    if scan_results.in_progress:
+        raise HTTPException(status_code=409, detail="Scan already in progress")
+    
+    # Create job
+    job_id = job_tracker.create_job(
+        JobType.LIBRARY_SCAN,
+        "Library Scan",
+        "Scanning music library for new files"
+    )
+    
+    # Start background task with job tracking
+    background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), False, job_id)
+    background_tasks.add_task(prune_music_files)
+    
+    return {"message": "Scan started", "job_id": job_id}
+
+@app.post("/api/full-scan")
+def full_scan_with_job(background_tasks: BackgroundTasks):
+    """Full rescan of the music directory with job tracking."""
+    if scan_results.in_progress:
+        raise HTTPException(status_code=409, detail="Scan already in progress")
+    
+    # Create job
+    job_id = job_tracker.create_job(
+        JobType.FULL_LIBRARY_SCAN,
+        "Full Library Scan", 
+        "Full rescan of the music library"
+    )
+    
+    # Start background task with job tracking
+    background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), True, job_id)
+    background_tasks.add_task(prune_music_files)
+    
+    return {"message": "Full scan started", "job_id": job_id}
+
+# Playlist sync with job tracking  
+@app.post("/api/playlists/{playlist_id}/sync")
+def sync_playlist_with_job(
+    playlist_id: int, 
+    background_tasks: BackgroundTasks,
+    force_push: bool = False
+):
+    """Sync a playlist with configured remote targets using job tracking"""
+    # Create job
+    job_id = job_tracker.create_job(
+        JobType.PLAYLIST_SYNC,
+        f"Playlist Sync - ID {playlist_id}",
+        f"Syncing playlist {playlist_id} with remote targets"
+    )
+    
+    # Start background sync task
+    background_tasks.add_task(sync_playlist_background, playlist_id, force_push, job_id)
+    
+    return {"message": "Playlist sync started", "job_id": job_id}
+
+def sync_playlist_background(playlist_id: int, force_push: bool, job_id: str):
+    """Background task for syncing playlist with job tracking"""
+    from dependencies import get_playlist_repository
+    from database import Database
+    
+    job_context = JobContext(job_id)
+    
+    try:
+        job_context.update_progress(0.0, "Starting playlist sync")
+        
+        # Get repository  
+        db = Database.get_session()
+        repo = get_playlist_repository(db)
+        
+        # Import sync function from routes
+        from routes.playlists import sync_playlist as _sync_playlist_impl
+        
+        job_context.update_progress(0.2, "Initializing sync targets")
+        
+        # Call the actual sync implementation
+        # Note: This is a simplified integration - the real sync function needs to be 
+        # modified to accept job_context for proper progress tracking
+        result = _sync_playlist_impl(playlist_id, force_push, repo)
+        
+        job_context.update_progress(1.0, "Playlist sync completed")
+        job_tracker.complete_job(job_id, result)
+        
+    except Exception as e:
+        logging.error(f"Playlist sync failed: {e}", exc_info=True)
+        job_tracker.fail_job(job_id, str(e))
 
 @router.get("/scan/progress", response_model=ScanResults)
 def scan_progress():
@@ -946,6 +1080,71 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 app.include_router(router, prefix="/api")
 app.include_router(spotify_router, prefix="/api")
+
+# Job Management API Endpoints
+@job_router.post("", response_model=JobResponse)
+def create_job(submission: JobSubmission):
+    """Create a new job"""
+    job_id = job_tracker.create_job(
+        submission.type,
+        submission.title or f"{submission.type.value} job",
+        submission.description or "",
+        submission.metadata
+    )
+    job = job_tracker.get_job(job_id)
+    return JobResponse.from_job(job)
+
+@job_router.get("", response_model=List[JobResponse])
+def list_jobs(
+    status: Optional[JobStatus] = Query(None, description="Filter by job status"),
+    type: Optional[JobType] = Query(None, description="Filter by job type"), 
+    limit: Optional[int] = Query(50, description="Maximum number of jobs to return")
+):
+    """List jobs with optional filtering"""
+    jobs = job_tracker.list_jobs(status_filter=status, type_filter=type, limit=limit)
+    return [JobResponse.from_job(job) for job in jobs]
+
+@job_router.get("/active", response_model=List[JobResponse])
+def get_active_jobs():
+    """Get all currently active (pending/running) jobs"""
+    jobs = job_tracker.get_active_jobs()
+    return [JobResponse.from_job(job) for job in jobs]
+
+@job_router.get("/{job_id}", response_model=JobResponse)
+def get_job(job_id: str):
+    """Get a specific job by ID"""
+    job = job_tracker.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return JobResponse.from_job(job)
+
+@job_router.patch("/{job_id}", response_model=JobResponse)
+def update_job(job_id: str, update: JobUpdate):
+    """Update a job's status, progress, or result"""
+    success = job_tracker.update_job(job_id, update)
+    if not success:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job = job_tracker.get_job(job_id)
+    return JobResponse.from_job(job)
+
+@job_router.delete("/{job_id}")
+def cancel_job(job_id: str):
+    """Cancel a job"""
+    success = job_tracker.cancel_job(job_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    return {"message": "Job cancelled successfully"}
+
+@job_router.post("/cleanup")
+def cleanup_jobs():
+    """Cleanup old completed jobs"""
+    job_tracker.cleanup_old_jobs()
+    return {"message": "Job cleanup completed"}
+
+# Include the job router
+app.include_router(job_router)
 
 host = os.getenv("HOST", "0.0.0.0")
 port = int(os.getenv("PORT", 3000))
