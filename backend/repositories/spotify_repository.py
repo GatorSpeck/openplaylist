@@ -10,6 +10,7 @@ from spotipy.oauth2 import SpotifyOAuth, CacheFileHandler
 from fastapi import HTTPException, Depends
 from repositories.plex_repository import normalize_title
 import urllib
+from lib.match import TrackStub, get_match_score
 
 from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz
 from repositories.requests_cache_session import requests_cache_session
@@ -180,26 +181,6 @@ class SpotifyRepository(RemotePlaylistRepository):
             else:
                 logging.warning("No Spotify token available. Authentication required.")
                 self.sp = None
-    
-    def is_authenticated(self):
-        """
-        Check if we have a valid Spotify client
-        
-        Returns:
-            bool: True if authenticated, False otherwise
-        """
-        if not self.sp:
-            return False
-            
-        # Test the token with a simple API call
-        try:
-            self.sp.current_user()
-            return True
-        except Exception as e:
-            logging.error(f"Authentication test failed: {e}")
-            # Token might be invalid, force re-auth
-            self.sp = None
-            return False
             
     def get_auth_url(self):
         """Get the URL to start OAuth flow"""
@@ -240,7 +221,7 @@ class SpotifyRepository(RemotePlaylistRepository):
     
     def get_current_user(self):
         """Get the current authenticated user's info"""
-        if not self.is_authenticated():
+        if self.sp:
             raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
             
         return self.sp.current_user()
@@ -249,7 +230,7 @@ class SpotifyRepository(RemotePlaylistRepository):
     
     def fetch_media_item(self, item: PlaylistItem) -> Any:
         """Search for a track on Spotify"""
-        if not self.is_authenticated():
+        if not self.sp:
             raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
         
         if item.spotify_uri:
@@ -281,16 +262,16 @@ class SpotifyRepository(RemotePlaylistRepository):
         
         if results and self.redis_session:
             self.redis_session.set(query, json.dumps(results), ex=3600)
+        
+        match_stub = TrackStub(artist=item.artist, title=item.title, album=item.album)
 
         if results and results["tracks"]["items"]:
             for track in results["tracks"]["items"]:
-                score = 0
-                if normalize_title(track["name"]) == normalize_title(item.title):
-                    score += 10
-                if any(artist["name"].lower() == item.artist.lower() for artist in track["artists"]):
-                    score += 5
-                if item.album and normalize_title(track["album"]["name"]) == normalize_title(item.album):
-                    score += 5
+                score = get_match_score(match_stub, TrackStub(
+                    artist=track["artists"][0]["name"],
+                    title=track["name"],
+                    album=track["album"]["name"]
+                ))
                 
                 track["score"] = score
             
@@ -320,7 +301,7 @@ class SpotifyRepository(RemotePlaylistRepository):
     
     def create_playlist(self, playlist_name: str, snapshot: PlaylistSnapshot) -> Any:
         """Create a new playlist on Spotify or update existing one"""
-        if not self.is_authenticated():
+        if not self.sp:
             raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
             
         # If we have a playlist ID in config, use that instead of creating a new one
@@ -388,7 +369,7 @@ class SpotifyRepository(RemotePlaylistRepository):
     def get_playlist_snapshot(self, playlist_id: str) -> Optional[PlaylistSnapshot]:
         """Get a snapshot of a Spotify playlist for sync"""
         try:
-            if not self.is_authenticated():
+            if not self.sp:
                 logging.error("Not authenticated with Spotify")
                 return None
 
@@ -444,7 +425,7 @@ class SpotifyRepository(RemotePlaylistRepository):
     
     def add_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
         """Add tracks to a Spotify playlist"""
-        if not self.is_authenticated():
+        if not self.sp:
             raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
             
         track_uris = []
@@ -463,7 +444,7 @@ class SpotifyRepository(RemotePlaylistRepository):
     
     def remove_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
         """Remove tracks from a Spotify playlist"""
-        if not self.is_authenticated():
+        if not self.sp:
             raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
             
         for item in items:
@@ -484,6 +465,31 @@ class SpotifyRepository(RemotePlaylistRepository):
                         logging.warning(f"Track not found in snapshot for item: {item.to_string(normalize=True)}")
                 else:
                     logging.warning(f"Snapshot not found for playlist: {playlist_name}")
+    
+    def is_authenticated(self) -> bool:
+        if self.sp is None:
+            return False
+
+        try:
+            self.sp.current_user_playlists()
+            return True
+        except Exception as e:
+            logging.error(f"Error checking Spotify authentication: {e}")
+            return False
+
+        return False
+    
+    def clear_playlist(self) -> None:
+        """Clear all items from the remote playlist"""
+        if not self.sp:
+            raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
+        
+        if not self.playlist_id:
+            raise ValueError("No playlist ID configured")
+        
+        # Remove all items by replacing with an empty list
+        self.sp.playlist_replace_items(self.playlist_id, [])
+        logging.info(f"Cleared all items from Spotify playlist ID: {self.playlist_id}")
 
 
 # Helper functions to get repository instances

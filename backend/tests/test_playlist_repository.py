@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from repositories.playlist import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
+from repositories.playlist_repository import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
 from models import *
 from response_models import *
 import datetime
@@ -38,14 +38,26 @@ def sample_music_file2(test_db):
     return add_music_file(test_db, "Test Song2")
 
 def add_music_file(test_db, title):
-    music_file = MusicFileDB(
+    from models import LocalFileDB
+    
+    # Create LocalFileDB first
+    local_file = LocalFileDB(
         path=f"/test/{title}.mp3",
+        kind="audio/mp3",
+        last_scanned=datetime.datetime.now(),
+        file_title=title,
+        file_artist="Test Artist",
+        file_album="Test Album",
+    )
+    
+    # Create MusicFileDB and associate it
+    music_file = MusicFileDB(
         title=title,
         artist="Test Artist",
         album="Test Album",
-        kind="audio/mp3",
-        last_scanned=datetime.datetime.now()
+        local_file=local_file
     )
+    
     test_db.add(music_file)
     test_db.commit()
     return music_file

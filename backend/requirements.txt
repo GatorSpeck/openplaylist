@@ -55,4 +55,4 @@ cryptography==41.0.3  # Required for PyMySQL with TLS/SSL
 spotipy==2.25.1
 
 # YT Music API
-ytmusicapi==1.10.3
+ytmusicapi==1.11.1

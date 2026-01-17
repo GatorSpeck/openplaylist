@@ -93,6 +93,12 @@ class MockRemotePlaylistRepository(RemotePlaylistRepository):
             items=items
         )
 
+    def is_authenticated(self):
+        return True
+    
+    def clear_playlist(self):
+        pass
+
 
 class TestRemotePlaylistRepository(unittest.TestCase):
     """Test the RemotePlaylistRepository class"""

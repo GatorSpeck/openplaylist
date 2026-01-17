@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Tabs, Tab, Box, 
          CircularProgress, Typography, Card, CardContent, Avatar, Paper, 
          FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel } from '@mui/material';
-import { MusicNote as SpotifyIcon } from '@mui/icons-material';
+import { MusicNote as SpotifyIcon, YouTube as YouTubeIcon } from '@mui/icons-material';
 import PathSelector from './PathSelector';
 import LogsPanel from './LogsPanel';
 import axios from 'axios';
@@ -163,6 +163,141 @@ const SpotifyConnectionPanel = () => {
   );
 };
 
+const YouTubeMusicConnectionPanel = () => {
+  const [status, setStatus] = useState({
+    loading: true,
+    authenticated: false,
+    error: null,
+    user: null,
+  });
+
+  useEffect(() => {
+    checkYouTubeMusicStatus();
+  }, []);
+
+  const checkYouTubeMusicStatus = async () => {
+    setStatus(prev => ({ ...prev, loading: true }));
+    
+    try {
+      const response = await axios.get('/api/youtube/status');
+      setStatus({
+        loading: false,
+        authenticated: response.data.authenticated,
+        error: response.data.error,
+        user: response.data.user,
+      });
+    } catch (error) {
+      console.error('Error checking YouTube Music status:', error);
+      setStatus({
+        loading: false,
+        authenticated: false,
+        error: error.response?.data?.detail || 'Failed to check YouTube Music status',
+        user: null,
+      });
+    }
+  };
+
+  const handleRefresh = () => {
+    checkYouTubeMusicStatus();
+  };
+
+  if (status.loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" p={3}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  return (
+    <div>
+      <Typography variant="h6" gutterBottom>
+        YouTube Music Connection
+      </Typography>
+      
+      {status.error && (
+        <Paper 
+          sx={{ 
+            p: 2, 
+            mb: 2, 
+            bgcolor: 'error.light', 
+            color: 'error.contrastText' 
+          }}
+        >
+          <Typography variant="body2">{status.error}</Typography>
+        </Paper>
+      )}
+
+      {status.authenticated ? (
+        <Card variant="outlined" sx={{ mb: 3 }}>
+          <CardContent>
+            <Box display="flex" alignItems="center" mb={2}>
+              <Avatar 
+                sx={{ mr: 2, bgcolor: '#FF0000' }} // YouTube red
+              >
+                <YouTubeIcon />
+              </Avatar>
+              <Box>
+                <Typography variant="subtitle1">
+                  YouTube Music User
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Library Access: {status.user?.library_accessible ? 'Yes' : 'No'}
+                </Typography>
+                {status.user?.playlists_count !== undefined && (
+                  <Typography variant="body2" color="textSecondary">
+                    Playlists: {status.user.playlists_count}
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+            <Typography variant="body2" color="success.main" gutterBottom>
+              Connected to YouTube Music
+            </Typography>
+            <Button 
+              variant="outlined" 
+              color="primary"
+              onClick={handleRefresh}
+              sx={{ mt: 1 }}
+            >
+              Refresh Status
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Box textAlign="center" p={3} border={1} borderColor="divider" borderRadius={1}>
+          <Typography variant="body1" gutterBottom>
+            YouTube Music requires OAuth credentials and authentication
+          </Typography>
+          <Typography variant="body2" color="textSecondary" gutterBottom>
+            Please configure your OAuth credentials and ensure the oauth.json file is properly set up.
+          </Typography>
+          <Button 
+            variant="outlined" 
+            color="primary"
+            onClick={handleRefresh}
+            sx={{ 
+              mt: 2,
+              borderColor: '#FF0000', // YouTube red
+              color: '#FF0000',
+              '&:hover': {
+                bgcolor: 'rgba(255, 0, 0, 0.04)',
+              }
+            }}
+            startIcon={<YouTubeIcon />}
+          >
+            Check Status
+          </Button>
+        </Box>
+      )}
+
+      <Typography variant="body2" color="textSecondary" sx={{ mt: 3 }}>
+        YouTube Music integration allows you to import playlists and synchronize with your YouTube Music library.
+      </Typography>
+    </div>
+  );
+};
+
 const SettingsModal = ({ open, onClose }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [indexPaths, setIndexPaths] = useState([]);
@@ -224,6 +359,7 @@ const SettingsModal = ({ open, onClose }) => {
         <Tab label="OpenAI" />
         <Tab label="Redis" />
         <Tab label="Spotify" />
+        <Tab label="YouTube Music" />
         <Tab label="Logs" />
       </Tabs>
       
@@ -267,13 +403,23 @@ const SettingsModal = ({ open, onClose }) => {
         </TabPanel>
 
         <TabPanel value={activeTab} index={6}>
+          <h3>YouTube Music Settings</h3>
+          <Box mb={2}>
+            <Typography variant="body2">
+              <strong>YouTube Music API Configured:</strong>{settings.youtubeMusicConfigured ? ' Yes' : ' No'}
+            </Typography>
+          </Box>
+          <YouTubeMusicConnectionPanel />
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={7}>
           <LogsPanel />
         </TabPanel>
       </DialogContent>
       
       <DialogActions>
         <Button onClick={onClose}>Close</Button>
-        {activeTab !== 6 && (
+        {activeTab !== 7 && (
           <Button 
             onClick={saveSettings} 
             variant="contained" 

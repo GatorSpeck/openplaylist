@@ -119,6 +119,10 @@ class PlaylistEntry extends PlaylistEntryStub {
     return this.details.title;
   }
 
+  getNotes() {
+    return this.notes || this.details.notes || '';
+  }
+
   getAlbum() {
     return this.isAlbum() ? this.details.title : this.details.album;
   }
@@ -230,7 +234,8 @@ class PlaylistEntry extends PlaylistEntryStub {
     }
 
     // Add details for entries that need them
-    if (this.isRequestedTrack() || this.isLastFM() || this.isAlbum() || this.isMusicFile()) {
+    // For music files with existing music_file_id, don't include details
+    if (this.isRequestedTrack() || this.isLastFM() || this.isAlbum() || (this.isMusicFile() && !this.music_file_id)) {
       baseEntry.details = {
         title: this.getTitle(),
         artist: this.getArtist(),

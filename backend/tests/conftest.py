@@ -25,16 +25,24 @@ def test_db():
     # Create test session
     test_session = TestingSessionLocal()
 
-    # Store original session
-    original_session = Database._sessionmaker
-    Database._sessionmaker = lambda: test_session
+    # Store original Database state
+    original_sessionmaker = Database._sessionmaker
+    original_engine = Database._engine
+    original_instance = Database._instance
+
+    # Override Database singleton for testing
+    Database._engine = engine
+    Database._sessionmaker = TestingSessionLocal
+    Database._instance = Database()
 
     yield test_session
 
-    # Cleanup
+    # Cleanup and restore original Database state
     test_session.close()
     Base.metadata.drop_all(bind=engine)
-    Database._sessionmaker = original_session
+    Database._sessionmaker = original_sessionmaker
+    Database._engine = original_engine
+    Database._instance = original_instance
 
 
 @pytest.fixture

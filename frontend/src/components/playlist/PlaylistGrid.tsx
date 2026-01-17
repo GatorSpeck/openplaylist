@@ -12,7 +12,7 @@ import playlistRepository from '../../repositories/PlaylistRepository';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import PlaylistEntryRow from './PlaylistEntryRow';
 import AutoSizer from 'react-virtualized-auto-sizer';
-import { FixedSizeList as List } from 'react-window';
+import { FixedSizeList as List, FixedSizeListProps } from 'react-window';
 import TrackDetailsModal from '../common/TrackDetailsModal';
 import openAIRepository from '../../repositories/OpenAIRepository';
 import lastFMRepository from '../../repositories/LastFMRepository';
@@ -27,6 +27,7 @@ import MatchAlbumModal from './MatchAlbumModal';
 import EditItemModal from './EditItemModal';
 import PlaylistEntry, {PlaylistEntryStub} from '../../lib/PlaylistEntry';
 import SelectPlaylistModal from './SelectPlaylistModal';
+import DuplicateSelectionModal from './DuplicateSelectionModal';
 import { setCookie, getCookie } from '../../lib/cookieUtils';
 import SyncConfig from './SyncConfig'; // Import the SyncConfig component
 import SyncLogModal from './SyncLogModal';
@@ -53,7 +54,10 @@ const Row = memo(({ data, index, style }) => {
     selectedEntries,
     sortColumn,
     provided,
-    totalCount
+    totalCount,
+    visibleColumns,
+    gridTemplate,
+    updateEntryNotes
   } = data;
 
   if (index >= totalCount) {
@@ -70,12 +74,18 @@ const Row = memo(({ data, index, style }) => {
     // Return a placeholder/loading row
     return (
       <div 
-        style={style}
+        style={{
+          ...style,
+          gridTemplateColumns: gridTemplate,
+        }}
         className={`playlist-grid-row loading-row ${index % 2 === 0 ? 'even-row' : 'odd-row'}`}
       >
         <div className="grid-cell">{selectedEntries.includes(index) ? "✔" : index + 1}</div>
-        <div className="grid-cell">Loading...</div>
-        <div className="grid-cell"></div>
+        {visibleColumns.map((column, columnIndex) => (
+          <div key={`loading-${column}-${columnIndex}`} className="grid-cell">
+            {columnIndex === 0 ? "Loading..." : ""}
+          </div>
+        ))}
       </div>
     );
   }
@@ -94,6 +104,7 @@ const Row = memo(({ data, index, style }) => {
           style={{
             ...style,
             ...provided.draggableProps.style,
+            gridTemplateColumns: gridTemplate,
           }}
           className={`playlist-grid-row ${track.order % 2 === 0 ? 'even-row' : 'odd-row'} ${sortColumn !== 'order' ? 'drag-disabled' : ''}`}
           isDragging={snapshot.isDragging}
@@ -102,6 +113,8 @@ const Row = memo(({ data, index, style }) => {
           isChecked={selectedEntries.includes(track.id)} // Use track.id consistently
           entry={track}
           dragHandleProps={provided.dragHandleProps}
+          visibleColumns={visibleColumns}
+          onNotesUpdate={updateEntryNotes}
         />
       )}
     </Draggable>
@@ -120,101 +133,22 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   // Add this new state to track parameter initialization
   const [paramsInitialized, setParamsInitialized] = useState(false);
 
-  // Get sort parameters from URL or use defaults
-  const getSortColumnFromParam = (param: string | null): string => {
-    const validColumns = ['order', 'title', 'artist', 'album', 'random'];
-    
-    // First check URL params
-    if (param && validColumns.includes(param)) {
-      return param;
-    }
-    
-    // Then fall back to cookies
-    const cookieValue = getCookie(`playlist_${playlistID}_sortColumn`);
-    if (cookieValue && validColumns.includes(cookieValue)) {
-      return cookieValue;
-    }
-    
-    // Default if neither exists
-    return 'order';
-  };
-
-  const getSortDirectionFromParam = (param: string | null): string => {
-    // First check URL params
-    if (param === 'asc' || param === 'desc') {
-      return param;
-    }
-    
-    // Then fall back to cookies
-    const cookieValue = getCookie(`playlist_${playlistID}_sortDirection`);
-    if (cookieValue === 'asc' || cookieValue === 'desc') {
-      return cookieValue;
-    }
-    
-    // Default if neither exists
-    return 'asc';
-  };
-
   // Replace your current parameter initialization useEffect with this one
   useEffect(() => {
-    // Process URL params and cookies only once at component initialization
-    const initialSortColumn = getSortColumnFromParam(searchParams.get('sort'));
-    const initialSortDirection = getSortDirectionFromParam(searchParams.get('dir'));
+    // Process URL params for filter (sort is handled separately now)
     const initialFilter = searchParams.get('filter') || '';
     
-    // Handle random seed
-    const urlSeed = searchParams.get('seed');
-    const cookieSeed = getCookie(`playlist_${playlistID}_randomSeed`);
-    let initialSeed = null;
-    
-    if (initialSortColumn === 'random') {
-      if (urlSeed && !isNaN(parseInt(urlSeed))) {
-        initialSeed = parseInt(urlSeed);
-      } else if (cookieSeed && !isNaN(parseInt(cookieSeed))) {
-        initialSeed = parseInt(cookieSeed);
-      } else {
-        initialSeed = Math.floor(Math.random() * 1000000);
-      }
-      setRandomSeed(initialSeed);
-      setIsRandomOrder(true);
+    // Restore scroll position from cookies
+    const savedScrollPosition = getCookie(`playlist_${playlistID}_scrollPosition`);
+    if (savedScrollPosition && !isNaN(parseFloat(savedScrollPosition))) {
+      const position = parseFloat(savedScrollPosition);
+      setScrollPosition(position);
+      scrollPositionRef.current = position;
+      isRestoringScroll.current = true;
     }
     
-    // Set the state values all at once
-    setSortColumn(initialSortColumn);
-    setSortDirection(initialSortDirection);
+    // Set filter from URL
     setFilter(initialFilter);
-    
-    // Update URL params to match the resolved values WITHOUT triggering navigation
-    // This ensures URL and state are in sync without causing a re-render
-    const newParams = new URLSearchParams(searchParams);
-    let urlNeedsUpdate = false;
-    
-    if (searchParams.get('sort') !== initialSortColumn) {
-      newParams.set('sort', initialSortColumn);
-      urlNeedsUpdate = true;
-    }
-    
-    if (searchParams.get('dir') !== initialSortDirection) {
-      newParams.set('dir', initialSortDirection);
-      urlNeedsUpdate = true;
-    }
-    
-    if (initialFilter && searchParams.get('filter') !== initialFilter) {
-      newParams.set('filter', initialFilter);
-      urlNeedsUpdate = true;
-    }
-    
-    if (initialSortColumn === 'random' && initialSeed !== null && searchParams.get('seed') !== initialSeed.toString()) {
-      newParams.set('seed', initialSeed.toString());
-      urlNeedsUpdate = true;
-    }
-    
-    // Only update URL if it needs updating, and do it silently
-    if (urlNeedsUpdate) {
-      // Use navigate with the current pathname to ensure we don't lose the playlist name
-      const currentPath = window.location.pathname;
-      navigate(`${currentPath}?${newParams.toString()}`, { replace: true });
-    }
     
     // Mark parameters as initialized
     setParamsInitialized(true);
@@ -243,6 +177,12 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const [historyIndex, setHistoryIndex] = useState(0);
   const [playlistModalVisible, setPlaylistModalVisible] = useState(false);
   const [selectPlaylistModalVisible, setSelectPlaylistModalVisible] = useState(false);
+  
+  // Duplicate selection modal state
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [pendingTracks, setPendingTracks] = useState<PlaylistEntry[]>([]);
+  const [duplicateTracks, setDuplicateTracks] = useState<PlaylistEntry[]>([]);
+  
   const gridContentRef = useRef(null);
   const [displayedItems, setDisplayedItems] = useState(50);
   const [hasMore, setHasMore] = useState(true);
@@ -290,11 +230,71 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const [randomSeed, setRandomSeed] = useState<number | null>(null);
   const [isRandomOrder, setIsRandomOrder] = useState(false);
 
+  // Column configuration
+  type ColumnType = 'artistAlbum' | 'artist' | 'album' | 'title' | 'notes';
+  
+  const defaultColumns: ColumnType[] = ['artistAlbum', 'title'];
+  
+  const [visibleColumns, setVisibleColumns] = useState<ColumnType[]>(() => {
+    const saved = getCookie(`playlist_${playlistID}_columns`);
+    return saved ? JSON.parse(saved) : defaultColumns;
+  });
+  
+  const [columnConfigOpen, setColumnConfigOpen] = useState(false);
+  
+  // Column widths state
+  const defaultColumnWidths = {
+    artistAlbum: 300,
+    artist: 200,
+    album: 200,
+    title: 300,
+    notes: 150
+  };
+  
+  const [columnWidths, setColumnWidths] = useState(() => {
+    const saved = getCookie(`playlist_${playlistID}_columnWidths`);
+    return saved ? JSON.parse(saved) : defaultColumnWidths;
+  });
+  
+  // Update column widths and save to cookies
+  const updateColumnWidth = (column: ColumnType, width: number) => {
+    const newWidths = { ...columnWidths, [column]: Math.max(80, width) }; // Min width 80px
+    setColumnWidths(newWidths);
+    setCookie(`playlist_${playlistID}_columnWidths`, JSON.stringify(newWidths));
+  };
+  
+  // Column configuration options
+  const availableColumns = [
+    { key: 'artistAlbum' as ColumnType, label: 'Artist/Album', description: 'Combined artist and album info' },
+    { key: 'artist' as ColumnType, label: 'Artist', description: 'Artist name only' },
+    { key: 'album' as ColumnType, label: 'Album', description: 'Album name only' },
+    { key: 'title' as ColumnType, label: 'Title', description: 'Song/track title' },
+    { key: 'notes' as ColumnType, label: 'Notes', description: 'Additional notes or comments' }
+  ];
+  
+  // Update column visibility and save to cookies
+  const updateColumnVisibility = (columns: ColumnType[]) => {
+    setVisibleColumns(columns);
+    setCookie(`playlist_${playlistID}_columns`, JSON.stringify(columns));
+  };
+  
+  // Generate CSS grid template based on visible columns and their widths
+  const getGridTemplate = () => {
+    const baseColumns = ['80px']; // Fixed width for checkbox/art column
+    
+    visibleColumns.forEach(col => {
+      const width = columnWidths[col] || defaultColumnWidths[col];
+      baseColumns.push(`${width}px`);
+    });
+    
+    return baseColumns.join(' ');
+  };
+
   // Apply debouncing to the filter
   useEffect(() => {
     // Set a timer to update the debounced filter after typing stops
     const timer = setTimeout(() => {
-      setDebouncedFilter(filter);
+      setDebouncedFilter(filter.trim());
     }, 500); // 500ms debounce delay
 
     // Clean up the timer if filter changes before timeout completes
@@ -306,10 +306,92 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     // Only fetch data after params are initialized
     if (paramsInitialized) {
       setPage(0); // Reset page on filter/sort changes
+      
+      // Don't automatically clear scroll position on filter/sort changes
+      // Let the user manually scroll to where they want to be
+      
       fetchPlaylistArtGrid();
       fetchPlaylistDetails(true);
     }
   }, [playlistID, debouncedFilter, sortColumn, sortDirection, paramsInitialized, showHidden]); // Add showHidden here
+
+  // Update column preferences when playlistID changes
+  useEffect(() => {
+    const savedColumns = getCookie(`playlist_${playlistID}_columns`);
+    if (savedColumns) {
+      setVisibleColumns(JSON.parse(savedColumns));
+    } else {
+      setVisibleColumns(defaultColumns);
+    }
+  }, [playlistID]);
+
+  // Update column widths when playlistID changes  
+  useEffect(() => {
+    const savedWidths = getCookie(`playlist_${playlistID}_columnWidths`);
+    if (savedWidths) {
+      setColumnWidths(JSON.parse(savedWidths));
+    } else {
+      setColumnWidths(defaultColumnWidths);
+    }
+  }, [playlistID]);
+
+  // Update sort column and direction when playlistID changes
+  useEffect(() => {
+    // Check URL params first, then fall back to cookies
+    const urlSort = searchParams.get('sort');
+    const urlDir = searchParams.get('dir');
+    
+    const validColumns = ['order', 'title', 'artist', 'album', 'year', 'length', 'random', 'notes'];
+    
+    let newSortColumn = 'order';
+    let newSortDirection = 'asc';
+    
+    // Use URL params if present and valid
+    if (urlSort && validColumns.includes(urlSort)) {
+      newSortColumn = urlSort;
+    } else {
+      // Fall back to cookies
+      const cookieSortColumn = getCookie(`playlist_${playlistID}_sortColumn`);
+      if (cookieSortColumn && validColumns.includes(cookieSortColumn)) {
+        newSortColumn = cookieSortColumn;
+      }
+    }
+    
+    if (urlDir === 'asc' || urlDir === 'desc') {
+      newSortDirection = urlDir;
+    } else {
+      // Fall back to cookies
+      const cookieSortDirection = getCookie(`playlist_${playlistID}_sortDirection`);
+      if (cookieSortDirection === 'asc' || cookieSortDirection === 'desc') {
+        newSortDirection = cookieSortDirection;
+      }
+    }
+    
+    setSortColumn(newSortColumn);
+    setSortDirection(newSortDirection);
+    
+    // Handle random seed for random sort
+    if (newSortColumn === 'random') {
+      const urlSeed = searchParams.get('seed');
+      const cookieSeed = getCookie(`playlist_${playlistID}_randomSeed`);
+      let seed = null;
+      
+      if (urlSeed && !isNaN(parseInt(urlSeed))) {
+        seed = parseInt(urlSeed);
+      } else if (cookieSeed && !isNaN(parseInt(cookieSeed))) {
+        seed = parseInt(cookieSeed);
+      } else {
+        seed = Math.floor(Math.random() * 1000000);
+        setCookie(`playlist_${playlistID}_randomSeed`, seed.toString());
+      }
+      
+      setRandomSeed(seed);
+      setIsRandomOrder(true);
+    } else {
+      setIsRandomOrder(false);
+      setRandomSeed(null);
+    }
+  }, [playlistID, searchParams]);
 
   const fetchPlaylistArtGrid = async () => {
     try {
@@ -444,6 +526,29 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       
       if (isInitialLoad) {
         setInitialFetchComplete(true); // Mark initial fetch as complete
+        
+        // Restore scroll position after initial load is complete and we have entries
+        if (isRestoringScroll.current && scrollPositionRef.current > 0 && mappedEntries.length > 0) {
+          // Use a timeout to ensure the virtual list is fully rendered with the new data
+          setTimeout(() => {
+            if (listRef.current && listRef.current.scrollTo) {
+              const targetPosition = scrollPositionRef.current;
+              listRef.current.scrollTo(targetPosition);
+              
+              // Keep the restoration flag active longer to prevent scroll events from saving
+              setTimeout(() => {
+                isRestoringScroll.current = false;
+              }, 2000);
+            } else {
+              isRestoringScroll.current = false;
+            }
+          }, 500);
+        } else {
+          // Reset the flag if we're not restoring
+          if (isRestoringScroll.current) {
+            isRestoringScroll.current = false;
+          }
+        }
       }
       
       return { 
@@ -548,15 +653,30 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   }
 
   const addSongsToPlaylist = async (songs: PlaylistEntry[]) => {
+    console.log('addSongsToPlaylist called with', songs.length, 'songs');
     const dupsResult = await playlistRepository.checkForDuplicates(playlistID, songs);
+    console.log('Duplicates found:', dupsResult.length);
+    
     if (dupsResult.length > 0) {
-      const dups = dupsResult.map(e => `${e.getArtist()} - ${e.getTitle()}`);
-      if (!window.confirm(`The following entries already exist in the playlist: ${dups.join(", ")}. Do you want to continue?`)) {
-        return;
-      }
+      // Show duplicate selection modal
+      console.log('Opening duplicate selection modal');
+      setPendingTracks(songs);
+      setDuplicateTracks(dupsResult);
+      setDuplicateModalOpen(true);
+    } else {
+      // No duplicates, add all tracks directly
+      console.log('No duplicates, adding tracks directly');
+      await addTracksToPlaylist(songs);
     }
+  };
 
-    await addTracksToPlaylist(songs);
+  const handleDuplicateSelection = async (selectedTracks: PlaylistEntry[]) => {
+    if (selectedTracks.length > 0) {
+      await addTracksToPlaylist(selectedTracks);
+    }
+    // Reset modal state
+    setPendingTracks([]);
+    setDuplicateTracks([]);
   };
 
   const removeSongsFromPlaylist = async (indexes: number[]) => {
@@ -587,9 +707,9 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     playlistRepository.export(id, "json");
   }
 
-  const onSyncToPlex = async () => {
+  const onSyncToPlex = async (forcePush: boolean = false) => {
     try {
-      const response = await playlistRepository.syncToPlex(playlistID);
+      const response = await playlistRepository.syncToPlex(playlistID, forcePush);
       
       // Store the sync result for the log modal
       setSyncResult(response);
@@ -852,7 +972,23 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     });
   };
 
-  const listRef = useRef(null);
+  const listRef = useRef<any>(null);
+  
+  // Add scroll position state and persistence
+  const [scrollPosition, setScrollPosition] = useState(0);
+  const scrollPositionRef = useRef(0);
+  const isRestoringScroll = useRef(false);
+  const scrollSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Save scroll position when component unmounts or playlist changes
+  useEffect(() => {
+    return () => {
+      // Save final scroll position on cleanup (only if > 0)
+      if (scrollPositionRef.current > 0) {
+        setCookie(`playlist_${playlistID}_scrollPosition`, scrollPositionRef.current.toString(), 7);
+      }
+    };
+  }, [playlistID]);
 
   // Replace loadMoreItems function with this smart pagination function
   const loadItemsForVisibleRange = useCallback(async (startIndex, stopIndex) => {
@@ -891,7 +1027,6 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     
     // Case 3: User is scrolling backwards to unloaded entries
     if (startIndex < 20 && entries.length > 0 && (!entries[0] || !entries[0].details)) {
-      console.log(`Scrolling backwards to unloaded entries, fetching at position ${startIndex}`);
       await fetchPlaylistDetails(false, startIndex);
       return;
     }
@@ -1098,7 +1233,120 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     }
   };
 
+  // Add function to update notes
+  const updateEntryNotes = useCallback(async (entryId: number, notes: string) => {
+    try {
+      // Find the entry to update
+      const entryIndex = entries.findIndex(entry => entry.id === entryId);
+      if (entryIndex === -1) return;
+      
+      const originalEntry = entries[entryIndex];
+      
+      // Create updated entry with new notes
+      const updatedEntry = new PlaylistEntry({
+        ...originalEntry,
+        notes,
+        details: { ...originalEntry.details, notes }
+      });
+      
+      // Optimistically update local state first
+      pushToHistory(entries);
+      const newEntries = [...entries];
+      newEntries[entryIndex] = updatedEntry;
+      setEntries(newEntries);
+      
+      // Update backend using the new updateEntryNotes method
+      await playlistRepository.updateEntryNotes(playlistID, entryId, notes);
+      
+      setSnackbar({
+        open: true,
+        message: 'Notes updated',
+        severity: 'success'
+      });
+      
+    } catch (error) {
+      console.error('Error updating notes:', error);
+      
+      // Revert the optimistic update on error
+      setEntries(entries);
+      
+      setSnackbar({
+        open: true,
+        message: `Error updating notes: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  }, [entries, pushToHistory, setEntries, setSnackbar, playlistID]);
+
   // Update BatchActions to include hide option
+  // Add state for scroll position to handle floating button positioning
+  const [isAtBottom, setIsAtBottom] = useState(false);
+  const gridRef = useRef(null);
+
+  // Add scroll listener to detect when at bottom
+  useEffect(() => {
+    const handleScroll = () => {
+      if (listRef.current) {
+        const list = listRef.current;
+        const { scrollTop, scrollHeight, clientHeight } = list._outerRef; // Access the scroll container of FixedSizeList
+        const threshold = 50; // pixels from bottom
+        setIsAtBottom(scrollTop + clientHeight >= scrollHeight - threshold);
+      }
+    };
+
+    // Attach scroll listener to the List component's scroll container
+    if (listRef.current && listRef.current._outerRef) {
+      const scrollElement = listRef.current._outerRef;
+      scrollElement.addEventListener('scroll', handleScroll);
+      return () => scrollElement.removeEventListener('scroll', handleScroll);
+    }
+  }, [entries]); // Re-attach when entries change
+
+  // Add state for batch actions modal
+  const [batchActionsModalVisible, setBatchActionsModalVisible] = useState(false);
+
+  // Update BatchActions to be a modal component
+  const BatchActionsModal = ({ selectedCount, onRemove, onClear, onHide, visible, onClose }) => {
+    console.log('BatchActionsModal render:', { visible, selectedCount }); // Debug log
+    return (
+      <Modal
+        open={visible}
+        onClose={onClose}
+        title={`Batch Actions (${selectedCount} selected)`}
+      >
+        <div className="batch-actions-modal-content">
+          <button 
+            className="batch-action-button hide-button" 
+            onClick={() => {
+              onHide();
+              onClose();
+            }}
+          >
+            Hide {selectedCount} Selected Entries
+          </button>
+          <button 
+            className="batch-action-button remove-button" 
+            onClick={() => {
+              onRemove();
+              onClose();
+            }}
+          >
+            Remove {selectedCount} Selected Entries
+          </button>
+          <button 
+            className="batch-action-button clear-button" 
+            onClick={() => {
+              onClear();
+              onClose();
+            }}
+          >
+            Clear Selection
+          </button>
+        </div>
+      </Modal>
+    );
+  };
+
   const BatchActions = ({ selectedCount, onRemove, onClear, onHide }) => (
     <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
       <button onClick={onHide}>
@@ -1125,13 +1373,90 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         <h2 className="playlist-name">{name}</h2>
       </div>
       <div className="playlist-controls">
-        {historyEnabled && historyControls}
-        <button
-          className="playlist-options"
-          onClick={() => setPlaylistModalVisible(true)}
-        >
-          ...
-        </button>
+        <div className="playlist-controls-top">
+          {historyEnabled && historyControls}
+          <button
+            className="playlist-options"
+            onClick={() => setPlaylistModalVisible(true)}
+          >
+            ...
+          </button>
+          
+          <button
+            className="column-config-btn"
+            onClick={() => {
+              console.log('Column config button clicked');
+              console.log('Current columnConfigOpen state:', columnConfigOpen);
+              setColumnConfigOpen(true);
+              console.log('Set columnConfigOpen to true');
+            }}
+            title="Configure columns"
+          >
+            Columns
+          </button>
+
+          <button
+            className={`random-button ${isRandomOrder ? "active" : ""}`}
+            onClick={() => {
+              if (isRandomOrder) {
+                // Return to original order
+                setSortColumn("order");
+                setSortDirection("asc");
+                setIsRandomOrder(false);
+                setRandomSeed(null);
+
+                const newParams = new URLSearchParams(searchParams);
+                newParams.set("sort", "order");
+                newParams.set("dir", "asc");
+                newParams.delete("seed");
+                setSearchParams(newParams, { replace: true });
+              } else {
+                shufflePlaylist();
+              }
+            }}
+            title={
+              isRandomOrder ? "Return to original order" : "Shuffle playlist"
+            }
+          >
+            {isRandomOrder ? "🔁" : "🔀"} {isRandomOrder ? "Unshuffle" : "Shuffle"}
+          </button>
+
+          <button
+            className="refresh-button"
+            onClick={() => {
+              window.location.reload();
+            }}
+            title="Refresh page"
+          >
+            🔄 Refresh
+          </button>
+
+          <button
+            className="scroll-button"
+            onClick={() => {
+              if (listRef.current) {
+                listRef.current.scrollToItem(0, 'start');
+              }
+            }}
+            title="Scroll to top"
+            disabled={totalCount === 0}
+          >
+            ⬆️ Top
+          </button>
+
+          <button
+            className="scroll-button"
+            onClick={() => {
+              if (listRef.current && totalCount > 0) {
+                listRef.current.scrollToItem(totalCount - 1, 'end');
+              }
+            }}
+            title="Scroll to bottom"
+            disabled={totalCount === 0}
+          >
+            ⬇️ Bottom
+          </button>
+        </div>
 
         <div className="filter-container">
           <input
@@ -1155,7 +1480,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             </button>
           )}
 
-          <label className="show-hidden-label">
+          <label 
+            className="show-hidden-label"
+            style={{ display: 'inline-block' }}
+          >
             <input
               type="checkbox"
               checked={showHidden}
@@ -1168,10 +1496,12 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             Show Hidden
           </label>
 
+          <br />
+
           <span className="filter-count">
             {totalCount} tracks{" "}
             {filter
-              ? filter !== debouncedFilter
+              ? filter.trim() !== debouncedFilter.trim()
                 ? "(filtering...)"
                 : "(filtered)"
               : ""}{" "}
@@ -1179,45 +1509,22 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           </span>
         </div>
 
-        <BatchActions
-          selectedCount={selectedEntries.length}
-          onRemove={removeSelectedTracks}
-          onClear={clearTrackSelection}
-          onHide={hideSelectedTracks} // Add this line
-        />
+        {/* Hide the original batch actions */}
+        <div style={{ display: 'none' }}>
+          <BatchActions
+            selectedCount={selectedEntries.length}
+            onRemove={removeSelectedTracks}
+            onClear={clearTrackSelection}
+            onHide={hideSelectedTracks}
+          />
+        </div>
 
-        {/* Add random order button */}
-        <button
-          className={`random-button ${isRandomOrder ? "active" : ""}`}
-          onClick={() => {
-            if (isRandomOrder) {
-              // Return to original order
-              setSortColumn("order");
-              setSortDirection("asc");
-              setIsRandomOrder(false);
-              setRandomSeed(null);
-
-              const newParams = new URLSearchParams(searchParams);
-              newParams.set("sort", "order");
-              newParams.set("dir", "asc");
-              newParams.delete("seed");
-              setSearchParams(newParams, { replace: true });
-            } else {
-              shufflePlaylist();
-            }
-          }}
-          title={
-            isRandomOrder ? "Return to original order" : "Shuffle playlist"
-          }
-        >
-          {isRandomOrder ? "🔁" : "🔀"} {isRandomOrder ? "Unshuffle" : "Shuffle"}
-        </button>
       </div>
 
-      <div className="playlist-container">
+      <div className={`playlist-container ${isAtBottom ? 'at-bottom' : ''}`} ref={gridRef}>
         <DragDropContext onDragEnd={onDragEnd}>
-          <div className="playlist-grid-header-row">
-            <div className="grid-cell">
+          <div className="playlist-grid-header-row" style={{ gridTemplateColumns: getGridTemplate() }}>
+            <div className="grid-cell" style={{ overflow: 'visible' }}>
               <input
                 type="checkbox"
                 checked={allPlaylistEntriesSelected}
@@ -1227,19 +1534,99 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                 # {getSortIndicator("order")}
               </span>
             </div>
-
-            <div
-              className="grid-cell clickable"
-              onClick={() => handleSort("artist")}
-            >
-              Artist {getSortIndicator("artist")}
-            </div>
-            <div
-              className="grid-cell clickable"
-              onClick={() => handleSort("title")}
-            >
-              Song {getSortIndicator("title")}
-            </div>
+            
+            {visibleColumns.map((column, index) => {
+              const isLastColumn = index === visibleColumns.length - 1;
+              
+              const headerContent = (() => {
+                switch (column) {
+                  case 'artistAlbum':
+                    return (
+                      <span className="clickable" onClick={() => handleSort("artist")}>
+                        Artist/Album {getSortIndicator("artist")}
+                      </span>
+                    );
+                  case 'artist':
+                    return (
+                      <span className="clickable" onClick={() => handleSort("artist")}>
+                        Artist {getSortIndicator("artist")}
+                      </span>
+                    );
+                  case 'album':
+                    return (
+                      <span className="clickable" onClick={() => handleSort("album")}>
+                        Album {getSortIndicator("album")}
+                      </span>
+                    );
+                  case 'title':
+                    return (
+                      <span className="clickable" onClick={() => handleSort("title")}>
+                        Title {getSortIndicator("title")}
+                      </span>
+                    );
+                  case 'notes':
+                    return (
+                      <span className="clickable" onClick={() => handleSort("notes")}>
+                        Notes {getSortIndicator("notes")}
+                      </span>
+                    );
+                  default:
+                    return null;
+                }
+              })();
+              
+              return (
+                <div key={column} className="grid-cell resizable-header" style={{ position: 'relative' }}>
+                  {headerContent}
+                  {(!isLastColumn || column === 'notes') && (
+                    <div 
+                      className="resize-handle"
+                      style={{
+                        position: 'absolute',
+                        right: '-2px',
+                        top: '0',
+                        bottom: '0',
+                        width: '4px',
+                        cursor: 'col-resize',
+                        backgroundColor: 'transparent',
+                        zIndex: 10
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const startX = e.clientX;
+                        const startWidth = columnWidths[column] || defaultColumnWidths[column];
+                        
+                        const handleMouseMove = (moveEvent: MouseEvent) => {
+                          const diff = moveEvent.clientX - startX;
+                          const newWidth = startWidth + diff;
+                          updateColumnWidth(column, newWidth);
+                        };
+                        
+                        const handleMouseUp = () => {
+                          document.removeEventListener('mousemove', handleMouseMove);
+                          document.removeEventListener('mouseup', handleMouseUp);
+                        };
+                        
+                        document.addEventListener('mousemove', handleMouseMove);
+                        document.addEventListener('mouseup', handleMouseUp);
+                      }}
+                    >
+                      {/* Visual resize indicator */}
+                      <div style={{
+                        position: 'absolute',
+                        right: '1px',
+                        top: '20%',
+                        bottom: '20%',
+                        width: '2px',
+                        backgroundColor: '#ddd',
+                        opacity: 0,
+                        transition: 'opacity 0.2s'
+                      }} className="resize-indicator" />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <Droppable
@@ -1250,11 +1637,14 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                 ref={provided.innerRef}
                 {...provided.draggableProps}
                 className="playlist-grid-row"
+                style={{ gridTemplateColumns: getGridTemplate() }}
                 isDragging={snapshot.isDragging}
                 entry={new PlaylistEntry(entries[rubric.source.index])}
                 isChecked={selectedEntries.includes(rubric.source.index)}
                 handleContextMenu={handleContextMenu}
                 dragHandleProps={provided.dragHandleProps}
+                visibleColumns={visibleColumns}
+                onNotesUpdate={updateEntryNotes}
               />
             )}
           >
@@ -1276,6 +1666,9 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                         handleContextMenu: handleContextMenu,
                         isDraggingOver: snapshot.isDraggingOver,
                         totalCount: totalCount,
+                        visibleColumns,
+                        gridTemplate: getGridTemplate(),
+                        updateEntryNotes,
                       }}
                       overscanCount={50} // Increased from 20 to handle fast scrolling better
                       onItemsRendered={({
@@ -1293,6 +1686,26 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                             visibleStopIndex
                           );
                         });
+                      }}
+                      onScroll={({ scrollOffset }) => {
+                        // During restoration, don't update the scroll position reference
+                        // to preserve the target restoration position
+                        if (!isRestoringScroll.current) {
+                          scrollPositionRef.current = scrollOffset;
+                          setScrollPosition(scrollOffset);
+                          
+                          // Debounce saving to cookies to avoid excessive writes
+                          // Only save non-zero positions to avoid overwriting with reset positions
+                          if (scrollOffset > 0) {
+                            if (scrollSaveTimeoutRef.current) {
+                              clearTimeout(scrollSaveTimeoutRef.current);
+                            }
+                            scrollSaveTimeoutRef.current = setTimeout(() => {
+                              // Set cookie to expire in 7 days for better persistence across browser sessions
+                              setCookie(`playlist_${playlistID}_scrollPosition`, scrollOffset.toString(), 7);
+                            }, 1000); // Save after 1 second of no scrolling
+                          }
+                        }
                       }}
                     >
                       {Row}
@@ -1364,6 +1777,10 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           playlistId={playlistID}
           onClose={() => setSyncConfigOpen(false)}
           visible={syncConfigOpen}
+          onSyncResult={(result) => {
+            setSyncResult(result);
+            setSyncLogModalOpen(true);
+          }}
         />
       )}
 
@@ -1385,7 +1802,19 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                 setSyncConfigOpen(true);
               },
             },
-            { label: "Sync Now", action: onSyncToPlex },
+            { label: "Sync Now", action: () => onSyncToPlex(false) },
+            { 
+              label: "Force Push Sync", 
+              action: () => {
+                if (window.confirm(
+                  "⚠️ Force Push will remove ALL items from remote playlists and replace them with your local playlist.\n\n" +
+                  "This action cannot be undone and will overwrite any changes made directly in remote services.\n\n" +
+                  "Are you sure you want to continue?"
+                )) {
+                  onSyncToPlex(true);
+                }
+              }
+            },
             { label: "Delete Playlist", action: onDeletePlaylist },
           ]}
           onClose={() => setPlaylistModalVisible(false)}
@@ -1426,6 +1855,14 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         />
       )}
 
+      <DuplicateSelectionModal
+        isOpen={duplicateModalOpen}
+        onClose={() => setDuplicateModalOpen(false)}
+        tracks={pendingTracks}
+        duplicates={duplicateTracks}
+        onConfirm={handleDuplicateSelection}
+      />
+
       {syncLogModalOpen && (
         <SyncLogModal
           open={syncLogModalOpen}
@@ -1433,6 +1870,163 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           syncResult={syncResult}
           playlistName={name}
         />
+      )}
+      
+      {/* Floating batch actions button */}
+      {selectedEntries.length > 0 && (
+        <button
+          className="floating-batch-button"
+          onClick={() => {
+            console.log('Floating button clicked, setting modal to true'); // Debug log
+            setBatchActionsModalVisible(true);
+          }}
+          title={`${selectedEntries.length} items selected - Click for batch actions`}
+        >
+          <span className="batch-count">{selectedEntries.length}</span>
+          <span className="batch-icon">⚡</span>
+        </button>
+      )}
+
+      {/* Batch Actions Modal */}
+      <BatchActionsModal
+        selectedCount={selectedEntries.length}
+        onRemove={removeSelectedTracks}
+        onClear={clearTrackSelection}
+        onHide={hideSelectedTracks}
+        visible={batchActionsModalVisible}
+        onClose={() => setBatchActionsModalVisible(false)}
+      />
+
+      {/* Other existing modals */}
+      {columnConfigOpen && (
+        <div style={{
+          position: 'fixed',
+          top: '0',
+          left: '0',
+          right: '0',
+          bottom: '0',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000
+        }} onClick={() => setColumnConfigOpen(false)}>
+          <div 
+            className="column-config-modal"
+            style={{
+              background: 'white',
+              borderRadius: '8px',
+              padding: '0',
+              maxWidth: '500px',
+              width: '90vw',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '20px', borderBottom: '1px solid #eee' }}>
+              <h3 style={{ margin: '0', fontSize: '18px' }}>Configure Columns</h3>
+            </div>
+            <div className="column-config-content">
+              <p>Select which columns to display and drag to reorder:</p>
+              <div className="column-checkboxes">
+                {visibleColumns.map((columnKey, index) => {
+                  const column = availableColumns.find(col => col.key === columnKey);
+                  if (!column) return null;
+                  
+                  return (
+                    <label 
+                      key={column.key} 
+                      className="column-checkbox-item draggable-column"
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', index.toString());
+                        e.currentTarget.style.opacity = '0.5';
+                      }}
+                      onDragEnd={(e) => {
+                        e.currentTarget.style.opacity = '1';
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                        const dropIndex = index;
+                        
+                        if (dragIndex !== dropIndex) {
+                          const newColumns = [...visibleColumns];
+                          const draggedColumn = newColumns[dragIndex];
+                          newColumns.splice(dragIndex, 1);
+                          newColumns.splice(dropIndex, 0, draggedColumn);
+                          updateColumnVisibility(newColumns);
+                        }
+                      }}
+                    >
+                      <span className="drag-handle" style={{ cursor: 'grab', marginRight: '8px' }}>⋮⋮</span>
+                      <input
+                        type="checkbox"
+                        checked={true}
+                        onChange={(e) => {
+                          if (!e.target.checked && visibleColumns.length > 1) {
+                            updateColumnVisibility(visibleColumns.filter(col => col !== column.key));
+                          }
+                        }}
+                        disabled={visibleColumns.length === 1}
+                      />
+                      <div>
+                        <span className="column-label">{column.label}</span>
+                        <small className="column-description">{column.description}</small>
+                      </div>
+                    </label>
+                  );
+                })}
+                
+                {/* Hidden columns that can be added */}
+                {availableColumns
+                  .filter(column => !visibleColumns.includes(column.key))
+                  .map(column => (
+                    <label key={column.key} className="column-checkbox-item hidden-column">
+                      <span style={{ width: '20px', marginRight: '8px' }}></span>
+                      <input
+                        type="checkbox"
+                        checked={false}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            updateColumnVisibility([...visibleColumns, column.key]);
+                          }
+                        }}
+                      />
+                      <div>
+                        <span className="column-label" style={{ opacity: 0.6 }}>{column.label}</span>
+                        <small className="column-description" style={{ opacity: 0.6 }}>{column.description}</small>
+                      </div>
+                    </label>
+                  ))
+                }
+              </div>
+              <div className="column-config-actions">
+                <button 
+                  onClick={() => {
+                    updateColumnVisibility(defaultColumns);
+                    setColumnWidths(defaultColumnWidths);
+                    setCookie(`playlist_${playlistID}_columnWidths`, JSON.stringify(defaultColumnWidths));
+                  }}
+                  className="reset-columns-btn"
+                >
+                  Reset to Default
+                </button>
+                <button 
+                  onClick={() => setColumnConfigOpen(false)}
+                  className="close-config-btn"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
