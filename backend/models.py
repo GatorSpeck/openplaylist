@@ -352,6 +352,8 @@ class PlaylistDB(Base):
     updated_at = Column(DateTime(), index=True, default=func.now(), onupdate=func.now())
     pinned = Column(Boolean, default=False)
     pinned_order = Column(Integer, index=True)
+    auto_sync_enabled = Column(Boolean, default=False)
+    auto_sync_schedule = Column(String(100), nullable=True)  # cron expression
 
     entries: Mapped[List["PlaylistEntryDB"]] = relationship(
         order_by="PlaylistEntryDB.order",
@@ -477,3 +479,29 @@ class SyncTargetDB(Base):
     
     # Relationship
     playlist = relationship("PlaylistDB", back_populates="sync_targets")
+
+
+class ScheduledTaskDB(Base):
+    __tablename__ = "scheduled_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False, unique=True, index=True)
+    task_type = Column(String(50), nullable=False, index=True)  # 'library_scan', 'playlist_sync'
+    cron_expression = Column(String(100), nullable=False)
+    enabled = Column(Boolean, default=True, index=True)
+    
+    # Task-specific configuration
+    config = Column(JSON, nullable=True)  # JSON config for task parameters
+    
+    # Scheduling metadata
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    last_run_at = Column(DateTime, nullable=True)
+    next_run_at = Column(DateTime, nullable=True)
+    
+    # Task execution tracking
+    total_runs = Column(Integer, default=0)
+    successful_runs = Column(Integer, default=0)
+    failed_runs = Column(Integer, default=0)
+    last_run_status = Column(String(20), nullable=True)  # 'success', 'failed', 'running'
+    last_error_message = Column(Text, nullable=True)

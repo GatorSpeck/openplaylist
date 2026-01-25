@@ -3,9 +3,10 @@ import '../../styles/PlaylistSidebar.css';
 import RenameDialog from './RenameDialog';
 import SettingsModal from './SettingsModal'; 
 import ImportPlaylistModal from './ImportPlaylistModal'; // Add this import
+import PlaylistAutoSyncDialog from '../playlist/PlaylistAutoSyncDialog';
 import playlistRepository from '../../repositories/PlaylistRepository';
 
-const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex, pinned, onTogglePin, onShowSyncOptions }) => (
+const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex, pinned, onTogglePin, onShowSyncOptions, onShowAutoSync }) => (
   <div className="playlist-context-menu" style={{ left: x, top: y }}>
     <div onClick={onTogglePin}>{pinned ? 'Unpin Playlist' : 'Pin Playlist'}</div>
     <div onClick={onRenamePlaylist}>Rename Playlist</div>
@@ -13,6 +14,8 @@ const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRen
     <div onClick={onDelete}>Delete Playlist</div>
     <div onClick={onExport}>Export Playlist</div>
     <div onClick={onSyncToPlex}>Sync to Plex</div>
+    {onShowSyncOptions && <div onClick={onShowSyncOptions}>Sync Options</div>}
+    {onShowAutoSync && <div onClick={onShowAutoSync}>Auto-Sync Settings</div>}
   </div>
 );
 
@@ -29,7 +32,9 @@ const PlaylistSidebar = ({
   onSyncToPlex,
   onRenamePlaylist,
   togglePin,
-  reorderPinnedPlaylist
+  reorderPinnedPlaylist,
+  onShowSyncOptions,
+  onShowAutoSync
 }) => {
   const [contextMenu, setContextMenu] = useState({ 
     visible: false, 
@@ -41,6 +46,7 @@ const PlaylistSidebar = ({
   const [renameDialog, setRenameDialog] = useState({ open: false, playlist: null });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [autoSyncDialog, setAutoSyncDialog] = useState({ open: false, playlistId: null, playlistName: '' });
 
   const sidebarRef = useRef(null);
   const hamburgerRef = useRef(null);
@@ -183,6 +189,21 @@ const PlaylistSidebar = ({
               setContextMenu({ visible: false });
             }}
             pinned={contextMenu.playlist.pinned}
+            onShowSyncOptions={onShowSyncOptions ? () => {
+              onShowSyncOptions(contextMenu.playlist.id);
+              setContextMenu({ visible: false });
+            } : null}
+            onShowAutoSync={onShowAutoSync ? () => {
+              onShowAutoSync(contextMenu.playlist.id, contextMenu.playlist.name);
+              setContextMenu({ visible: false });
+            } : (() => {
+              setAutoSyncDialog({ 
+                open: true, 
+                playlistId: contextMenu.playlist.id, 
+                playlistName: contextMenu.playlist.name 
+              });
+              setContextMenu({ visible: false });
+            })}
           />
         </div>
       )}
@@ -203,6 +224,13 @@ const PlaylistSidebar = ({
       <SettingsModal 
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+      />
+
+      <PlaylistAutoSyncDialog
+        open={autoSyncDialog.open}
+        onClose={() => setAutoSyncDialog({ open: false, playlistId: null, playlistName: '' })}
+        playlistId={autoSyncDialog.playlistId}
+        playlistName={autoSyncDialog.playlistName}
       />
     </>
   );

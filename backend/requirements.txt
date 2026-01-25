@@ -43,6 +43,8 @@ url-normalize==1.4.3
 urllib3==2.3.0
 uvicorn==0.34.0
 python-multipart==0.0.20
+APScheduler==3.10.4
+croniter==1.4.1
 
 # technically not a req, but good to have in case user needs to manually apply migrations
 alembic==1.15.1
