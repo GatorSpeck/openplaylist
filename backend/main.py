@@ -45,6 +45,8 @@ from pydantic import BaseModel
 import sys
 from routes import router
 from routes.spotify_router import spotify_router
+from routes.scheduled_tasks import scheduled_tasks_router, playlist_sync_router
+from task_scheduler import task_scheduler
 
 # Create a router for job management
 job_router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -129,6 +131,25 @@ class TimingMiddleware(BaseHTTPMiddleware):
         return response
 
 app = FastAPI()
+
+# Add event handlers for task scheduler
+@app.on_event("startup")
+async def startup_event():
+    """Initialize the task scheduler on application startup"""
+    try:
+        task_scheduler.start()
+        logging.info("Task scheduler initialized")
+    except Exception as e:
+        logging.error(f"Failed to initialize task scheduler: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Shutdown the task scheduler on application shutdown"""
+    try:
+        task_scheduler.shutdown()
+        logging.info("Task scheduler stopped")
+    except Exception as e:
+        logging.error(f"Error stopping task scheduler: {e}")
 
 app.add_middleware(TimingMiddleware)
 
@@ -1080,6 +1101,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 app.include_router(router, prefix="/api")
 app.include_router(spotify_router, prefix="/api")
+app.include_router(scheduled_tasks_router)
+app.include_router(playlist_sync_router)
+app.include_router(scheduled_tasks_router)
+app.include_router(playlist_sync_router)
 
 # Job Management API Endpoints
 @job_router.post("", response_model=JobResponse)

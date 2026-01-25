@@ -827,3 +827,28 @@ class SyncResult(BaseModel):
     failed: List[Dict]
     summary: Dict
     log: List[SyncLogEntry]  # Add this field
+
+
+# Scheduled Tasks Models
+class ScheduledTaskResponse(BaseModel):
+    id: int
+    name: str
+    task_type: str
+    cron_expression: str
+    enabled: bool
+    config: Dict
+    created_at: Optional[str]
+    updated_at: Optional[str]
+    last_run_at: Optional[str]
+    next_run_at: Optional[str]
+    total_runs: int
+    successful_runs: int
+    failed_runs: int
+    last_run_status: Optional[str]
+    last_error_message: Optional[str]
+
+
+class CronValidationResponse(BaseModel):
+    valid: bool
+    error: Optional[str] = None
+    next_runs: Optional[List[str]] = None
