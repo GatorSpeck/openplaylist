@@ -7,6 +7,7 @@ import dotenv
 import urllib.parse
 import logging
 import time
+import subprocess
 from pathlib import Path
 
 dotenv.load_dotenv(override=True)
@@ -31,8 +32,16 @@ class Database:
             
             # Create tables if they don't exist
             try:
+                # Check if this is a new database by looking for alembic_version table
+                is_new_database = cls._is_new_database()
+                
                 Base.metadata.create_all(bind=cls._engine)
                 logging.info("Database tables initialized successfully")
+                
+                # If this is a new database, stamp it with the current migration
+                if is_new_database:
+                    cls._stamp_new_database()
+                    
             except Exception as e:
                 logging.error(f"Failed to create database tables: {e}")
                 raise
@@ -218,6 +227,91 @@ class Database:
             
             logging.info(f"Successfully connected to MariaDB database '{db_name}'")
     
+    @classmethod
+    def _is_new_database(cls):
+        """Check if this is a new database by looking for alembic_version table and data"""
+        try:
+            with cls._engine.connect() as conn:
+                # Check if alembic_version table exists and has data
+                result = conn.execute(text("SELECT COUNT(*) FROM alembic_version"))
+                count = result.fetchone()[0]
+                
+                # If the table exists but has no rows, treat as new database
+                if count == 0:
+                    logging.info("Found empty alembic_version table, treating as new database")
+                    return True
+                    
+                # If it has rows, check if we can get the version
+                result = conn.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
+                version = result.fetchone()
+                
+                if version and version[0]:
+                    logging.info(f"Found existing migration version: {version[0]}")
+                    return False
+                else:
+                    logging.info("Found null version in alembic_version, treating as new database")
+                    return True
+                    
+        except Exception as e:
+            # If we get any exception (table doesn't exist, etc.), assume it's a new database
+            logging.info(f"Exception checking alembic_version table, treating as new database: {e}")
+            return True
+    
+    @classmethod
+    def _stamp_new_database(cls):
+        """Stamp a new database with the current migration head"""
+        try:
+            # Get the directory where this file is located (backend directory)
+            backend_dir = os.path.dirname(__file__)
+            
+            # First, try to stamp head directly
+            result = subprocess.run(
+                ["alembic", "stamp", "head"],
+                cwd=backend_dir,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            
+            logging.info("New database stamped with current migration head")
+            logging.debug(f"Alembic stamp output: {result.stdout}")
+            
+        except subprocess.CalledProcessError as e:
+            # If stamping fails, it might be because alembic hasn't been initialized
+            # This can happen if the alembic_version table doesn't exist at all
+            logging.warning(f"Failed to stamp database directly: {e.stderr}")
+            
+            try:
+                # Try to create the alembic_version table first by running a dummy migration check
+                logging.info("Attempting to initialize Alembic version table...")
+                subprocess.run(
+                    ["alembic", "current"],
+                    cwd=backend_dir,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                
+                # Now try stamping again
+                result = subprocess.run(
+                    ["alembic", "stamp", "head"],
+                    cwd=backend_dir,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                
+                logging.info("New database stamped with current migration head after initialization")
+                logging.debug(f"Alembic stamp output: {result.stdout}")
+                
+            except subprocess.CalledProcessError as e2:
+                logging.warning(f"Failed to stamp new database with migration: {e2.stderr}")
+                logging.warning("Database will show all migrations as pending, but this is non-fatal")
+                
+        except Exception as e:
+            logging.warning(f"Unexpected error stamping database: {e}")
+            logging.warning("Database will show all migrations as pending, but this is non-fatal")
+
     @classmethod
     def get_session(cls):
         if not cls._instance:

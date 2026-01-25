@@ -1,6 +1,7 @@
 import os
 import pathlib
 import logging
+import subprocess
 from fastapi import FastAPI, Query, APIRouter, Request, Depends, BackgroundTasks
 import uvicorn
 from mutagen.easyid3 import EasyID3
@@ -836,6 +837,159 @@ def get_settings():
         "configDir": str(CONFIG_DIR),
         "logLevel": log_level,
     }
+
+@router.get("/settings/migrations/status")
+def get_migration_status():
+    """Check current migration status and if any new migrations are available"""
+    try:
+        # Get current revision
+        current_result = subprocess.run(
+            ["alembic", "current"], 
+            cwd=os.path.dirname(__file__),
+            capture_output=True, 
+            text=True, 
+            check=True
+        )
+        current_revision = current_result.stdout.strip()
+        
+        # Get head revision
+        head_result = subprocess.run(
+            ["alembic", "heads"], 
+            cwd=os.path.dirname(__file__),
+            capture_output=True, 
+            text=True, 
+            check=True
+        )
+        head_revision = head_result.stdout.strip()
+        
+        # Parse revisions to compare
+        current_short = None
+        if current_revision:
+            # Extract revision ID from output like "ddf1a1f9c947 (head)"
+            current_parts = current_revision.split()
+            current_short = current_parts[0] if current_parts else None
+        
+        head_short = None
+        if head_revision:
+            head_parts = head_revision.split()
+            head_short = head_parts[0] if head_parts else None
+        
+        # Check if migration is needed
+        needs_upgrade = current_short != head_short or not current_short
+        
+        # Get migration history for additional info
+        history_result = subprocess.run(
+            ["alembic", "history", "--verbose"],
+            cwd=os.path.dirname(__file__), 
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        # Parse migration history
+        history_lines = history_result.stdout.strip().split('\n')
+        migrations = []
+        current_migration = {}
+        
+        for line in history_lines:
+            line = line.strip()
+            if line.startswith('Rev:'):
+                # Save previous migration if exists
+                if current_migration:
+                    migrations.append(current_migration)
+                    
+                # Start new migration
+                rev_part = line.replace('Rev:', '').strip()
+                revision_id = rev_part.split()[0] if rev_part else ""
+                current_migration = {
+                    "revision": revision_id,
+                    "is_current": revision_id == current_short,
+                    "message": "Migration"
+                }
+            elif line and not line.startswith('Parent:') and not line.startswith('Path:') and current_migration:
+                # This is likely the migration message
+                if not current_migration.get("message") or current_migration["message"] == "Migration":
+                    current_migration["message"] = line
+        
+        # Add the last migration
+        if current_migration:
+            migrations.append(current_migration)
+        
+        # Calculate pending migrations count  
+        pending_count = 0
+        if needs_upgrade:
+            # assume 1 migration (TODO)
+            pending_count = 1
+        
+        return {
+            "current_revision": current_revision or "No current revision",
+            "head_revision": head_revision or "No head revision",
+            "needs_upgrade": needs_upgrade,
+            "pending_count": pending_count,
+            "migrations": migrations[:10],  # Limit to recent 10
+            "status": "up_to_date" if not needs_upgrade else "pending_migrations"
+        }
+        
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Migration status check failed: {e.stderr}")
+        return {
+            "error": f"Failed to check migration status: {e.stderr}",
+            "current_revision": "Error",
+            "head_revision": "Error", 
+            "needs_upgrade": False,
+            "pending_count": 0,
+            "migrations": [],
+            "status": "error"
+        }
+    except Exception as e:
+        logging.error(f"Unexpected error checking migration status: {e}")
+        return {
+            "error": f"Unexpected error: {str(e)}",
+            "current_revision": "Error",
+            "head_revision": "Error",
+            "needs_upgrade": False, 
+            "pending_count": 0,
+            "migrations": [],
+            "status": "error"
+        }
+
+@router.post("/settings/migrations/upgrade")
+def run_migrations():
+    """Run pending database migrations"""
+    try:
+        # Run alembic upgrade head
+        result = subprocess.run(
+            ["alembic", "upgrade", "head"],
+            cwd=os.path.dirname(__file__),
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        logging.info("Database migrations completed successfully")
+        logging.info(f"Migration output: {result.stdout}")
+        
+        return {
+            "success": True,
+            "message": "Migrations completed successfully",
+            "output": result.stdout
+        }
+        
+    except subprocess.CalledProcessError as e:
+        error_msg = f"Migration failed: {e.stderr}"
+        logging.error(error_msg)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": error_msg,
+                "output": e.stdout,
+                "stderr": e.stderr
+            }
+        )
+    except Exception as e:
+        error_msg = f"Unexpected migration error: {str(e)}"
+        logging.error(error_msg)
+        raise HTTPException(status_code=500, detail={"error": error_msg})
 
 @router.post("/spotify/import")
 def import_spotify_playlist(

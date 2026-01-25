@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Tabs, Tab, Box, 
          CircularProgress, Typography, Card, CardContent, Avatar, Paper, 
-         FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel } from '@mui/material';
-import { MusicNote as SpotifyIcon, YouTube as YouTubeIcon } from '@mui/icons-material';
+         FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel,
+         Alert, List, ListItem, ListItemText, Chip, Divider } from '@mui/material';
+import { MusicNote as SpotifyIcon, YouTube as YouTubeIcon, Storage as DatabaseIcon,
+         CheckCircle as CheckIcon, Warning as WarningIcon, Error as ErrorIcon } from '@mui/icons-material';
 import PathSelector from './PathSelector';
 import LogsPanel from './LogsPanel';
 import JobsPanel from '../job/JobsPanel';
@@ -300,6 +302,212 @@ const YouTubeMusicConnectionPanel = () => {
   );
 };
 
+const DatabaseMigrationsPanel = () => {
+  const [migrationStatus, setMigrationStatus] = useState({
+    loading: true,
+    error: null,
+    current_revision: null,
+    head_revision: null,
+    needs_upgrade: false,
+    pending_count: 0,
+    migrations: [],
+    status: 'checking'
+  });
+  const [isUpgrading, setIsUpgrading] = useState(false);
+
+  useEffect(() => {
+    checkMigrationStatus();
+  }, []);
+
+  const checkMigrationStatus = async () => {
+    setMigrationStatus(prev => ({ ...prev, loading: true, error: null }));
+    
+    try {
+      const response = await axios.get('/api/settings/migrations/status');
+      setMigrationStatus({
+        loading: false,
+        error: response.data.error || null,
+        ...response.data
+      });
+    } catch (error) {
+      console.error('Failed to check migration status:', error);
+      setMigrationStatus(prev => ({
+        ...prev,
+        loading: false,
+        error: 'Failed to check migration status: ' + (error.response?.data?.detail || error.message)
+      }));
+    }
+  };
+
+  const runMigrations = async () => {
+    setIsUpgrading(true);
+    
+    try {
+      const response = await axios.post('/api/settings/migrations/upgrade');
+      
+      if (response.data.success) {
+        // Refresh status after successful upgrade
+        await checkMigrationStatus();
+      }
+    } catch (error) {
+      console.error('Migration upgrade failed:', error);
+      const errorMsg = error.response?.data?.detail?.error || error.response?.data?.detail || error.message;
+      setMigrationStatus(prev => ({
+        ...prev,
+        error: 'Migration failed: ' + errorMsg
+      }));
+    } finally {
+      setIsUpgrading(false);
+    }
+  };
+
+  const getStatusIcon = () => {
+    if (migrationStatus.loading) return <CircularProgress size={20} />;
+    if (migrationStatus.error) return <ErrorIcon color="error" />;
+    if (migrationStatus.needs_upgrade) return <WarningIcon color="warning" />;
+    return <CheckIcon color="success" />;
+  };
+
+  const getStatusText = () => {
+    if (migrationStatus.loading) return 'Checking...';
+    if (migrationStatus.error) return 'Error';
+    if (migrationStatus.needs_upgrade) return `${migrationStatus.pending_count} pending migration(s)`;
+    return 'Up to date';
+  };
+
+  const getStatusColor = () => {
+    if (migrationStatus.error) return 'error';
+    if (migrationStatus.needs_upgrade) return 'warning';
+    return 'success';
+  };
+
+  if (migrationStatus.loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" p={3}>
+        <CircularProgress />
+        <Typography variant="body1" sx={{ ml: 2 }}>
+          Checking database migration status...
+        </Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <div>
+      <Typography variant="h6" gutterBottom display="flex" alignItems="center">
+        <DatabaseIcon sx={{ mr: 1 }} />
+        Database Migrations
+      </Typography>
+      
+      {migrationStatus.error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          <Typography variant="body2">{migrationStatus.error}</Typography>
+        </Alert>
+      )}
+
+      <Card variant="outlined" sx={{ mb: 3 }}>
+        <CardContent>
+          <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+            <Box display="flex" alignItems="center">
+              {getStatusIcon()}
+              <Box sx={{ ml: 2 }}>
+                <Typography variant="subtitle1">
+                  Migration Status
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  {getStatusText()}
+                </Typography>
+              </Box>
+            </Box>
+            <Chip 
+              label={getStatusText()} 
+              color={getStatusColor()}
+              variant="outlined"
+            />
+          </Box>
+          
+          <Divider sx={{ my: 2 }} />
+          
+          <Typography variant="body2" color="textSecondary" gutterBottom>
+            <strong>Current Revision:</strong> {migrationStatus.current_revision}
+          </Typography>
+          <Typography variant="body2" color="textSecondary" gutterBottom>
+            <strong>Latest Revision:</strong> {migrationStatus.head_revision}
+          </Typography>
+          
+          {migrationStatus.needs_upgrade && (
+            <Box sx={{ mt: 2 }}>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Your database has {migrationStatus.pending_count} pending migration(s). 
+                Click "Run Migrations" to update your database to the latest version.
+              </Alert>
+              <Button 
+                variant="contained" 
+                color="primary"
+                onClick={runMigrations}
+                disabled={isUpgrading}
+                startIcon={isUpgrading ? <CircularProgress size={16} /> : <DatabaseIcon />}
+              >
+                {isUpgrading ? 'Running Migrations...' : 'Run Migrations'}
+              </Button>
+            </Box>
+          )}
+          
+          <Box sx={{ mt: 2 }}>
+            <Button 
+              variant="outlined" 
+              color="primary"
+              onClick={checkMigrationStatus}
+              disabled={migrationStatus.loading}
+            >
+              Refresh Status
+            </Button>
+          </Box>
+        </CardContent>
+      </Card>
+
+      {migrationStatus.migrations && migrationStatus.migrations.length > 0 && (
+        <Card variant="outlined">
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Recent Migrations
+            </Typography>
+            <List dense>
+              {migrationStatus.migrations.map((migration, index) => (
+                <ListItem key={index}>
+                  <ListItemText
+                    primary={
+                      <Box display="flex" alignItems="center">
+                        <Typography variant="body2" component="span" sx={{ fontFamily: 'monospace' }}>
+                          {migration.revision}
+                        </Typography>
+                        {migration.is_current && (
+                          <Chip 
+                            label="Current" 
+                            size="small" 
+                            color="primary" 
+                            sx={{ ml: 1 }} 
+                          />
+                        )}
+                      </Box>
+                    }
+                    secondary={migration.message}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          </CardContent>
+        </Card>
+      )}
+      
+      <Typography variant="body2" color="textSecondary" sx={{ mt: 3 }}>
+        Database migrations update your database schema to match the latest application version. 
+        Always backup your database before running migrations in production.
+      </Typography>
+    </div>
+  );
+};
+
 const SettingsModal = ({ open, onClose }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [indexPaths, setIndexPaths] = useState([]);
@@ -358,6 +566,7 @@ const SettingsModal = ({ open, onClose }) => {
         <Tab label="Music Paths" />
         <Tab label="Jobs" />
         <Tab label="Scheduled Tasks" />
+        <Tab label="Database" />
         <Tab label="Last.fm" />
         <Tab label="Plex" />
         <Tab label="OpenAI" />
@@ -385,26 +594,30 @@ const SettingsModal = ({ open, onClose }) => {
         </TabPanel>
         
         <TabPanel value={activeTab} index={3}>
+          <DatabaseMigrationsPanel />
+        </TabPanel>
+        
+        <TabPanel value={activeTab} index={4}>
           <h3>Last.fm Settings</h3>
           <strong>Last.fm API Configured:</strong>{settings.lastFmApiKeyConfigured ? ' Yes' : ' No'}
         </TabPanel>
         
-        <TabPanel value={activeTab} index={4}>
+        <TabPanel value={activeTab} index={5}>
           <h3>Plex Settings</h3>
           <strong>Plex Configured:</strong>{settings.plexConfigured ? ' Yes' : ' No'}
         </TabPanel>
         
-        <TabPanel value={activeTab} index={5}>
+        <TabPanel value={activeTab} index={6}>
           <h3>OpenAI Settings</h3>
           <strong>OpenAI API Configured:</strong>{settings.openAiApiKeyConfigured ? ' Yes' : ' No'}
         </TabPanel>
 
-        <TabPanel value={activeTab} index={6}>
+        <TabPanel value={activeTab} index={7}>
           <h3>Redis Settings</h3>
           <strong>Redis Configured:</strong>{settings.redisConfigured ? ' Yes' : ' No'}
         </TabPanel>
 
-        <TabPanel value={activeTab} index={7}>
+        <TabPanel value={activeTab} index={8}>
           <h3>Spotify Settings</h3>
           <Box mb={2}>
             <Typography variant="body2">
@@ -414,7 +627,7 @@ const SettingsModal = ({ open, onClose }) => {
           <SpotifyConnectionPanel />
         </TabPanel>
 
-        <TabPanel value={activeTab} index={8}>
+        <TabPanel value={activeTab} index={9}>
           <h3>YouTube Music Settings</h3>
           <Box mb={2}>
             <Typography variant="body2">
@@ -424,14 +637,14 @@ const SettingsModal = ({ open, onClose }) => {
           <YouTubeMusicConnectionPanel />
         </TabPanel>
 
-        <TabPanel value={activeTab} index={9}>
+        <TabPanel value={activeTab} index={10}>
           <LogsPanel />
         </TabPanel>
       </DialogContent>
       
       <DialogActions>
         <Button onClick={onClose}>Close</Button>
-        {activeTab !== 1 && activeTab !== 2 && activeTab !== 9 && (
+        {activeTab !== 1 && activeTab !== 2 && activeTab !== 3 && activeTab !== 10 && (
           <Button 
             onClick={saveSettings} 
             variant="contained" 
