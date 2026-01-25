@@ -202,7 +202,27 @@ VITE_API_BASE_URL=http://localhost:8001 npm run dev
 
 ## 🗄️ Database Management
 
-### MariaDB (Required)
+### Database Types by Environment
+
+OpenPlaylist uses different databases for different environments:
+
+- **Development & Production**: MariaDB (required)
+- **Testing**: SQLite (automatic, in-memory)
+
+### Testing Database
+
+Tests automatically use SQLite in-memory database for speed and isolation:
+
+```bash
+# Tests use SQLite automatically - no configuration needed
+cd backend
+python -m pytest
+
+# Force test mode manually (uses SQLite)
+TEST_MODE=true python your_script.py
+```
+
+### MariaDB (Development & Production)
 ```bash
 cd backend
 source venv/bin/activate
@@ -210,12 +230,6 @@ source venv/bin/activate
 # View MariaDB schema
 mysql -u root -p -e "DESCRIBE tablename" database_name
 
-# Run SQL queries
-sqlite3 database.db "SELECT name FROM sqlite_master WHERE type='table';"
-```
-
-### MySQL/MariaDB (Production)
-```bash
 # Connect to database
 mysql -h localhost -u username -p database_name
 

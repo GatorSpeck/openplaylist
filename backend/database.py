@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.pool import StaticPool
 import os
 import sys
 import dotenv
@@ -23,8 +24,12 @@ class Database:
         if cls._instance is None:
             cls._instance = super(Database, cls).__new__(cls)
             
-            # MariaDB is the only supported database type
-            cls._setup_mariadb()
+            # Determine database type based on environment
+            if cls._is_test_environment():
+                cls._setup_sqlite()
+            else:
+                # MariaDB for development and production
+                cls._setup_mariadb()
             
             cls._sessionmaker = sessionmaker(
                 autocommit=False, autoflush=False, bind=cls._engine
@@ -47,6 +52,45 @@ class Database:
                 raise
                 
         return cls._instance
+
+    @classmethod
+    def _is_test_environment(cls):
+        """Detect if we're running in a test environment"""
+        import sys
+        # Check if pytest is running or in modules
+        if 'pytest' in sys.modules:
+            return True
+        # Check if any argument contains pytest
+        if any('pytest' in arg for arg in sys.argv):
+            return True
+        # Check TEST_MODE environment variable
+        if os.getenv('TEST_MODE', '').lower() in ('true', '1', 'yes'):
+            return True
+        # Check if we're being imported from a test file
+        for frame_info in sys.modules.values():
+            if hasattr(frame_info, '__file__') and frame_info.__file__:
+                if '/tests/' in frame_info.__file__ or frame_info.__file__.endswith('conftest.py'):
+                    return True
+        return False
+    
+    @classmethod
+    def _setup_sqlite(cls):
+        """Setup SQLite for testing"""
+        logging.info("Configuring SQLite for testing environment")
+        
+        # Use in-memory SQLite database for tests
+        database_url = "sqlite:///:memory:"
+        
+        cls._engine = create_engine(
+            database_url,
+            echo=(os.getenv("LOG_LEVEL", "INFO") == "DEBUG"),
+            # SQLite specific connection args
+            connect_args={"check_same_thread": False},
+            # Use StaticPool to maintain the same connection for in-memory DB
+            poolclass=StaticPool,
+        )
+        
+        logging.info("Successfully configured SQLite in-memory database for testing")
 
     @classmethod
     def _setup_mariadb(cls):
@@ -326,12 +370,15 @@ class Database:
 
     @classmethod
     def get_database_info(cls):
-        """Get information about the current MariaDB database configuration"""
+        """Get information about the current database configuration"""
         if not cls._instance:
             cls()
+        
+        # Determine database type from engine URL
+        db_type = "sqlite" if "sqlite" in str(cls._engine.url) else "mariadb"
             
         info = {
-            "type": "mariadb",
+            "type": db_type,
             "url": str(cls._engine.url).replace(cls._engine.url.password or "", "***") if cls._engine.url.password else str(cls._engine.url),
             "connected": False
         }
