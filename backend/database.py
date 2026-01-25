@@ -1,10 +1,13 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.exc import OperationalError, ProgrammingError
 import os
 import sys
 import dotenv
 import urllib.parse
 import logging
+import time
+from pathlib import Path
 
 dotenv.load_dotenv(override=True)
 
@@ -23,47 +26,246 @@ class Database:
             db_type = os.getenv("DB_TYPE", "sqlite").lower()
             
             if db_type == "mariadb" or db_type == "mysql":
-                # MariaDB configuration
-                db_host = os.getenv("DB_HOST", "localhost")
-                db_port = os.getenv("DB_PORT", "3306")
-                db_user = urllib.parse.quote_plus(os.getenv("DB_USER", "playlist"))
-                db_pass = urllib.parse.quote_plus(os.getenv("DB_PASSWORD", "password"))
-                db_name = os.getenv("DB_NAME", "playlists")
-                
-                # Build connection URL for MariaDB
-                DATABASE_URL = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
-                
-                # MariaDB-specific connection arguments
-                connect_args = {
-                    "charset": "utf8mb4",
-                }
-                
-                logging.info(f"Using MariaDB database at {db_host}:{db_port}/{db_name}")
+                cls._setup_mariadb()
             else:
-                # Default to SQLite
-                # Check if we're in a test environment
-                is_testing = os.getenv("TESTING", "false").lower() == "true" or "pytest" in os.getenv("_", "")
-                default_db = "sqlite:///:memory:" if is_testing else "sqlite:////data/playlists.db"
-                db_path = os.getenv("DATABASE_URL", default_db)
-                DATABASE_URL = db_path
-                connect_args = {"check_same_thread": False} if db_path.startswith("sqlite") else {}
-                
-                logging.info(f"Using SQLite database at {db_path}")
+                cls._setup_sqlite()
             
-            # Create the engine with appropriate configuration
+            cls._sessionmaker = sessionmaker(
+                autocommit=False, autoflush=False, bind=cls._engine
+            )
+            
+            # Create tables if they don't exist
+            try:
+                Base.metadata.create_all(bind=cls._engine)
+                logging.info("Database tables initialized successfully")
+            except Exception as e:
+                logging.error(f"Failed to create database tables: {e}")
+                raise
+                
+        return cls._instance
+
+    @classmethod
+    def _setup_mariadb(cls):
+        """Setup MariaDB connection with database creation if needed"""
+        db_host = os.getenv("DB_HOST", "localhost")
+        db_port = os.getenv("DB_PORT", "3306")
+        db_user = urllib.parse.quote_plus(os.getenv("DB_USER", "playlist"))
+        db_pass = urllib.parse.quote_plus(os.getenv("DB_PASSWORD", "password"))
+        db_name = os.getenv("DB_NAME", "playlists")
+        
+        logging.info(f"Configuring MariaDB at {db_host}:{db_port}/{db_name}")
+        
+        # First try to connect to the specific database
+        database_url = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+        connect_args = {"charset": "utf8mb4"}
+        
+        try:
+            # Try to connect to the database directly
             cls._engine = create_engine(
-                DATABASE_URL, 
+                database_url, 
                 echo=(os.getenv("LOG_LEVEL", "INFO") == "DEBUG"),
                 connect_args=connect_args,
                 pool_pre_ping=True,
                 pool_recycle=3600,
             )
             
-            cls._sessionmaker = sessionmaker(
-                autocommit=False, autoflush=False, bind=cls._engine
+            # Test the connection
+            with cls._engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+                logging.info(f"Successfully connected to MariaDB database '{db_name}'")
+                
+        except (OperationalError, ProgrammingError) as e:
+            error_msg = str(e)
+            logging.warning(f"Initial connection to database '{db_name}' failed: {e}")
+            
+            # Check if it's a privilege issue vs database not existing
+            if "Access denied" in error_msg and "database" in error_msg:
+                # Try connecting without specifying database to check if DB exists
+                logging.info("Checking if database exists and user has access...")
+                try:
+                    admin_url = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}"
+                    admin_engine = create_engine(admin_url, connect_args=connect_args)
+                    
+                    with admin_engine.connect() as conn:
+                        # Check if database exists
+                        result = conn.execute(text(f"SHOW DATABASES LIKE '{db_name}'"))
+                        db_exists = result.fetchone() is not None
+                        
+                        if db_exists:
+                            # Database exists, check user privileges on it
+                            try:
+                                result = conn.execute(text("SHOW GRANTS"))
+                                grants = [row[0] for row in result.fetchall()]
+                                has_db_access = any(
+                                    f"`{db_name}`" in grant or "ON *.*" in grant 
+                                    for grant in grants
+                                )
+                                
+                                if has_db_access:
+                                    logging.info(f"Database '{db_name}' exists and user has access. Connection issue may be temporary.")
+                                    # Retry the original connection
+                                    cls._engine = create_engine(
+                                        database_url, 
+                                        echo=(os.getenv("LOG_LEVEL", "INFO") == "DEBUG"),
+                                        connect_args=connect_args,
+                                        pool_pre_ping=True,
+                                        pool_recycle=3600,
+                                    )
+                                    # Test the connection
+                                    with cls._engine.connect() as test_conn:
+                                        test_conn.execute(text("SELECT 1"))
+                                    logging.info(f"Successfully connected to existing database '{db_name}'")
+                                    admin_engine.dispose()
+                                    return
+                                else:
+                                    logging.error(f"Database '{db_name}' exists but user '{db_user}' lacks privileges")
+                                    
+                            except Exception as grant_e:
+                                logging.warning(f"Could not check user privileges: {grant_e}")
+                        
+                        admin_engine.dispose()
+                        
+                    # If we get here, either DB doesn't exist or user lacks privileges
+                    if not db_exists:
+                        logging.info(f"Database '{db_name}' does not exist, attempting to create...")
+                    
+                except Exception as check_e:
+                    logging.warning(f"Could not check database existence: {check_e}")
+                
+                # Try to use root credentials if available
+                root_password = os.getenv("MARIADB_ROOT_PASSWORD")
+                if root_password and not db_exists:
+                    logging.info("Database doesn't exist and root password available, attempting creation as root...")
+                    try:
+                        root_user_encoded = urllib.parse.quote_plus("root")
+                        root_pass_encoded = urllib.parse.quote_plus(root_password)
+                        root_url = f"mysql+pymysql://{root_user_encoded}:{root_pass_encoded}@{db_host}:{db_port}"
+                        
+                        root_engine = create_engine(root_url, connect_args=connect_args)
+                        with root_engine.connect() as conn:
+                            conn.execute(text(f"CREATE DATABASE IF NOT EXISTS `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
+                            conn.execute(text(f"GRANT ALL PRIVILEGES ON `{db_name}`.* TO '{db_user}'@'%'"))
+                            conn.commit()
+                            logging.info(f"Successfully created database '{db_name}' and granted privileges")
+                        
+                        root_engine.dispose()
+                        
+                        # Now connect with the original user
+                        cls._engine = create_engine(
+                            database_url, 
+                            echo=(os.getenv("LOG_LEVEL", "INFO") == "DEBUG"),
+                            connect_args=connect_args,
+                            pool_pre_ping=True,
+                            pool_recycle=3600,
+                        )
+                        logging.info(f"Successfully connected after root setup")
+                        return
+                        
+                    except Exception as root_e:
+                        logging.error(f"Failed to create database as root: {root_e}")
+                
+                # Provide helpful error message
+                logging.error(f"Cannot resolve database connection issue:")
+                logging.error(f"- Database: {db_name}")  
+                logging.error(f"- User: {db_user}")
+                logging.error(f"- Error: {error_msg}")
+                logging.error("Possible solutions:")
+                logging.error("1. Ensure database exists and user has privileges:")
+                logging.error(f"   GRANT ALL PRIVILEGES ON `{db_name}`.* TO '{db_user}'@'%';")
+                logging.error("2. Run the setup utility:")
+                logging.error("   python setup_mariadb.py")
+                
+                raise Exception(f"Database connection failed: {e}")
+            
+            # Original database creation logic for other errors
+            logging.info(f"Attempting to create database '{db_name}'...")
+            
+            admin_url = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}"
+            max_retries = 10
+            retry_count = 0
+            
+            while retry_count < max_retries:
+                try:
+                    admin_engine = create_engine(admin_url, connect_args=connect_args)
+                    
+                    with admin_engine.connect() as conn:
+                        conn.execute(text(f"CREATE DATABASE IF NOT EXISTS `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
+                        conn.commit()
+                        logging.info(f"Database '{db_name}' created successfully")
+                    
+                    admin_engine.dispose()
+                    break
+                    
+                except OperationalError as retry_e:
+                    retry_count += 1
+                    if "Can't connect to MySQL server" in str(retry_e) or "Connection refused" in str(retry_e):
+                        logging.warning(f"MariaDB not ready yet (attempt {retry_count}/{max_retries}). Waiting 2 seconds...")
+                        time.sleep(2)
+                    else:
+                        logging.error(f"Failed to create database after {retry_count} attempts: {retry_e}")
+                        raise
+                        
+                except Exception as retry_e:
+                    logging.error(f"Unexpected error creating database: {retry_e}")
+                    raise
+                    
+            if retry_count >= max_retries:
+                raise Exception(f"Could not connect to MariaDB after {max_retries} attempts")
+            
+            # Now connect to the created database
+            cls._engine = create_engine(
+                database_url, 
+                echo=(os.getenv("LOG_LEVEL", "INFO") == "DEBUG"),
+                connect_args=connect_args,
+                pool_pre_ping=True,
+                pool_recycle=3600,
             )
-            Base.metadata.create_all(bind=cls._engine)
-        return cls._instance
+            
+            logging.info(f"Successfully connected to MariaDB database '{db_name}'")
+    
+    @classmethod
+    def _setup_sqlite(cls):
+        """Setup SQLite connection with directory creation if needed"""
+        # Check if we're in a test environment
+        is_testing = os.getenv("TESTING", "false").lower() == "true" or "pytest" in os.getenv("_", "")
+        
+        if is_testing:
+            database_url = "sqlite:///:memory:"
+            logging.info("Using SQLite in-memory database for testing")
+        else:
+            default_db = "sqlite:////data/playlists.db"
+            database_url = os.getenv("DATABASE_URL", default_db)
+            
+            # Extract the file path from the SQLite URL
+            if database_url.startswith("sqlite:///"):
+                db_path = database_url[10:]  # Remove 'sqlite:///' prefix
+                db_dir = os.path.dirname(db_path)
+                
+                # Create directory if it doesn't exist
+                if db_dir and not os.path.exists(db_dir):
+                    try:
+                        Path(db_dir).mkdir(parents=True, exist_ok=True)
+                        logging.info(f"Created database directory: {db_dir}")
+                    except PermissionError as e:
+                        logging.error(f"Permission denied creating database directory {db_dir}: {e}")
+                        # Fallback to a local data directory
+                        fallback_dir = "./data"
+                        Path(fallback_dir).mkdir(parents=True, exist_ok=True)
+                        fallback_path = os.path.join(fallback_dir, "playlists.db")
+                        database_url = f"sqlite:///{fallback_path}"
+                        logging.info(f"Using fallback database path: {fallback_path}")
+                        
+            logging.info(f"Using SQLite database at {database_url}")
+        
+        connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
+        
+        cls._engine = create_engine(
+            database_url, 
+            echo=(os.getenv("LOG_LEVEL", "INFO") == "DEBUG"),
+            connect_args=connect_args,
+            pool_pre_ping=True,
+            pool_recycle=3600,
+        )
 
     @classmethod
     def get_session(cls):
@@ -76,3 +278,39 @@ class Database:
         if not cls._instance:
             cls()
         return cls._engine
+
+    @classmethod
+    def get_database_info(cls):
+        """Get information about the current database configuration"""
+        if not cls._instance:
+            cls()
+            
+        db_type = os.getenv("DB_TYPE", "sqlite").lower()
+        info = {
+            "type": db_type,
+            "url": str(cls._engine.url).replace(cls._engine.url.password or "", "***") if cls._engine.url.password else str(cls._engine.url),
+            "connected": False
+        }
+        
+        try:
+            with cls._engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+                info["connected"] = True
+        except Exception as e:
+            info["error"] = str(e)
+            
+        return info
+
+    @classmethod 
+    def test_connection(cls):
+        """Test the database connection and return status"""
+        try:
+            if not cls._instance:
+                cls()
+                
+            with cls._engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+                return True, "Connection successful"
+                
+        except Exception as e:
+            return False, str(e)

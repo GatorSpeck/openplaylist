@@ -135,12 +135,19 @@ app = FastAPI()
 # Add event handlers for task scheduler
 @app.on_event("startup")
 async def startup_event():
-    """Initialize the task scheduler on application startup"""
+    """Initialize the database and task scheduler on application startup"""
     try:
+        # Initialize database (this will create the database if it doesn't exist)
+        logging.info("Initializing database...")
+        Database()  # This triggers the database creation/connection logic
+        logging.info("Database initialization completed")
+        
+        # Initialize task scheduler
         task_scheduler.start()
         logging.info("Task scheduler initialized")
     except Exception as e:
-        logging.error(f"Failed to initialize task scheduler: {e}")
+        logging.error(f"Failed to initialize application: {e}")
+        raise
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -1035,7 +1042,34 @@ def browse_directories(current_path: Optional[str] = Query(None)):
 
 @router.get("/health")
 def health_check():
-    return {"status": "ok"}
+    health_status = {
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat(),
+        "database": {}
+    }
+    
+    try:
+        # Check database connection
+        connected, message = Database.test_connection()
+        db_info = Database.get_database_info()
+        
+        health_status["database"] = {
+            "connected": connected,
+            "type": db_info.get("type"),
+            "message": message
+        }
+        
+        if not connected:
+            health_status["status"] = "degraded"
+            
+    except Exception as e:
+        health_status["database"] = {
+            "connected": False,
+            "error": str(e)
+        }
+        health_status["status"] = "error"
+    
+    return health_status
 
 @router.get("/music/anniversaries")
 def get_upcoming_anniversaries(
