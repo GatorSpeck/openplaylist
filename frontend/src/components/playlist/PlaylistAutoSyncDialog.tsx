@@ -37,10 +37,13 @@ const PlaylistAutoSyncDialog = ({ open, onClose, playlistId, playlistName }) => 
   const [cronValidation, setCronValidation] = useState({ valid: true, error: null, next_runs: [] });
   const [isValidating, setIsValidating] = useState(false);
   const [customCron, setCustomCron] = useState('');
+  const [scheduledTasks, setScheduledTasks] = useState([]);
+  const [showCreateTask, setShowCreateTask] = useState(false);
 
   useEffect(() => {
     if (open && playlistId) {
       loadSettings();
+      loadScheduledTasks();
     }
   }, [open, playlistId]);
 
@@ -93,6 +96,45 @@ const PlaylistAutoSyncDialog = ({ open, onClose, playlistId, playlistName }) => 
       });
     } finally {
       setIsValidating(false);
+    }
+  };
+
+  const loadScheduledTasks = async () => {
+    try {
+      const response = await axios.get('/api/scheduled-tasks/');
+      const playlistSyncTasks = response.data.filter(task => 
+        task.task_type === 'playlist_sync' && 
+        task.enabled &&
+        (
+          !task.config.playlist_ids || 
+          task.config.playlist_ids.length === 0 || 
+          task.config.playlist_ids.includes(playlistId)
+        )
+      );
+      setScheduledTasks(playlistSyncTasks);
+    } catch (error) {
+      console.error('Error loading scheduled tasks:', error);
+      setScheduledTasks([]);
+    }
+  };
+
+  const createScheduledTask = async () => {
+    try {
+      const taskData = {
+        name: `Auto-sync ${playlistName}`,
+        task_type: 'playlist_sync',
+        cron_expression: settings.auto_sync_schedule || '0 2 * * *',
+        enabled: true,
+        config: {
+          playlist_ids: [playlistId]
+        }
+      };
+      
+      await axios.post('/api/scheduled-tasks/', taskData);
+      loadScheduledTasks(); // Refresh the list
+      setShowCreateTask(false);
+    } catch (error) {
+      console.error('Error creating scheduled task:', error);
     }
   };
 
@@ -227,6 +269,68 @@ const PlaylistAutoSyncDialog = ({ open, onClose, playlistId, playlistName }) => 
                 Auto-sync will use the configured sync targets for this playlist. 
                 Make sure you have set up sync targets in the playlist sync configuration.
               </Alert>
+
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Scheduled Tasks
+                </Typography>
+                
+                {scheduledTasks.length > 0 ? (
+                  <Box>
+                    <Typography variant="body2" color="textSecondary" gutterBottom>
+                      This playlist will be synced by the following scheduled tasks:
+                    </Typography>
+                    {scheduledTasks.map((task) => (
+                      <Paper key={task.id} sx={{ p: 2, mt: 1, bgcolor: 'action.hover' }}>
+                        <Typography variant="body2" fontWeight="medium">
+                          {task.name}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          Schedule: {task.cron_expression}
+                        </Typography>
+                        {task.next_run_at && (
+                          <Typography variant="caption" display="block" color="textSecondary">
+                            Next run: {new Date(task.next_run_at).toLocaleString()}
+                          </Typography>
+                        )}
+                      </Paper>
+                    ))}
+                  </Box>
+                ) : (
+                  <Box>
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      No scheduled tasks are configured to sync this playlist. 
+                      Auto-sync is enabled but won't run without a scheduled task.
+                    </Alert>
+                    <Button
+                      variant="outlined"
+                      onClick={() => setShowCreateTask(true)}
+                      disabled={!settings.auto_sync_schedule}
+                    >
+                      Create Scheduled Task
+                    </Button>
+                  </Box>
+                )}
+              </Box>
+            </Box>
+          )}
+
+          {showCreateTask && (
+            <Dialog open={showCreateTask} onClose={() => setShowCreateTask(false)}>
+              <DialogTitle>Create Scheduled Task</DialogTitle>
+              <DialogContent>
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  This will create a scheduled task to automatically sync "{playlistName}" 
+                  using the schedule: <strong>{settings.auto_sync_schedule}</strong>
+                </Typography>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setShowCreateTask(false)}>Cancel</Button>
+                <Button onClick={createScheduledTask} variant="contained">
+                  Create Task
+                </Button>
+              </DialogActions>
+            </Dialog>
             </Box>
           )}
         </Box>

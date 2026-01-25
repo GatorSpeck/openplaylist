@@ -29,6 +29,9 @@ import {
   Card,
   CardContent,
   Tooltip,
+  Checkbox,
+  ListItemText,
+  OutlinedInput,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -96,6 +99,8 @@ const TaskFormDialog = ({ open, onClose, onSave, task = null, isEditing = false 
   const [cronValidation, setCronValidation] = useState({ valid: true, error: null, next_runs: [] });
   const [isValidating, setIsValidating] = useState(false);
   const [customCron, setCustomCron] = useState('');
+  const [playlists, setPlaylists] = useState([]);
+  const [selectedPlaylists, setSelectedPlaylists] = useState([]);
 
   useEffect(() => {
     if (isEditing && task) {
@@ -111,6 +116,12 @@ const TaskFormDialog = ({ open, onClose, onSave, task = null, isEditing = false 
       if (!isPreset) {
         setCustomCron(task.cron_expression || '');
       }
+      // Set selected playlists if this is a playlist sync task
+      if (task.task_type === 'playlist_sync' && task.config?.playlist_ids) {
+        setSelectedPlaylists(task.config.playlist_ids);
+      } else {
+        setSelectedPlaylists([]);
+      }
     } else {
       setFormData({
         name: '',
@@ -120,14 +131,31 @@ const TaskFormDialog = ({ open, onClose, onSave, task = null, isEditing = false 
         config: {},
       });
       setCustomCron('');
+      setSelectedPlaylists([]);
     }
   }, [isEditing, task, open]);
+
+  useEffect(() => {
+    if (open) {
+      loadPlaylists();
+    }
+  }, [open]);
 
   useEffect(() => {
     if (formData.cron_expression) {
       validateCronExpression(formData.cron_expression);
     }
   }, [formData.cron_expression]);
+
+  const loadPlaylists = async () => {
+    try {
+      const response = await axios.get('/api/playlists/');
+      setPlaylists(response.data || []);
+    } catch (error) {
+      console.error('Error loading playlists:', error);
+      setPlaylists([]);
+    }
+  };
 
   const validateCronExpression = async (expression) => {
     if (!expression || expression.trim() === '') {
@@ -172,7 +200,17 @@ const TaskFormDialog = ({ open, onClose, onSave, task = null, isEditing = false 
     if (!cronValidation.valid) {
       return;
     }
-    onSave(formData);
+    
+    // Prepare the config based on task type
+    let config = { ...formData.config };
+    if (formData.task_type === 'playlist_sync' && selectedPlaylists.length > 0) {
+      config.playlist_ids = selectedPlaylists;
+    }
+    
+    onSave({
+      ...formData,
+      config
+    });
   };
 
   return (
@@ -204,6 +242,44 @@ const TaskFormDialog = ({ open, onClose, onSave, task = null, isEditing = false 
                 </Select>
               </FormControl>
             </Grid>
+
+            {formData.task_type === 'playlist_sync' && (
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Playlists to Sync</InputLabel>
+                  <Select
+                    multiple
+                    value={selectedPlaylists}
+                    onChange={(e) => setSelectedPlaylists(e.target.value)}
+                    input={<OutlinedInput label="Playlists to Sync" />}
+                    renderValue={(selected) => {
+                      if (selected.length === 0) return 'All playlists with auto-sync enabled';
+                      const names = selected.map(id => {
+                        const playlist = playlists.find(p => p.id === id);
+                        return playlist ? playlist.name : `ID ${id}`;
+                      });
+                      return names.join(', ');
+                    }}
+                  >
+                    <MenuItem value="">
+                      <em>All playlists with auto-sync enabled</em>
+                    </MenuItem>
+                    {playlists.map((playlist) => (
+                      <MenuItem key={playlist.id} value={playlist.id}>
+                        <Checkbox checked={selectedPlaylists.indexOf(playlist.id) > -1} />
+                        <ListItemText primary={playlist.name} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  <Typography variant="caption" color="textSecondary" sx={{ mt: 1 }}>
+                    {selectedPlaylists.length === 0 
+                      ? 'Will sync all playlists that have auto-sync enabled in their settings'
+                      : `Will sync ${selectedPlaylists.length} selected playlist(s)`
+                    }
+                  </Typography>
+                </FormControl>
+              </Grid>
+            )}
 
             <Grid item xs={12} sm={6}>
               <FormControlLabel
@@ -435,6 +511,11 @@ const ScheduledTasksPanel = () => {
                         <Chip label="Disabled" size="small" color="default" />
                       )}
                     </Box>
+                    {task.task_type === 'playlist_sync' && task.config?.playlist_ids && task.config.playlist_ids.length > 0 && (
+                      <Typography variant="caption" color="textSecondary" display="block">
+                        Syncing {task.config.playlist_ids.length} specific playlist(s)
+                      </Typography>
+                    )}
                   </TableCell>
                   <TableCell>{TASK_TYPE_LABELS[task.task_type] || task.task_type}</TableCell>
                   <TableCell>
