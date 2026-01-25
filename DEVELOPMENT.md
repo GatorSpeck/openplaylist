@@ -202,13 +202,13 @@ VITE_API_BASE_URL=http://localhost:8001 npm run dev
 
 ## 🗄️ Database Management
 
-### SQLite (Development)
+### MariaDB (Required)
 ```bash
 cd backend
 source venv/bin/activate
 
-# View database schema
-sqlite3 database.db ".schema"
+# View MariaDB schema
+mysql -u root -p -e "DESCRIBE tablename" database_name
 
 # Run SQL queries
 sqlite3 database.db "SELECT name FROM sqlite_master WHERE type='table';"
@@ -232,7 +232,11 @@ Create `.env` files for different environments:
 
 #### Backend `.env`
 ```env
-DATABASE_URL=sqlite:///./database.db
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=your_user
+DB_PASSWORD=your_password
+DB_NAME=your_database
 SECRET_KEY=your-secret-key-here
 CORS_ORIGINS=["http://localhost:3000", "http://localhost:5173"]
 

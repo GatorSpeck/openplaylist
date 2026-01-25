@@ -64,21 +64,18 @@ def run_migrations_online() -> None:
 
     """
 
-    DB_TYPE = os.getenv("DB_TYPE", "sqlite").lower()
-    url = None
-    if DB_TYPE == "mariadb" or DB_TYPE == "mysql":
-        # MariaDB configuration
-        db_host = os.getenv("DB_HOST", "openplaylist_db")
-        db_port = os.getenv("DB_PORT", "3306")
-        db_user = os.getenv("DB_USER", "openplaylist")
-        db_pass = os.getenv("DB_PASSWORD", None)
-        db_name = os.getenv("DB_NAME", "openplaylist")
+    # MariaDB configuration
+    db_host = os.getenv("DB_HOST", "openplaylist_db")
+    db_port = os.getenv("DB_PORT", "3306")
+    db_user = os.getenv("DB_USER", "openplaylist")
+    db_pass = os.getenv("DB_PASSWORD", None)
+    db_name = os.getenv("DB_NAME", "openplaylist")
 
-        # Build connection URL for MariaDB
-        url = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
-    else:
-        # Default to SQLite
-        url = os.getenv("DATABASE_URL", "sqlite:////data/playlists.db")
+    if not all([db_host, db_user, db_pass, db_name]):
+        raise ValueError("MariaDB configuration required: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME")
+
+    # Build connection URL for MariaDB
+    url = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
     
     config.set_main_option("sqlalchemy.url", url)
 

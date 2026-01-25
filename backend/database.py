@@ -22,13 +22,8 @@ class Database:
         if cls._instance is None:
             cls._instance = super(Database, cls).__new__(cls)
             
-            # Get database config from environment
-            db_type = os.getenv("DB_TYPE", "sqlite").lower()
-            
-            if db_type == "mariadb" or db_type == "mysql":
-                cls._setup_mariadb()
-            else:
-                cls._setup_sqlite()
+            # MariaDB is the only supported database type
+            cls._setup_mariadb()
             
             cls._sessionmaker = sessionmaker(
                 autocommit=False, autoflush=False, bind=cls._engine
@@ -224,50 +219,6 @@ class Database:
             logging.info(f"Successfully connected to MariaDB database '{db_name}'")
     
     @classmethod
-    def _setup_sqlite(cls):
-        """Setup SQLite connection with directory creation if needed"""
-        # Check if we're in a test environment
-        is_testing = os.getenv("TESTING", "false").lower() == "true" or "pytest" in os.getenv("_", "")
-        
-        if is_testing:
-            database_url = "sqlite:///:memory:"
-            logging.info("Using SQLite in-memory database for testing")
-        else:
-            default_db = "sqlite:////data/playlists.db"
-            database_url = os.getenv("DATABASE_URL", default_db)
-            
-            # Extract the file path from the SQLite URL
-            if database_url.startswith("sqlite:///"):
-                db_path = database_url[10:]  # Remove 'sqlite:///' prefix
-                db_dir = os.path.dirname(db_path)
-                
-                # Create directory if it doesn't exist
-                if db_dir and not os.path.exists(db_dir):
-                    try:
-                        Path(db_dir).mkdir(parents=True, exist_ok=True)
-                        logging.info(f"Created database directory: {db_dir}")
-                    except PermissionError as e:
-                        logging.error(f"Permission denied creating database directory {db_dir}: {e}")
-                        # Fallback to a local data directory
-                        fallback_dir = "./data"
-                        Path(fallback_dir).mkdir(parents=True, exist_ok=True)
-                        fallback_path = os.path.join(fallback_dir, "playlists.db")
-                        database_url = f"sqlite:///{fallback_path}"
-                        logging.info(f"Using fallback database path: {fallback_path}")
-                        
-            logging.info(f"Using SQLite database at {database_url}")
-        
-        connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
-        
-        cls._engine = create_engine(
-            database_url, 
-            echo=(os.getenv("LOG_LEVEL", "INFO") == "DEBUG"),
-            connect_args=connect_args,
-            pool_pre_ping=True,
-            pool_recycle=3600,
-        )
-
-    @classmethod
     def get_session(cls):
         if not cls._instance:
             cls()
@@ -281,13 +232,12 @@ class Database:
 
     @classmethod
     def get_database_info(cls):
-        """Get information about the current database configuration"""
+        """Get information about the current MariaDB database configuration"""
         if not cls._instance:
             cls()
             
-        db_type = os.getenv("DB_TYPE", "sqlite").lower()
         info = {
-            "type": db_type,
+            "type": "mariadb",
             "url": str(cls._engine.url).replace(cls._engine.url.password or "", "***") if cls._engine.url.password else str(cls._engine.url),
             "connected": False
         }
