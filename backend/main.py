@@ -107,8 +107,10 @@ class TimingMiddleware(BaseHTTPMiddleware):
 
         do_logging = request.url.path not in ("/api/health", "/api/logs/recent", "/api/scan/progress")
 
+        logger = logging.getLogger("uvicorn")
+
         if do_logging:
-            logging.info(
+            logger.info(
                 f"{request.method} {request.url.path} "
                 f"params={params}"
             )
@@ -121,8 +123,12 @@ class TimingMiddleware(BaseHTTPMiddleware):
             raise e
         finally:
             duration = time.time() - start_time
+            logging_method = logger.info
+            if status_code != 200:
+                logging_method = logger.warn
+
             if do_logging:
-                logging.info(
+                logging_method(
                     f"{request.method} {request.url.path} "
                     f"params={params} "
                     f"status={status_code} "
@@ -1369,4 +1375,4 @@ if __name__ == "__main__":
     if not pathlib.Path(music_path).exists():
         logging.warning(f"Music path {music_path} does not exist")
 
-    uvicorn.run("main:app", host=host, port=port, reload=True)
+    uvicorn.run("main:app", host=host, port=port, reload=True, access_log=False)
