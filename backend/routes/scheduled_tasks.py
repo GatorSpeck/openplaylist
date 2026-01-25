@@ -8,10 +8,14 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from croniter import croniter
 from datetime import datetime
+from tzlocal import get_localzone
 
 from task_scheduler import task_scheduler
 from dependencies import get_playlist_repository
 from repositories.playlist_repository import PlaylistRepository
+
+# Get the server's local timezone
+LOCAL_TIMEZONE = get_localzone()
 
 
 logger = logging.getLogger(__name__)
@@ -178,16 +182,18 @@ def validate_cron_expression_post(data: dict):
             return {"valid": False, "error": error_msg}
         
         # Get next 5 run times to show user
-        cron = croniter(cron_expression)
+        cron = croniter(cron_expression, datetime.now(LOCAL_TIMEZONE))
         next_runs = []
         for _ in range(5):
             next_run = cron.get_next(datetime)
+            # Convert to ISO format but keep timezone info for display
             next_runs.append(next_run.isoformat())
         
         logger.info(f"Cron expression '{cron_expression}' is valid")
         return {
             "valid": True,
-            "next_runs": next_runs
+            "next_runs": next_runs,
+            "timezone": str(LOCAL_TIMEZONE)
         }
         
     except Exception as e:
@@ -214,7 +220,7 @@ def validate_cron_expression(cron_expression: str):
             return {"valid": False, "error": error_msg}
         
         # Get next 5 run times to show user
-        cron = croniter(decoded_expression)
+        cron = croniter(decoded_expression, datetime.now(LOCAL_TIMEZONE))
         next_runs = []
         for _ in range(5):
             next_run = cron.get_next(datetime)
@@ -223,7 +229,8 @@ def validate_cron_expression(cron_expression: str):
         logger.info(f"Cron expression '{decoded_expression}' is valid")
         return {
             "valid": True,
-            "next_runs": next_runs
+            "next_runs": next_runs,
+            "timezone": str(LOCAL_TIMEZONE)
         }
         
     except Exception as e:

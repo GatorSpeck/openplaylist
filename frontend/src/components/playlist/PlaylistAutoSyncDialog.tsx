@@ -228,7 +228,7 @@ const PlaylistAutoSyncDialog = ({ open, onClose, playlistId, playlistName }) => 
                   placeholder="e.g., 0 */4 * * * (every 4 hours)"
                   value={customCron}
                   onChange={(e) => handleCronChange(e.target.value)}
-                  helperText="Format: minute hour day month day_of_week"
+                  helperText="Format: minute hour day month day_of_week (times are in server timezone)"
                   sx={{ mb: 2 }}
                 />
               </Box>
@@ -254,6 +254,11 @@ const PlaylistAutoSyncDialog = ({ open, onClose, playlistId, playlistName }) => 
                     <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
                       <Typography variant="body2" fontWeight="medium" gutterBottom>
                         Next 5 sync times:
+                        {cronValidation.timezone && (
+                          <Typography component="span" variant="caption" color="textSecondary">
+                            {' '}({cronValidation.timezone})
+                          </Typography>
+                        )}
                       </Typography>
                       {cronValidation.next_runs.map((time, index) => (
                         <Typography key={index} variant="body2" color="textSecondary">
@@ -331,7 +336,6 @@ const PlaylistAutoSyncDialog = ({ open, onClose, playlistId, playlistName }) => 
                 </Button>
               </DialogActions>
             </Dialog>
-            </Box>
           )}
         </Box>
       </DialogContent>

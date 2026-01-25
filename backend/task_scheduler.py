@@ -14,6 +14,8 @@ from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.jobstores.memory import MemoryJobStore
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+import pytz
+from tzlocal import get_localzone
 
 from database import Database
 from models import ScheduledTaskDB, PlaylistDB
@@ -21,6 +23,9 @@ from job_tracker import job_tracker, JobType
 
 
 logger = logging.getLogger(__name__)
+
+# Get the server's local timezone
+LOCAL_TIMEZONE = get_localzone()
 
 
 class TaskScheduler:
@@ -43,7 +48,7 @@ class TaskScheduler:
             jobstores=jobstores,
             executors=executors,
             job_defaults=job_defaults,
-            timezone='UTC'
+            timezone=LOCAL_TIMEZONE  # Use local timezone instead of UTC
         )
         self._running = False
     
@@ -99,7 +104,7 @@ class TaskScheduler:
                 day=day,
                 month=month,
                 day_of_week=day_of_week,
-                timezone='UTC'
+                timezone=LOCAL_TIMEZONE  # Use local timezone
             )
             
             # Determine the task function to execute
@@ -121,7 +126,7 @@ class TaskScheduler:
             )
             
             # Update next run time in database
-            next_run = croniter(task.cron_expression, datetime.now(timezone.utc)).get_next(datetime)
+            next_run = croniter(task.cron_expression, datetime.now(LOCAL_TIMEZONE)).get_next(datetime)
             self._update_task_next_run(task.id, next_run)
             
         except Exception as e:
@@ -137,7 +142,7 @@ class TaskScheduler:
                 raise ValueError(f"Invalid cron expression: {cron_expression}")
             
             # Calculate next run time
-            next_run = croniter(cron_expression, datetime.now(timezone.utc)).get_next(datetime)
+            next_run = croniter(cron_expression, datetime.now(LOCAL_TIMEZONE)).get_next(datetime)
             
             # Create task record
             task = ScheduledTaskDB(
@@ -209,14 +214,14 @@ class TaskScheduler:
                     raise ValueError(f"Invalid cron expression: {cron_expression}")
                 task.cron_expression = cron_expression
                 # Recalculate next run time
-                next_run = croniter(cron_expression, datetime.now(timezone.utc)).get_next(datetime)
+                next_run = croniter(cron_expression, datetime.now(LOCAL_TIMEZONE)).get_next(datetime)
                 task.next_run_at = next_run
             if enabled is not None:
                 task.enabled = enabled
             if config is not None:
                 task.config = config
             
-            task.updated_at = datetime.now(timezone.utc)
+            task.updated_at = datetime.now(LOCAL_TIMEZONE)
             db.commit()
             
             # Reschedule with APScheduler
@@ -295,7 +300,7 @@ class TaskScheduler:
         try:
             task = db.query(ScheduledTaskDB).filter(ScheduledTaskDB.id == task_id).first()
             if task:
-                task.last_run_at = datetime.now(timezone.utc)
+                task.last_run_at = datetime.now(LOCAL_TIMEZONE)
                 task.total_runs += 1
                 if success:
                     task.successful_runs += 1
@@ -438,6 +443,7 @@ class TaskScheduler:
             task = db.query(ScheduledTaskDB).filter(ScheduledTaskDB.id == task_id).first()
             if task:
                 task.last_run_status = 'running'
+                task.updated_at = datetime.now(LOCAL_TIMEZONE)
                 db.commit()
         except Exception as e:
             db.rollback()
