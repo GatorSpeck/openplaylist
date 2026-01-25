@@ -5,7 +5,7 @@
 OpenPlaylist is a **music library management system** with a **FastAPI backend** and **React frontend**. The core pattern is a **repository-based architecture** where external music services (Spotify, YouTube, Last.fm, Plex) are abstracted through repository interfaces for playlist synchronization and metadata enrichment.
 
 ### Key Components
-- **Backend**: FastAPI + SQLAlchemy with both SQLite and MariaDB support
+- **Backend**: FastAPI + SQLAlchemy with MariaDB support
 - **Frontend**: React + Vite with Material-UI components
 - **Database**: Dual-model approach - file metadata vs. user-editable track data
 - **External Integrations**: Repository pattern for Spotify, YouTube Music, Last.fm, Plex, OpenAI
@@ -119,7 +119,7 @@ When adding new service integrations:
 ### Performance Optimization
 - **Large Libraries**: Use pagination in `PlaylistRepository.get_playlist_entries()`
 - **Caching**: Implement Redis caching for expensive operations
-- **Database**: Consider MariaDB over SQLite for production scale
+- **Database**: MariaDB is the only supported database for production and development
 
 ### Frontend Component Patterns
 - **Infinite Scroll**: Use `react-window-infinite-loader` for large lists

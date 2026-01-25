@@ -61,15 +61,14 @@ In addition to local music, your playlists can be augmented with search results 
 OPENPLAYLIST_TAG=latest  # https://github.com/GatorSpeck/openplaylist/pkgs/container/openplaylist
 CONFIG_PATH=./config  # needs read/write access, the dir to store the config
 PORT=5173  # the port used to access the web app
-DATA_DIR=./data  # dir to store the SQLite DB (needs read/write access)
+DATA_DIR=./data  # dir to store application data (needs read/write access)
 TZ="America/Chicago"  # not strictly required, but highly recommended
 ALLOW_ORIGINS=localhost  # for CORS
 
-## MariaDB configuration (recommended, defaults to sqlite otherwise)
+## MariaDB configuration (required)
 # MARIADB_ROOT_PASSWORD=replaceme
 # MARIADB_USER=replaceme
 # MARIADB_PASSWORD=replaceme
-# DB_TYPE=mysql
 # DB_HOST=openplaylist_db
 # DB_PORT=3306
 # DB_NAME=openplaylist
@@ -110,11 +109,6 @@ ALLOW_ORIGINS=localhost  # for CORS
 ```
 
 - Run with `docker-compose up -d`
-
-## SQLite support
-If you prefer to run using SQLite, simply omit the MariaDB section of your .env file, as well as the `openplaylist_db` section of your compose.yml.
-
-Note that this not recommended for large libraries and playlists. There is a (flaky) migration tool included in `backend/scripts` that can help migrate an existing SQLite DB to a new MariaDB instance.
 
 ## Applying Migrations
 If there is a breaking DB change, migrations can be run manually (for now) -

@@ -2,8 +2,13 @@
 
 ## Creating new migrations
 ```
-export DATABASE_URL=sqlite:///./path/to/your/sqlite
-export DATABASE_URL=mysql+pymysql://aaron:aaron@openplaylist_db:3306/openplaylist
+# Configure MariaDB connection
+export DB_HOST=localhost
+export DB_PORT=3306
+export DB_USER=your_user
+export DB_PASSWORD=your_password
+export DB_NAME=your_database
+export DATABASE_URL=mysql+pymysql://your_user:your_user@openplaylist_db:3306/openplaylist
 alembic revision --autogenerate -m "your message"
 ```
 
