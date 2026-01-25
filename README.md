@@ -10,6 +10,8 @@ Playlists can be synced with Plex, Spotify, and Youtube - or exported in various
 
 In addition to local music, your playlists can be augmented with search results from Last.FM, as well as suggestions from Last.FM and OpenAI.
 
+**DISCLAIMER: This is a hobby project! Much of it was developed with assistance from Copilot, including sections that were primarily vibecoded. Please expect instability on the develop branch, and take regular backups regardless of which release you use!**
+
 ## Additional Features
 - **Advanced Playlist Management**
   - "Matching" tracks from external providers (e.g. Spotify, Youtube, Plex) with local files
@@ -117,7 +119,9 @@ If you prefer to run using SQLite, simply omit the MariaDB section of your .env 
 Note that this not recommended for large libraries and playlists. There is a (flaky) migration tool included in `backend/scripts` that can help migrate an existing SQLite DB to a new MariaDB instance.
 
 ## Applying Migrations
-If there is a breaking DB change, migrations can be run manually (for now) -
+If there is a breaking DB change, migrations can be run automatically from the Databases tab of the Settings page.
+
+If the missing migration is preventing app startup (this really shouldn't happen, but still), you can apply migrations manually:
 ```
 docker exec -it openplaylist bash -c "cd backend && alembic upgrade head"
 ```
