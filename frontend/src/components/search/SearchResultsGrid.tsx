@@ -65,6 +65,8 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [openAILoading, setOpenAILoading] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(400); // Default width
+  const [isResizing, setIsResizing] = useState(false);
 
   // Keep this part but rename it from "advancedFilters" to just "filters"
   const [filters, setFilters] = useState<SearchFilter>(filter);
@@ -520,6 +522,41 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     };
   }, []);
 
+  // Add resize functionality
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      
+      const newWidth = window.innerWidth - e.clientX;
+      // Constrain width between 300px and 800px
+      const constrainedWidth = Math.max(300, Math.min(800, newWidth));
+      setPanelWidth(constrainedWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
+
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
   const Row = memo(({ index, style }) => {
     const song = searchResults[index];
     if (!song) return null;
@@ -649,7 +686,17 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
       <div 
         ref={panelRef}
         className={`search-results-panel ${isPanelOpen ? 'open' : ''}`}
+        style={{
+          '--panel-width': `${panelWidth}px`,
+          '--panel-right': `-${panelWidth}px`
+        } as React.CSSProperties}
       >
+        {/* Resize handle */}
+        <div 
+          className="resize-handle"
+          onMouseDown={handleResizeStart}
+        />
+        
         <div className="search-panel-header">
           <h2>Add Songs</h2>
           <button onClick={() => setIsPanelOpen(false)}>✕</button>
