@@ -40,7 +40,7 @@ tomli==2.2.1
 tqdm==4.67.1
 typing_extensions==4.12.2
 url-normalize==1.4.3
-urllib3==2.3.0
+urllib3==2.6.3
 uvicorn==0.34.0
 python-multipart==0.0.20
 
