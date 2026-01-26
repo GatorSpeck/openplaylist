@@ -75,10 +75,10 @@ export class LastFMRepository {
         }
     }
 
-    async searchAlbum(title: string, artist: string) {
+    async searchAlbum(title: string, artist: string, limit: number = 10, page: number = 1) {
         try {
             const response = await axios.get('/api/lastfm/album/search', {
-                params: { album: title, artist }
+                params: { album: title, artist, limit, page }
             });
             return response.data.map((album) => {
                 let result = new PlaylistEntry(album);
@@ -128,10 +128,10 @@ export class LastFMRepository {
         return enhancedAlbums;
     }
 
-    async searchTrack(title: string, artist: string) {
+    async searchTrack(title: string, artist: string, limit: number = 10, page: number = 1) {
         try {
             const response = await axios.get('/api/lastfm', {
-                params: { title, artist }
+                params: { title, artist, limit, page }
             });
 
             if (!response.data) {

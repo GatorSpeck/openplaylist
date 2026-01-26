@@ -723,13 +723,18 @@ def find_local_files(tracks: List[MusicFile], repo: MusicFileRepository = Depend
     return repo.find_local_files(tracks)
 
 @router.get("/lastfm", response_model=List[MusicFile])
-def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
+def get_lastfm_track(
+    title: str = Query(...), 
+    artist: str = Query(...),
+    limit: int = Query(10, ge=1, le=50),
+    page: int = Query(1, ge=1)
+):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
     repo = last_fm_repository(api_key, requests_cache_session)
-    return repo.search_track(title=title, artist=artist)
+    return repo.search_track(title=title, artist=artist, limit=limit, page=page)
 
 # get similar tracks using last.fm API
 @router.get("/lastfm/similar", response_model=List[MusicFile])
@@ -760,13 +765,18 @@ def get_album_info(artist: str = Query(...), album: str = Query(...), mbid: str 
     return repo.get_album_info(artist=artist, album=album, mbid=mbid)
 
 @router.get("/lastfm/album/search", response_model=List[Album])
-def search_album(album: str = Query(...), artist: Optional[str] = Query(None), ):
+def search_album(
+    album: str = Query(...), 
+    artist: Optional[str] = Query(None),
+    limit: int = Query(10, ge=1, le=50),
+    page: int = Query(1, ge=1)
+):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
     repo = last_fm_repository(api_key, requests_cache_session)
-    return repo.search_album(artist=artist, title=album)
+    return repo.search_album(artist=artist, title=album, limit=limit, page=page)
 
 # get similar tracks
 @router.get("/openai/similar")
