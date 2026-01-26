@@ -81,6 +81,62 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const [showAlbumDropdown, setShowAlbumDropdown] = useState(false);
   const albumInputRef = useRef(null);
 
+  // Column configuration
+  type ColumnType = 'artist' | 'album' | 'albumArtist' | 'title' | 'genres';
+  
+  const defaultColumns: ColumnType[] = ['artist', 'title'];
+  
+  const [visibleColumns, setVisibleColumns] = useState<ColumnType[]>(defaultColumns);
+  const [columnConfigOpen, setColumnConfigOpen] = useState(false);
+  
+  // Column configuration options
+  const availableColumns = [
+    { key: 'artist' as ColumnType, label: 'Artist', description: 'Artist name' },
+    { key: 'album' as ColumnType, label: 'Album', description: 'Album name' },
+    { key: 'albumArtist' as ColumnType, label: 'Album Artist', description: 'Album artist (if different from artist)' },
+    { key: 'title' as ColumnType, label: 'Title', description: 'Song/track title' },
+    { key: 'genres' as ColumnType, label: 'Genres', description: 'Music genres' }
+  ];
+  
+  // Column widths state
+  const defaultColumnWidths = {
+    artist: 200,
+    album: 200,
+    albumArtist: 200,
+    title: 300,
+    genres: 150
+  };
+  
+  const [columnWidths, setColumnWidths] = useState(() => {
+    return defaultColumnWidths;
+  });
+  
+  // Update column widths
+  const updateColumnWidth = (column: ColumnType, width: number) => {
+    const constrainedWidth = Math.max(80, Math.min(600, width)); // Min 80px, Max 600px
+    const newWidths = { ...columnWidths, [column]: constrainedWidth };
+    setColumnWidths(newWidths);
+  };
+  
+  // Update column visibility
+  const updateColumnVisibility = (columns: ColumnType[]) => {
+    setVisibleColumns(columns);
+  };
+  
+  // Generate CSS grid template based on visible columns and their widths
+  const getGridTemplate = () => {
+    const baseColumns = ['50px']; // Fixed width for checkbox column
+    
+    visibleColumns.forEach(col => {
+      const width = columnWidths[col] || defaultColumnWidths[col];
+      baseColumns.push(`${width}px`);
+    });
+    
+    baseColumns.push('40px'); // Fixed width for settings button
+    
+    return baseColumns.join(' ');
+  };
+
   const ITEMS_PER_PAGE = 50;
 
   const extractSearchResults = (response: any) => {
@@ -588,25 +644,48 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
       <img style={{height: 40}} src={image} alt=""/>
     );
 
+    const renderColumn = (column: ColumnType) => {
+      switch (column) {
+        case 'artist':
+          return <div>{song.getArtist()}</div>;
+        case 'album':
+          return <div><i>{song.getAlbum()}</i></div>;
+        case 'albumArtist':
+          return <div>{song.getAlbumArtist() || song.getArtist()}</div>;
+        case 'title':
+          return (
+            <div 
+              className="clickable" 
+              onContextMenu={(e) => handleContextMenu(e, song)}
+            >
+              {song.missing ? <s>{song.getTitle()}</s> : song.getTitle()}
+            </div>
+          );
+        case 'genres':
+          return <div>{song.getGenres ? song.getGenres().join(', ') : ''}</div>;
+        default:
+          return null;
+      }
+    };
+
     return (
       <div style={style}>
         <div 
           className="search-grid-row"
+          style={{
+            gridTemplateColumns: getGridTemplate()
+          }}
           onClick={() => toggleSongSelection(song)}
         >
           <div className="grid-cell">
             {artwork}
           </div>
-          <div className="grid-cell">
-            <div>{song.getArtist()}</div>
-            <div><i>{song.getAlbum()}</i></div>
-          </div>
-          <div 
-            className="grid-cell clickable" 
-            onContextMenu={(e) => handleContextMenu(e, song)}
-          >
-            {song.missing ? <s>{song.getTitle()}</s> : song.getTitle()}
-          </div>
+          {visibleColumns.map((column, index) => (
+            <div key={`${column}-${index}`} className="grid-cell">
+              {renderColumn(column)}
+            </div>
+          ))}
+          <div className="grid-cell">{/* Empty cell for settings button alignment */}</div>
         </div>
       </div>
     );
@@ -849,7 +928,9 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           </button>
         </div>
 
-        <div className="search-grid-header-row">
+        <div className="search-grid-header-row" style={{
+          gridTemplateColumns: getGridTemplate()
+        }}>
           <div className="grid-cell">
             <input
               type="checkbox"
@@ -857,8 +938,100 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
               onChange={toggleAllSongs}
             />
           </div>
-          <div className="grid-cell">Artist/Album</div>
-          <div className="grid-cell">Title</div>
+          {visibleColumns.map((column, index) => {
+            const columnInfo = availableColumns.find(col => col.key === column);
+            const isLastColumn = index === visibleColumns.length - 1;
+            const prevColumn = index > 0 ? visibleColumns[index - 1] : null;
+            
+            return (
+              <div key={column} className="grid-cell resizable-header" style={{ position: 'relative' }}>
+                <span>{columnInfo?.label}</span>
+                {!isLastColumn && prevColumn && (
+                  <div 
+                    className="resize-handle"
+                    style={{
+                      position: 'absolute',
+                      right: '0px',
+                      top: '0',
+                      bottom: '0',
+                      width: '6px',
+                      cursor: 'col-resize',
+                      backgroundColor: 'transparent',
+                      zIndex: 100,
+                      marginRight: '-3px'
+                    }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const startX = e.clientX;
+                      const leftColumn = prevColumn;
+                      const rightColumn = column;
+                      const startLeftWidth = columnWidths[leftColumn] || defaultColumnWidths[leftColumn];
+                      const startRightWidth = columnWidths[rightColumn] || defaultColumnWidths[rightColumn];
+                      
+                      console.log(`Resizing between ${leftColumn} (${startLeftWidth}px) and ${rightColumn} (${startRightWidth}px)`);
+                      
+                      const handleMouseMove = (moveEvent: MouseEvent) => {
+                        const diff = moveEvent.clientX - startX;
+                        const newLeftWidth = Math.max(80, startLeftWidth + diff);
+                        const newRightWidth = Math.max(80, startRightWidth - diff);
+                        
+                        // Only update if both columns can maintain minimum width
+                        if (newLeftWidth >= 80 && newRightWidth >= 80) {
+                          const newWidths = {
+                            ...columnWidths,
+                            [leftColumn]: newLeftWidth,
+                            [rightColumn]: newRightWidth
+                          };
+                          setColumnWidths(newWidths);
+                        }
+                      };
+                      
+                      const handleMouseUp = () => {
+                        document.removeEventListener('mousemove', handleMouseMove);
+                        document.removeEventListener('mouseup', handleMouseUp);
+                        document.body.style.cursor = '';
+                        document.body.style.userSelect = '';
+                        console.log(`Finished resizing. New widths: ${leftColumn}=${columnWidths[leftColumn]}px, ${rightColumn}=${columnWidths[rightColumn]}px`);
+                      };
+                      
+                      document.body.style.cursor = 'col-resize';
+                      document.body.style.userSelect = 'none';
+                      document.addEventListener('mousemove', handleMouseMove);
+                      document.addEventListener('mouseup', handleMouseUp);
+                    }}
+                  >
+                    {/* Visual resize indicator */}
+                    <div style={{
+                      position: 'absolute',
+                      right: '2px',
+                      top: '25%',
+                      bottom: '25%',
+                      width: '2px',
+                      backgroundColor: '#ccc',
+                      borderRadius: '1px',
+                      transition: 'background-color 0.2s'
+                    }}></div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <div className="grid-cell">
+            <button 
+              onClick={() => setColumnConfigOpen(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '14px',
+                color: '#666'
+              }}
+              title="Configure columns"
+            >
+              ⚙️
+            </button>
+          </div>
         </div>
 
         {renderSearchResults()}
@@ -910,6 +1083,165 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           <div className="scan-overlay">
             <div className="scan-spinner"></div>
             <h2>Scanning...</h2>
+          </div>
+        )}
+
+        {/* Column Configuration Modal */}
+        {columnConfigOpen && (
+          <div className="modal-overlay" onClick={() => setColumnConfigOpen(false)}>
+            <div 
+              className="modal-content"
+              style={{
+                maxWidth: '500px',
+                width: '90vw',
+                maxHeight: '80vh',
+                overflow: 'auto',
+                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ padding: '20px', borderBottom: '1px solid #eee' }}>
+                <h3 style={{ margin: '0', fontSize: '18px' }}>Configure Columns</h3>
+              </div>
+              <div className="column-config-content" style={{ padding: '20px' }}>
+                <p>Select which columns to display:</p>
+                <div className="column-checkboxes">
+                  {visibleColumns.map((columnKey, index) => {
+                    const column = availableColumns.find(col => col.key === columnKey);
+                    if (!column) return null;
+                    
+                    return (
+                      <label 
+                        key={column.key} 
+                        className="column-checkbox-item draggable-column"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', index.toString());
+                          e.currentTarget.style.opacity = '0.5';
+                        }}
+                        onDragEnd={(e) => {
+                          e.currentTarget.style.opacity = '1';
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                          const dropIndex = index;
+                          
+                          if (dragIndex !== dropIndex) {
+                            const newColumns = [...visibleColumns];
+                            const draggedColumn = newColumns[dragIndex];
+                            newColumns.splice(dragIndex, 1);
+                            newColumns.splice(dropIndex, 0, draggedColumn);
+                            updateColumnVisibility(newColumns);
+                          }
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          marginBottom: '10px',
+                          padding: '8px',
+                          border: '1px solid #eee',
+                          borderRadius: '4px',
+                          cursor: 'grab'
+                        }}
+                      >
+                        <span className="drag-handle" style={{ cursor: 'grab', marginRight: '8px' }}>⋮⋮</span>
+                        <input
+                          type="checkbox"
+                          checked={true}
+                          onChange={(e) => {
+                            if (!e.target.checked && visibleColumns.length > 1) {
+                              updateColumnVisibility(visibleColumns.filter(col => col !== column.key));
+                            }
+                          }}
+                          disabled={visibleColumns.length === 1}
+                          style={{ marginRight: '10px' }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 'bold' }}>{column.label}</div>
+                          <div style={{ fontSize: '12px', color: '#666' }}>{column.description}</div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                  
+                  {/* Hidden columns that can be added */}
+                  {availableColumns
+                    .filter(column => !visibleColumns.includes(column.key))
+                    .map(column => (
+                      <label 
+                        key={column.key} 
+                        className="column-checkbox-item"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          marginBottom: '10px',
+                          padding: '8px',
+                          border: '1px solid #eee',
+                          borderRadius: '4px',
+                          opacity: 0.6
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={false}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              updateColumnVisibility([...visibleColumns, column.key]);
+                            }
+                          }}
+                          style={{ marginRight: '10px' }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 'bold' }}>{column.label}</div>
+                          <div style={{ fontSize: '12px', color: '#666' }}>{column.description}</div>
+                        </div>
+                      </label>
+                    ))
+                  }
+                </div>
+                <div style={{ 
+                  display: 'flex', 
+                  gap: '10px', 
+                  justifyContent: 'flex-end',
+                  marginTop: '20px',
+                  borderTop: '1px solid #eee',
+                  paddingTop: '15px'
+                }}>
+                  <button 
+                    onClick={() => {
+                      updateColumnVisibility(defaultColumns);
+                      setColumnWidths(defaultColumnWidths);
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#f0f0f0',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Reset to Default
+                  </button>
+                  <button 
+                    onClick={() => setColumnConfigOpen(false)}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#4CAF50',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

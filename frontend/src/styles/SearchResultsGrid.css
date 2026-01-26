@@ -9,8 +9,6 @@
 
 .search-grid-header-row {
   display: grid;
-  grid-template-columns: 50px 1fr 1fr;
-  gap: 8px;
   padding: 8px;
   
   border-bottom: 1px solid #ddd;
@@ -29,8 +27,6 @@
 
 .search-grid-row {
   display: grid;
-  grid-template-columns: 50px 1fr 1fr;
-  gap: 8px;
   padding: 8px;
   border-bottom: 1px solid #eee;
   background: #333;
@@ -92,6 +88,71 @@
 
 .resize-handle:hover {
   background: #4CAF50;
+}
+
+/* Modal and Column Configuration Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1002;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 8px;
+  color: black;
+}
+
+.column-config-content {
+  color: black;
+}
+
+.column-checkboxes {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.column-checkbox-item {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.column-checkbox-item:hover {
+  background-color: #f5f5f5;
+}
+
+/* Resizable headers and drag handles */
+.resizable-header {
+  position: relative;
+}
+
+.resize-handle:hover {
+  background-color: rgba(76, 175, 80, 0.1);
+}
+
+.resize-handle:hover > div {
+  background-color: #4CAF50 !important;
+  width: 3px !important;
+}
+
+.draggable-column {
+  cursor: grab;
+}
+
+.draggable-column:active {
+  cursor: grabbing;
+}
+
+.drag-handle {
+  user-select: none;
+  color: #999;
 }
 
 .search-panel-header {
