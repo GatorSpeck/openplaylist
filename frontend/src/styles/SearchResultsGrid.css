@@ -74,7 +74,7 @@
   transform: translateX(calc(-1 * var(--panel-width, 400px)));
 }
 
-.resize-handle {
+.resize-handle-bar {
   position: absolute;
   left: 0;
   top: 0;
@@ -86,7 +86,7 @@
   transition: background 0.2s;
 }
 
-.resize-handle:hover {
+.resize-handle-bar:hover {
   background: #4CAF50;
 }
 
@@ -133,11 +133,11 @@
   position: relative;
 }
 
-.resize-handle:hover {
+.resize-handle-bar:hover {
   background-color: rgba(76, 175, 80, 0.1);
 }
 
-.resize-handle:hover > div {
+.resize-handle-bar:hover > div {
   background-color: #4CAF50 !important;
   width: 3px !important;
 }

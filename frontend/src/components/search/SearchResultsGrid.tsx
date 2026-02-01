@@ -768,7 +768,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
       >
         {/* Resize handle */}
         <div 
-          className="resize-handle"
+          className="resize-handle-bar"
           onMouseDown={handleResizeStart}
         />
         
@@ -994,7 +994,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                     </div>
                     {prevColumn && (
                       <div 
-                        className="resize-handle"
+                        className="resize-handle-bar"
                         style={{
                           position: 'absolute',
                           right: '0px',
