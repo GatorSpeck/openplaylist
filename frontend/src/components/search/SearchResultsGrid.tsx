@@ -548,22 +548,19 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const handleContextMenu = (e, track: PlaylistEntry) => {
     e.preventDefault();
 
-    // Get the parent container's position
-    const rect = e.currentTarget.getBoundingClientRect();
-    
-    // Calculate position relative to the clicked element
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // Use absolute positioning relative to the viewport
+    const x = e.clientX;
+    const y = e.clientY;
 
     const isAlbum = track.getEntryType() === 'requested_album' || track.getEntryType() === 'album';
 
     const options = [
       { label: 'Details', onClick: () => handleShowDetails(track) },
-      { label: 'Send to Search', onClick: () => setFilters({"title": track.getTitle(), "artist": track.getAlbumArtist(), "album": track.getAlbum()}) },
+      { label: 'Send to Search', onClick: () => setFilters({"title": track.getTitle(), "artist": track.getAlbumArtist(), "album": track.getAlbum(), "genre": ""}) },
       !isAlbum ? { label: 'Find Similar Tracks (Last.fm)', onClick: (e) => findSimilarTracks(e, track) } : null,
       !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: (e) => findSimilarTracksWithOpenAI(e, track) } : null,
-      { label: 'Search for Album', onClick: () => setFilters({"title": "", "artist": track.getAlbumArtist(), "album": track.getAlbum()}) },
-      { label: 'Search for Artist', onClick: () => setFilters({"title": "", "artist": track.getAlbumArtist(), "album": ""}) }
+      { label: 'Search for Album', onClick: () => setFilters({"title": "", "artist": track.getAlbumArtist(), "album": track.getAlbum(), "genre": ""}) },
+      { label: 'Search for Artist', onClick: () => setFilters({"title": "", "artist": track.getAlbumArtist(), "album": "", "genre": ""}) }
     ];
 
     setContextMenu({
@@ -717,9 +714,16 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
         type="checkbox"
         checked={isSelected}
         readOnly
+        onClick={() => toggleSongSelection(song)}
+        style={{ cursor: 'pointer' }}
       />
     ) : (
-      <img style={{height: 40}} src={image} alt=""/>
+      <img 
+        style={{height: 40, cursor: 'pointer'}} 
+        src={image} 
+        alt=""
+        onClick={() => toggleSongSelection(song)}
+      />
     );
 
     const renderColumn = (column: ColumnType) => {
@@ -732,10 +736,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           return <div>{song.getAlbumArtist() || song.getArtist()}</div>;
         case 'title':
           return (
-            <div 
-              className="clickable" 
-              onContextMenu={(e) => handleContextMenu(e, song)}
-            >
+            <div>
               {song.missing ? <s>{song.getTitle()}</s> : song.getTitle()}
             </div>
           );
@@ -767,7 +768,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           style={{
             gridTemplateColumns: getGridTemplate()
           }}
-          onClick={() => toggleSongSelection(song)}
+          onContextMenu={(e) => handleContextMenu(e, song)}
         >
           <div className="grid-cell">
             {artwork}
