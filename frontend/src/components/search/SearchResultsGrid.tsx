@@ -945,8 +945,26 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
             
             return (
               <div key={column} className="grid-cell resizable-header" style={{ position: 'relative' }}>
-                <span>{columnInfo?.label}</span>
-                {!isLastColumn && prevColumn && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>{columnInfo?.label}</span>
+                  {isLastColumn && (
+                    <button 
+                      onClick={() => setColumnConfigOpen(true)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        color: '#666',
+                        marginLeft: '8px'
+                      }}
+                      title="Configure columns"
+                    >
+                      ⚙️
+                    </button>
+                  )}
+                </div>
+                {prevColumn && (
                   <div 
                     className="resize-handle"
                     style={{
@@ -1017,21 +1035,6 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
               </div>
             );
           })}
-          <div className="grid-cell">
-            <button 
-              onClick={() => setColumnConfigOpen(true)}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '14px',
-                color: '#666'
-              }}
-              title="Configure columns"
-            >
-              ⚙️
-            </button>
-          </div>
         </div>
 
         {renderSearchResults()}
