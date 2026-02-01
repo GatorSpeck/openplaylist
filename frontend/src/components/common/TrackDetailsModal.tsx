@@ -41,10 +41,33 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
   const [isSearchingLastFm, setIsSearchingLastFm] = useState(false);
   const [showLastFmSearch, setShowLastFmSearch] = useState(false);
   const [showFullSizeArt, setShowFullSizeArt] = useState(false);
+  const [modalAlbumArt, setModalAlbumArt] = useState(null);
   
   if (!entry) return null;
 
   const lastFMRepository = new LastFMRepository();
+
+  // Fetch album art for the modal if not already available
+  useEffect(() => {
+    const fetchModalAlbumArt = async () => {
+      if (entry.details.art_url) {
+        setModalAlbumArt(entry.details.art_url);
+        return;
+      }
+      
+      if (entry.image_url) {
+        setModalAlbumArt(entry.image_url);
+        return;
+      }
+      
+      const url = await lastFMRepository.fetchAlbumArt(entry.getAlbumArtist(), entry.details.album);
+      if (url) {
+        setModalAlbumArt(url.image_url);
+      }
+    };
+
+    fetchModalAlbumArt();
+  }, [entry]);
 
   useEffect(() => {
     const fn = async () => {
@@ -675,10 +698,10 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
         <h2>Entry Details</h2>
         <div className="track-details">
           {/* Album Art Display */}
-          {(entry.details.art_url || entry.image_url) && (
+          {modalAlbumArt && (
             <div className="album-art-section">
               <img 
-                src={entry.details.art_url || entry.image_url}
+                src={modalAlbumArt}
                 alt="Album artwork"
                 className="album-art-thumbnail"
                 onClick={() => setShowFullSizeArt(true)}
@@ -923,7 +946,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
       </div>
       
       {/* Full-size album art modal */}
-      {showFullSizeArt && (entry.details.art_url || entry.image_url) && (
+      {showFullSizeArt && modalAlbumArt && (
         <div 
           className="modal-overlay" 
           onClick={() => setShowFullSizeArt(false)}
@@ -941,7 +964,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
             }}
           >
             <img 
-              src={entry.details.art_url || entry.image_url}
+              src={modalAlbumArt}
               alt="Album artwork - full size"
               style={{
                 maxWidth: '100%',
