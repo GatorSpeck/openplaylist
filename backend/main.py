@@ -685,10 +685,13 @@ def filter_music_files(
     genre: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
+    sort_by: Optional[str] = None,
+    sort_direction: Optional[str] = "asc",
     repo: MusicFileRepository = Depends(get_music_file_repository),
 ):
     return repo.filter(
-        title=title, artist=artist, album=album, genre=genre, offset=offset, limit=limit
+        title=title, artist=artist, album=album, genre=genre, 
+        offset=offset, limit=limit, sort_by=sort_by, sort_direction=sort_direction
     )
 
 

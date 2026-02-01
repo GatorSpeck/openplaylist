@@ -89,6 +89,10 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const [visibleColumns, setVisibleColumns] = useState<ColumnType[]>(defaultColumns);
   const [columnConfigOpen, setColumnConfigOpen] = useState(false);
   
+  // Sorting state
+  const [sortColumn, setSortColumn] = useState<ColumnType | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  
   // Column configuration options
   const availableColumns = [
     { key: 'artist' as ColumnType, label: 'Artist', description: 'Artist name' },
@@ -153,7 +157,9 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           artist: filters.artist || null,
           album: filters.album || null,
           offset: (pageNum - 1) * ITEMS_PER_PAGE,
-          limit: ITEMS_PER_PAGE
+          limit: ITEMS_PER_PAGE,
+          sort_by: sortColumn,
+          sort_direction: sortDirection
         }
       });
       
@@ -302,6 +308,30 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     // Update local filters state when the filter prop changes from PlaylistGrid
     setFilters(filter);
   }, [filter]);
+
+  // Handle column sort
+  const handleColumnSort = (column: ColumnType) => {
+    let newDirection: 'asc' | 'desc' = 'asc';
+    
+    if (sortColumn === column) {
+      // If clicking the same column, toggle direction
+      newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    }
+    
+    setSortColumn(column);
+    setSortDirection(newDirection);
+    
+    // Reset to first page and refetch
+    setPage(1);
+    setSearchResults([]);
+  };
+
+  // Refetch when sort changes
+  useEffect(() => {
+    if (sortColumn) {
+      fetchSongs(1);
+    }
+  }, [sortColumn, sortDirection]);
 
   // Add this function to fetch artists
   const fetchArtistList = async () => {
@@ -924,11 +954,30 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                 
                 return (
                   <div key={column} className="grid-cell resizable-header" style={{ position: 'relative' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span>{columnInfo?.label}</span>
+                    <div 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => handleColumnSort(column)}
+                      title={`Sort by ${columnInfo?.label}`}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <span>{columnInfo?.label}</span>
+                        {sortColumn === column && (
+                          <span style={{ marginLeft: '4px', fontSize: '12px' }}>
+                            {sortDirection === 'asc' ? '↑' : '↓'}
+                          </span>
+                        )}
+                      </div>
                       {isLastColumn && (
                         <button 
-                          onClick={() => setColumnConfigOpen(true)}
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent sort when clicking settings
+                            setColumnConfigOpen(true);
+                          }}
                           style={{
                             background: 'none',
                             border: 'none',

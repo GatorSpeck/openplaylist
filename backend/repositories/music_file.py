@@ -132,6 +132,8 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         limit: int = 50,
         offset: int = 0,
         include_missing: bool = False,
+        sort_by: Optional[str] = None,
+        sort_direction: Optional[str] = "asc",
     ) -> list[MusicFile]:
         query = self.session.query(MusicFileDB)
 
@@ -163,11 +165,33 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         if path:
             query = query.join(LocalFileDB).filter(LocalFileDB.path == path)
 
-        results = (
-            query
-                .order_by(MusicFileDB.artist, MusicFileDB.album, MusicFileDB.title)
-                .limit(limit).offset(offset).all()
-        )
+        # Apply sorting
+        if sort_by and sort_direction:
+            # Map frontend column names to database columns
+            column_mapping = {
+                'title': MusicFileDB.title,
+                'artist': MusicFileDB.artist,
+                'album': MusicFileDB.album,
+                'albumArtist': MusicFileDB.album_artist,
+                'year': MusicFileDB.year,
+                'length': MusicFileDB.length,
+                'track_number': MusicFileDB.track_number
+            }
+            
+            if sort_by in column_mapping:
+                column = column_mapping[sort_by]
+                if sort_direction.lower() == 'desc':
+                    query = query.order_by(column.desc())
+                else:
+                    query = query.order_by(column.asc())
+            else:
+                # Default ordering if sort column not recognized
+                query = query.order_by(MusicFileDB.artist, MusicFileDB.album, MusicFileDB.title)
+        else:
+            # Default ordering when no sort specified
+            query = query.order_by(MusicFileDB.artist, MusicFileDB.album, MusicFileDB.title)
+
+        results = query.limit(limit).offset(offset).all()
 
         return [to_music_file(music_file) for music_file in results]
 
