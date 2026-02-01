@@ -31,6 +31,7 @@ export interface SearchFilter {
   title: string;
   artist: string;
   album: string;
+  genre: string;
 }
 
 interface SearchResultsGridProps {
@@ -71,7 +72,10 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const [isResizing, setIsResizing] = useState(false);
 
   // Keep this part but rename it from "advancedFilters" to just "filters"
-  const [filters, setFilters] = useState<SearchFilter>(filter);
+  const [filters, setFilters] = useState<SearchFilter>({
+    ...filter,
+    genre: filter.genre || ''
+  });
 
   // support artist pick-list
   const [artistList, setArtistList] = useState<string[]>([]);
@@ -198,6 +202,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           title: filters.title || null,
           artist: filters.artist || null,
           album: filters.album || null,
+          genre: filters.genre || null,
           offset: (pageNum - 1) * ITEMS_PER_PAGE,
           limit: ITEMS_PER_PAGE,
           sort_by: sortColumn,
@@ -778,7 +783,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   });
 
   const clearSearchResults = () => {
-    setFilters({ title: '', artist: '', album: '' });
+    setFilters({ title: '', artist: '', album: '', genre: '' });
     setSearchResults([]);
   };
 
@@ -921,6 +926,21 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                 )}
               </div>
             </div>
+            
+            <div className="form-group">
+              <label>Genre:</label>
+              <div className="album-input-container">
+                <input 
+                  type="text" 
+                  value={filters.genre}
+                  onChange={(e) => {
+                    setFilters({...filters, genre: e.target.value});
+                  }}
+                  placeholder="Genre (e.g., rock, pop, jazz)" 
+                />
+              </div>
+            </div>
+            
             <div className="advanced-search-actions">
               {isLoading && (
                 <div className="loading-indicator">

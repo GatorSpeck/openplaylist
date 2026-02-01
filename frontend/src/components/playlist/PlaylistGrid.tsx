@@ -172,7 +172,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const [allPlaylistEntriesSelected, setAllTracksSelected] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, track: null });
-  const [searchFilter, setSearchFilter] = useState<SearchFilter>({"album": "", "artist": "", "title": ""});
+  const [searchFilter, setSearchFilter] = useState<SearchFilter>({"album": "", "artist": "", "title": "", "genre": ""});
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -980,11 +980,11 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       { label: 'Details', onClick: () => handleShowDetails(track) },
       canEdit ? { label: 'Edit Details', onClick: () => handleEditItem(track) } : null,
       { label: 'Add to Playlist...', onClick: () => handleAddToOtherPlaylist([track]) },
-      { label: 'Send to Search', onClick: () => searchFor({"album": track.getAlbum(), "artist": track.getArtist(), "title": track.getTitle()}) },
+      { label: 'Send to Search', onClick: () => searchFor({"album": track.getAlbum(), "artist": track.getArtist(), "title": track.getTitle(), "genre": ""}) },
       !isAlbum ? { label: 'Find Similar Tracks (Last.fm)', onClick: (e) => findSimilarTracks(e, track) } : null,
       !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: (e) => findSimilarTracksWithOpenAI(e, track) } : null,
-      { label: 'Search for Album', onClick: () => searchFor({"title": "", "album": track.getAlbum(), "artist": track.getArtist()}) },
-      { label: 'Search for Artist', onClick: () => searchFor({"title": "", "album": "", "artist": track.getAlbumArtist()}) },
+      { label: 'Search for Album', onClick: () => searchFor({"title": "", "album": track.getAlbum(), "artist": track.getArtist(), "genre": ""}) },
+      { label: 'Search for Artist', onClick: () => searchFor({"title": "", "album": "", "artist": track.getAlbumArtist(), "genre": ""}) },
       // Add hide/unhide options
       isHidden 
         ? { label: 'Unhide', onClick: () => unhideEntry(track.id) }
