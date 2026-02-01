@@ -15,7 +15,6 @@ interface PlaylistEntryRowProps {
   dragHandleProps?: any;
   visibleColumns?: ('artistAlbum' | 'artist' | 'album' | 'title' | 'notes')[];
   onNotesUpdate?: (entryId: number, notes: string) => void;
-  onImageLoaded?: (entryId: number, imageUrl: string) => void;
   [key: string]: any;
 }
 
@@ -30,7 +29,6 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
   dragHandleProps,
   visibleColumns = ['artistAlbum', 'title'],
   onNotesUpdate,
-  onImageLoaded,
   ...props 
 }, ref) => {
   const [imageUrl, setImageUrl] = useState(null);
@@ -52,29 +50,16 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
     const fetchAlbumArt = async () => {
         if (entry.details.art_url) {
           setImageUrl(entry.details.art_url);
-          if (onImageLoaded) {
-            onImageLoaded(entry.id, entry.details.art_url);
-          }
-          return;
-        }
-        
-        if (entry.image_url) {
-          setImageUrl(entry.image_url);
           return;
         }
         
         const url = await lastFMRepository.fetchAlbumArt(entry.getAlbumArtist(), entry.details.album);
         if (!url) return;
         setImageUrl(url.image_url);
-        
-        // Notify parent component that image was loaded
-        if (onImageLoaded) {
-          onImageLoaded(entry.id, url.image_url);
-        }
     }
 
     fetchAlbumArt();
-  }, [entry, onImageLoaded]);
+  }, [entry]);
 
   useEffect(() => {
     const checkMobile = () => {
