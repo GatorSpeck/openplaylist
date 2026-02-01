@@ -33,7 +33,7 @@
     "react-virtualized-auto-sizer": "^1.0.25",
     "react-window": "^1.8.11",
     "react-window-infinite-loader": "^1.0.10",
-    "vite": "^6.0.5"
+    "vite": "^7.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
