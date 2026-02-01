@@ -3,16 +3,16 @@ anyio==4.8.0
 async-timeout==5.0.1
 attrs==25.1.0
 cattrs==24.1.2
-certifi==2025.1.31
+certifi==2026.1.4
 charset-normalizer==3.4.1
 click==8.1.8
 colorama==0.4.6
 distro==1.9.0
 exceptiongroup==1.2.2
 fastapi==0.115.8
-greenlet==3.1.1
+greenlet==3.3.0
 h11==0.14.0
-hiredis==3.1.0
+hiredis==3.3.0
 hishel==0.1.1
 httpcore==1.0.7
 httpx==0.28.1
@@ -25,11 +25,11 @@ packaging==24.2
 pathspec==0.12.1
 platformdirs==4.3.6
 PlexAPI==4.16.1
-pluggy==1.5.0
+pluggy==1.6.0
 pydantic==2.10.6
 pydantic_core==2.27.2
 python-dotenv==1.0.1
-redis==5.2.1
+redis==7.1.0
 requests==2.32.3
 requests-cache==1.2.1
 six==1.17.0
@@ -40,14 +40,14 @@ tomli==2.2.1
 tqdm==4.67.1
 typing_extensions==4.12.2
 url-normalize==1.4.3
-urllib3==2.3.0
+urllib3==2.6.3
 uvicorn==0.34.0
-python-multipart==0.0.20
 APScheduler==3.10.4
 croniter==1.4.1
+python-multipart==0.0.22
 
 # technically not a req, but good to have in case user needs to manually apply migrations
-alembic==1.15.1
+alembic==1.18.1
 
 # MariaDB deps
 pymysql==1.1.0
@@ -57,4 +57,4 @@ cryptography==41.0.3  # Required for PyMySQL with TLS/SSL
 spotipy==2.25.1
 
 # YT Music API
-ytmusicapi==1.11.1
+ytmusicapi==1.11.4
