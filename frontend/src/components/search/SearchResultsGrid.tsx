@@ -17,6 +17,7 @@ import { FixedSizeList as List } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import PlaylistEntry from '../../lib/PlaylistEntry';
+import { setCookie, getCookie } from '../../lib/cookieUtils';
 
 const secondsToDaysHoursMins = (seconds: number) => {
   const days = Math.floor(seconds / (3600 * 24));
@@ -84,15 +85,6 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   // Column configuration
   type ColumnType = 'artist' | 'album' | 'albumArtist' | 'title' | 'genres';
   
-  const defaultColumns: ColumnType[] = ['artist', 'title'];
-  
-  const [visibleColumns, setVisibleColumns] = useState<ColumnType[]>(defaultColumns);
-  const [columnConfigOpen, setColumnConfigOpen] = useState(false);
-  
-  // Sorting state
-  const [sortColumn, setSortColumn] = useState<ColumnType | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  
   // Column configuration options
   const availableColumns = [
     { key: 'artist' as ColumnType, label: 'Artist', description: 'Artist name' },
@@ -101,6 +93,28 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     { key: 'title' as ColumnType, label: 'Title', description: 'Song/track title' },
     { key: 'genres' as ColumnType, label: 'Genres', description: 'Music genres' }
   ];
+  
+  const defaultColumns: ColumnType[] = ['artist', 'title'];
+  
+  const [visibleColumns, setVisibleColumns] = useState<ColumnType[]>(() => {
+    const saved = getCookie('search_results_columns');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.every(col => availableColumns.some(ac => ac.key === col))) {
+          return parsed;
+        }
+      } catch (e) {
+        console.warn('Failed to parse saved search columns:', e);
+      }
+    }
+    return defaultColumns;
+  });
+  const [columnConfigOpen, setColumnConfigOpen] = useState(false);
+  
+  // Sorting state
+  const [sortColumn, setSortColumn] = useState<ColumnType | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
   // Column widths state
   const defaultColumnWidths = {
@@ -112,6 +126,17 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   };
   
   const [columnWidths, setColumnWidths] = useState(() => {
+    const saved = getCookie('search_results_column_widths');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed === 'object' && parsed !== null) {
+          return { ...defaultColumnWidths, ...parsed };
+        }
+      } catch (e) {
+        console.warn('Failed to parse saved search column widths:', e);
+      }
+    }
     return defaultColumnWidths;
   });
   
@@ -120,11 +145,13 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     const constrainedWidth = Math.max(80, Math.min(600, width)); // Min 80px, Max 600px
     const newWidths = { ...columnWidths, [column]: constrainedWidth };
     setColumnWidths(newWidths);
+    setCookie('search_results_column_widths', JSON.stringify(newWidths));
   };
   
   // Update column visibility
   const updateColumnVisibility = (columns: ColumnType[]) => {
     setVisibleColumns(columns);
+    setCookie('search_results_columns', JSON.stringify(columns));
   };
   
   // Generate CSS grid template based on visible columns and their widths
