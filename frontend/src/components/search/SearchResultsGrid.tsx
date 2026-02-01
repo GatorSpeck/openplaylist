@@ -819,8 +819,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
         ref={panelRef}
         className={`search-results-panel ${isPanelOpen ? 'open' : ''}`}
         style={{
-          '--panel-width': `${panelWidth}px`,
-          '--panel-right': `-${panelWidth}px`
+          '--panel-width': `${panelWidth}px`
         } as React.CSSProperties}
       >
         {/* Resize handle */}
