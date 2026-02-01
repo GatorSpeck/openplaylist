@@ -18,6 +18,7 @@ import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import PlaylistEntry from '../../lib/PlaylistEntry';
 import { setCookie, getCookie } from '../../lib/cookieUtils';
+import { formatDuration } from '../../lib/misc';
 
 const secondsToDaysHoursMins = (seconds: number) => {
   const days = Math.floor(seconds / (3600 * 24));
@@ -83,7 +84,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const albumInputRef = useRef(null);
 
   // Column configuration
-  type ColumnType = 'artist' | 'album' | 'albumArtist' | 'title' | 'genres';
+  type ColumnType = 'artist' | 'album' | 'albumArtist' | 'title' | 'genres' | 'year' | 'length' | 'trackNumber' | 'discNumber' | 'kind' | 'rating' | 'publisher';
   
   // Column configuration options
   const availableColumns = [
@@ -91,7 +92,14 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     { key: 'album' as ColumnType, label: 'Album', description: 'Album name' },
     { key: 'albumArtist' as ColumnType, label: 'Album Artist', description: 'Album artist (if different from artist)' },
     { key: 'title' as ColumnType, label: 'Title', description: 'Song/track title' },
-    { key: 'genres' as ColumnType, label: 'Genres', description: 'Music genres' }
+    { key: 'genres' as ColumnType, label: 'Genres', description: 'Music genres' },
+    { key: 'year' as ColumnType, label: 'Year', description: 'Release year' },
+    { key: 'length' as ColumnType, label: 'Length', description: 'Track duration' },
+    { key: 'trackNumber' as ColumnType, label: 'Track #', description: 'Track number' },
+    { key: 'discNumber' as ColumnType, label: 'Disc #', description: 'Disc number' },
+    { key: 'kind' as ColumnType, label: 'Format', description: 'File format (MP3, FLAC, etc.)' },
+    { key: 'rating' as ColumnType, label: 'Rating', description: 'Track rating' },
+    { key: 'publisher' as ColumnType, label: 'Label', description: 'Record label/publisher' }
   ];
   
   const defaultColumns: ColumnType[] = ['artist', 'title'];
@@ -122,7 +130,14 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     album: 200,
     albumArtist: 200,
     title: 300,
-    genres: 150
+    genres: 150,
+    year: 80,
+    length: 100,
+    trackNumber: 80,
+    discNumber: 80,
+    kind: 80,
+    rating: 80,
+    publisher: 150
   };
   
   const [columnWidths, setColumnWidths] = useState(() => {
@@ -720,6 +735,20 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           );
         case 'genres':
           return <div>{song.getGenres ? song.getGenres().join(', ') : ''}</div>;
+        case 'year':
+          return <div>{song.details?.year || ''}</div>;
+        case 'length':
+          return <div>{song.details?.length ? formatDuration(song.details.length) : ''}</div>;
+        case 'trackNumber':
+          return <div>{song.details?.track_number || ''}</div>;
+        case 'discNumber':
+          return <div>{song.details?.disc_number || ''}</div>;
+        case 'kind':
+          return <div>{song.details?.kind || ''}</div>;
+        case 'rating':
+          return <div>{song.details?.rating ? `${song.details.rating}/100` : ''}</div>;
+        case 'publisher':
+          return <div>{song.details?.publisher || ''}</div>;
         default:
           return null;
       }

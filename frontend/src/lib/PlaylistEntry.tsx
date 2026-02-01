@@ -99,6 +99,10 @@ class PlaylistEntry extends PlaylistEntryStub {
     }
   }
 
+  getGenres() {
+    return this.details.genres || [];
+  }
+
   getEntryType() {
     return this.entry_type;
   }
