@@ -656,8 +656,9 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
       if (!isResizing) return;
       
       const newWidth = window.innerWidth - e.clientX;
-      // Constrain width between 300px and 800px
-      const constrainedWidth = Math.max(300, Math.min(800, newWidth));
+      // Constrain width between 300px and 90% of window width
+      const maxWidth = Math.floor(window.innerWidth * 0.9);
+      const constrainedWidth = Math.max(300, Math.min(maxWidth, newWidth));
       setPanelWidth(constrainedWidth);
     };
 
