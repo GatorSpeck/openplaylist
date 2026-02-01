@@ -58,7 +58,8 @@ const Row = memo(({ data, index, style }) => {
     totalCount,
     visibleColumns,
     gridTemplate,
-    updateEntryNotes
+    updateEntryNotes,
+    updateEntryImage
   } = data;
 
   if (index >= totalCount) {
@@ -116,6 +117,7 @@ const Row = memo(({ data, index, style }) => {
           dragHandleProps={provided.dragHandleProps}
           visibleColumns={visibleColumns}
           onNotesUpdate={updateEntryNotes}
+          onImageLoaded={updateEntryImage}
         />
       )}
     </Draggable>
@@ -172,7 +174,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const [allPlaylistEntriesSelected, setAllTracksSelected] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, track: null });
-  const [searchFilter, setSearchFilter] = useState<SearchFilter>({"album": "", "artist": "", "title": ""});
+  const [searchFilter, setSearchFilter] = useState<SearchFilter>({"album": "", "artist": "", "title": "", "genre": ""});
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -980,11 +982,11 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       { label: 'Details', onClick: () => handleShowDetails(track) },
       canEdit ? { label: 'Edit Details', onClick: () => handleEditItem(track) } : null,
       { label: 'Add to Playlist...', onClick: () => handleAddToOtherPlaylist([track]) },
-      { label: 'Send to Search', onClick: () => searchFor({"album": track.getAlbum(), "artist": track.getArtist(), "title": track.getTitle()}) },
+      { label: 'Send to Search', onClick: () => searchFor({"album": track.getAlbum(), "artist": track.getArtist(), "title": track.getTitle(), "genre": ""}) },
       !isAlbum ? { label: 'Find Similar Tracks (Last.fm)', onClick: (e) => findSimilarTracks(e, track) } : null,
       !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: (e) => findSimilarTracksWithOpenAI(e, track) } : null,
-      { label: 'Search for Album', onClick: () => searchFor({"title": "", "album": track.getAlbum(), "artist": track.getArtist()}) },
-      { label: 'Search for Artist', onClick: () => searchFor({"title": "", "album": "", "artist": track.getAlbumArtist()}) },
+      { label: 'Search for Album', onClick: () => searchFor({"title": "", "album": track.getAlbum(), "artist": track.getArtist(), "genre": ""}) },
+      { label: 'Search for Artist', onClick: () => searchFor({"title": "", "album": "", "artist": track.getAlbumArtist(), "genre": ""}) },
       // Add hide/unhide options
       isHidden 
         ? { label: 'Unhide', onClick: () => unhideEntry(track.id) }
@@ -1307,6 +1309,15 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       });
     }
   }, [entries, pushToHistory, setEntries, setSnackbar, playlistID]);
+
+  // Add function to update entry image URL
+  const updateEntryImage = useCallback((entryId: number, imageUrl: string) => {
+    setEntries(prevEntries => 
+      prevEntries.map(entry => 
+        entry.id === entryId ? { ...entry, image_url: imageUrl } : entry
+      )
+    );
+  }, []);
 
   // Update BatchActions to include hide option
   // Add state for scroll position to handle floating button positioning
@@ -1675,6 +1686,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                 dragHandleProps={provided.dragHandleProps}
                 visibleColumns={visibleColumns}
                 onNotesUpdate={updateEntryNotes}
+                onImageLoaded={updateEntryImage}
               />
             )}
           >
@@ -1699,6 +1711,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                         visibleColumns,
                         gridTemplate: getGridTemplate(),
                         updateEntryNotes,
+                        updateEntryImage,
                       }}
                       overscanCount={50} // Increased from 20 to handle fast scrolling better
                       onItemsRendered={({

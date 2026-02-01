@@ -40,6 +40,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
   const [lastFmSearchResults, setLastFmSearchResults] = useState([]);
   const [isSearchingLastFm, setIsSearchingLastFm] = useState(false);
   const [showLastFmSearch, setShowLastFmSearch] = useState(false);
+  const [showFullSizeArt, setShowFullSizeArt] = useState(false);
   
   if (!entry) return null;
 
@@ -673,6 +674,31 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
       <div className="modal-content" onClick={e => e.stopPropagation()}>
         <h2>Entry Details</h2>
         <div className="track-details">
+          {/* Album Art Display */}
+          {(entry.details.art_url || entry.image_url) && (
+            <div className="album-art-section">
+              <img 
+                src={entry.details.art_url || entry.image_url}
+                alt="Album artwork"
+                className="album-art-thumbnail"
+                onClick={() => setShowFullSizeArt(true)}
+                style={{
+                  width: '120px',
+                  height: '120px',
+                  objectFit: 'cover',
+                  cursor: 'pointer',
+                  borderRadius: '4px',
+                  marginBottom: '16px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                }}
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+                title="Click to view full size"
+              />
+            </div>
+          )}
+          
           <p><strong>ID:</strong> {entry.id}</p>
           <p><strong>Type:</strong> {entry.entry_type}</p>
           <p><strong>Title:</strong> {entry.getTitle()}</p>
@@ -895,6 +921,61 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
           <button onClick={onClose}>Close</button>
         </div>
       </div>
+      
+      {/* Full-size album art modal */}
+      {showFullSizeArt && (entry.details.art_url || entry.image_url) && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => setShowFullSizeArt(false)}
+          style={{ zIndex: 2000 }}
+        >
+          <div 
+            className="fullsize-art-container"
+            onClick={e => e.stopPropagation()}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              maxWidth: '90vw',
+              maxHeight: '90vh'
+            }}
+          >
+            <img 
+              src={entry.details.art_url || entry.image_url}
+              alt="Album artwork - full size"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain',
+                borderRadius: '8px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+              }}
+              onClick={() => setShowFullSizeArt(false)}
+            />
+            <button
+              onClick={() => setShowFullSizeArt(false)}
+              style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                background: 'rgba(0,0,0,0.7)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '50%',
+                width: '40px',
+                height: '40px',
+                fontSize: '20px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

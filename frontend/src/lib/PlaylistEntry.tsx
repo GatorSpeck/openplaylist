@@ -93,10 +93,17 @@ class PlaylistEntry extends PlaylistEntryStub {
     const detailsToUse = entryData.details || entryData;
     this.details = new EntryDetails(detailsToUse);
     
+    // Add image URL for fetched album art
+    this.image_url = entryData.image_url || null;
+    
     // If notes isn't in details but is at the entry level, add it to details
     if (this.notes && !this.details.notes) {
       this.details.notes = this.notes;
     }
+  }
+
+  getGenres() {
+    return this.details.genres || [];
   }
 
   getEntryType() {
