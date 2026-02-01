@@ -685,44 +685,10 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
               {renderColumn(column)}
             </div>
           ))}
-          <div className="grid-cell">{/* Empty cell for settings button alignment */}</div>
         </div>
       </div>
     );
   });
-
-  const renderSearchResults = () => (
-    <div style={{ height: '600px' }}> {/* Adjust height as needed */}
-      <AutoSizer>
-        {({ height, width }) => (
-          <InfiniteLoader
-            isItemLoaded={index => index < searchResults.length}
-            itemCount={hasMore ? searchResults.length + 1 : searchResults.length}
-            loadMoreItems={(startIndex, stopIndex) => {
-              if (!isLoading && hasMore) {
-                console.log(`Loading more items from ${startIndex} to ${stopIndex}`);
-                return fetchSongs(page + 1);
-              }
-              return Promise.resolve();
-            }}
-          >
-            {({ onItemsRendered, ref }) => (
-              <List
-                ref={ref}
-                height={height}
-                itemCount={searchResults.length}
-                itemSize={80} // Adjust based on your row height
-                width={width}
-                onItemsRendered={onItemsRendered}
-              >
-                {Row}
-              </List>
-            )}
-          </InfiniteLoader>
-        )}
-      </AutoSizer>
-    </div>
-  );
 
   const clearSearchResults = () => {
     setFilters({ title: '', artist: '', album: '' });
@@ -928,116 +894,165 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           </button>
         </div>
 
-        <div className="search-grid-header-row" style={{
-          gridTemplateColumns: getGridTemplate()
+        <div className="search-grid-container" style={{
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          maxHeight: '600px',
+          border: '1px solid #ddd',
+          borderRadius: '4px'
         }}>
-          <div className="grid-cell">
-            <input
-              type="checkbox"
-              checked={allSearchResultsSelected}
-              onChange={toggleAllSongs}
-            />
-          </div>
-          {visibleColumns.map((column, index) => {
-            const columnInfo = availableColumns.find(col => col.key === column);
-            const isLastColumn = index === visibleColumns.length - 1;
-            const prevColumn = index > 0 ? visibleColumns[index - 1] : null;
-            
-            return (
-              <div key={column} className="grid-cell resizable-header" style={{ position: 'relative' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>{columnInfo?.label}</span>
-                  {isLastColumn && (
-                    <button 
-                      onClick={() => setColumnConfigOpen(true)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '14px',
-                        color: '#666',
-                        marginLeft: '8px'
-                      }}
-                      title="Configure columns"
-                    >
-                      ⚙️
-                    </button>
-                  )}
-                </div>
-                {prevColumn && (
-                  <div 
-                    className="resize-handle"
-                    style={{
-                      position: 'absolute',
-                      right: '0px',
-                      top: '0',
-                      bottom: '0',
-                      width: '6px',
-                      cursor: 'col-resize',
-                      backgroundColor: 'transparent',
-                      zIndex: 100,
-                      marginRight: '-3px'
-                    }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const startX = e.clientX;
-                      const leftColumn = prevColumn;
-                      const rightColumn = column;
-                      const startLeftWidth = columnWidths[leftColumn] || defaultColumnWidths[leftColumn];
-                      const startRightWidth = columnWidths[rightColumn] || defaultColumnWidths[rightColumn];
-                      
-                      console.log(`Resizing between ${leftColumn} (${startLeftWidth}px) and ${rightColumn} (${startRightWidth}px)`);
-                      
-                      const handleMouseMove = (moveEvent: MouseEvent) => {
-                        const diff = moveEvent.clientX - startX;
-                        const newLeftWidth = Math.max(80, startLeftWidth + diff);
-                        const newRightWidth = Math.max(80, startRightWidth - diff);
-                        
-                        // Only update if both columns can maintain minimum width
-                        if (newLeftWidth >= 80 && newRightWidth >= 80) {
-                          const newWidths = {
-                            ...columnWidths,
-                            [leftColumn]: newLeftWidth,
-                            [rightColumn]: newRightWidth
+          <div style={{
+            minWidth: 'fit-content'
+          }}>
+            <div className="search-grid-header-row" style={{
+              gridTemplateColumns: getGridTemplate(),
+              position: 'sticky',
+              top: 0,
+              zIndex: 10
+            }}>
+              <div className="grid-cell">
+                <input
+                  type="checkbox"
+                  checked={allSearchResultsSelected}
+                  onChange={toggleAllSongs}
+                />
+              </div>
+              {visibleColumns.map((column, index) => {
+                const columnInfo = availableColumns.find(col => col.key === column);
+                const isLastColumn = index === visibleColumns.length - 1;
+                const prevColumn = index > 0 ? visibleColumns[index - 1] : null;
+                
+                return (
+                  <div key={column} className="grid-cell resizable-header" style={{ position: 'relative' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>{columnInfo?.label}</span>
+                      {isLastColumn && (
+                        <button 
+                          onClick={() => setColumnConfigOpen(true)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            color: '#666',
+                            marginLeft: '8px'
+                          }}
+                          title="Configure columns"
+                        >
+                          ⚙️
+                        </button>
+                      )}
+                    </div>
+                    {prevColumn && (
+                      <div 
+                        className="resize-handle"
+                        style={{
+                          position: 'absolute',
+                          right: '0px',
+                          top: '0',
+                          bottom: '0',
+                          width: '6px',
+                          cursor: 'col-resize',
+                          backgroundColor: 'transparent',
+                          zIndex: 100,
+                          marginRight: '-3px'
+                        }}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const startX = e.clientX;
+                          const leftColumn = prevColumn;
+                          const rightColumn = column;
+                          const startLeftWidth = columnWidths[leftColumn] || defaultColumnWidths[leftColumn];
+                          const startRightWidth = columnWidths[rightColumn] || defaultColumnWidths[rightColumn];
+                          
+                          console.log(`Resizing between ${leftColumn} (${startLeftWidth}px) and ${rightColumn} (${startRightWidth}px)`);
+                          
+                          const handleMouseMove = (moveEvent: MouseEvent) => {
+                            const diff = moveEvent.clientX - startX;
+                            const newLeftWidth = Math.max(80, startLeftWidth + diff);
+                            const newRightWidth = Math.max(80, startRightWidth - diff);
+                            
+                            // Only update if both columns can maintain minimum width
+                            if (newLeftWidth >= 80 && newRightWidth >= 80) {
+                              const newWidths = {
+                                ...columnWidths,
+                                [leftColumn]: newLeftWidth,
+                                [rightColumn]: newRightWidth
+                              };
+                              setColumnWidths(newWidths);
+                            }
                           };
-                          setColumnWidths(newWidths);
-                        }
-                      };
-                      
-                      const handleMouseUp = () => {
-                        document.removeEventListener('mousemove', handleMouseMove);
-                        document.removeEventListener('mouseup', handleMouseUp);
-                        document.body.style.cursor = '';
-                        document.body.style.userSelect = '';
-                        console.log(`Finished resizing. New widths: ${leftColumn}=${columnWidths[leftColumn]}px, ${rightColumn}=${columnWidths[rightColumn]}px`);
-                      };
-                      
-                      document.body.style.cursor = 'col-resize';
-                      document.body.style.userSelect = 'none';
-                      document.addEventListener('mousemove', handleMouseMove);
-                      document.addEventListener('mouseup', handleMouseUp);
+                          
+                          const handleMouseUp = () => {
+                            document.removeEventListener('mousemove', handleMouseMove);
+                            document.removeEventListener('mouseup', handleMouseUp);
+                            document.body.style.cursor = '';
+                            document.body.style.userSelect = '';
+                            console.log(`Finished resizing. New widths: ${leftColumn}=${columnWidths[leftColumn]}px, ${rightColumn}=${columnWidths[rightColumn]}px`);
+                          };
+                          
+                          document.body.style.cursor = 'col-resize';
+                          document.body.style.userSelect = 'none';
+                          document.addEventListener('mousemove', handleMouseMove);
+                          document.addEventListener('mouseup', handleMouseUp);
+                        }}
+                      >
+                        {/* Visual resize indicator */}
+                        <div style={{
+                          position: 'absolute',
+                          right: '2px',
+                          top: '25%',
+                          bottom: '25%',
+                          width: '2px',
+                          backgroundColor: '#ccc',
+                          borderRadius: '1px',
+                          transition: 'background-color 0.2s'
+                        }}></div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ 
+              height: '540px',
+              overflowY: 'auto',
+              overflowX: 'hidden'
+            }}>
+              <AutoSizer disableWidth>
+                {({ height }) => (
+                  <InfiniteLoader
+                    isItemLoaded={index => index < searchResults.length}
+                    itemCount={hasMore ? searchResults.length + 1 : searchResults.length}
+                    loadMoreItems={(startIndex, stopIndex) => {
+                      if (!isLoading && hasMore) {
+                        console.log(`Loading more items from ${startIndex} to ${stopIndex}`);
+                        return fetchSongs(page + 1);
+                      }
+                      return Promise.resolve();
                     }}
                   >
-                    {/* Visual resize indicator */}
-                    <div style={{
-                      position: 'absolute',
-                      right: '2px',
-                      top: '25%',
-                      bottom: '25%',
-                      width: '2px',
-                      backgroundColor: '#ccc',
-                      borderRadius: '1px',
-                      transition: 'background-color 0.2s'
-                    }}></div>
-                  </div>
+                    {({ onItemsRendered, ref }) => (
+                      <List
+                        ref={ref}
+                        height={height}
+                        itemCount={searchResults.length}
+                        itemSize={80}
+                        width="100%" 
+                        onItemsRendered={onItemsRendered}
+                        style={{ overflowX: 'hidden' }}
+                      >
+                        {Row}
+                      </List>
+                    )}
+                  </InfiniteLoader>
                 )}
-              </div>
-            );
-          })}
+              </AutoSizer>
+            </div>
+          </div>
         </div>
-
-        {renderSearchResults()}
 
         {showLastFMSearch && (
           <LastFMSearch
