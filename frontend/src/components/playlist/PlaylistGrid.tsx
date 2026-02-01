@@ -58,7 +58,8 @@ const Row = memo(({ data, index, style }) => {
     totalCount,
     visibleColumns,
     gridTemplate,
-    updateEntryNotes
+    updateEntryNotes,
+    updateEntryImage
   } = data;
 
   if (index >= totalCount) {
@@ -116,6 +117,7 @@ const Row = memo(({ data, index, style }) => {
           dragHandleProps={provided.dragHandleProps}
           visibleColumns={visibleColumns}
           onNotesUpdate={updateEntryNotes}
+          onImageLoaded={updateEntryImage}
         />
       )}
     </Draggable>
@@ -1308,6 +1310,15 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     }
   }, [entries, pushToHistory, setEntries, setSnackbar, playlistID]);
 
+  // Add function to update entry image URL
+  const updateEntryImage = useCallback((entryId: number, imageUrl: string) => {
+    setEntries(prevEntries => 
+      prevEntries.map(entry => 
+        entry.id === entryId ? { ...entry, image_url: imageUrl } : entry
+      )
+    );
+  }, []);
+
   // Update BatchActions to include hide option
   // Add state for scroll position to handle floating button positioning
   const [isAtBottom, setIsAtBottom] = useState(false);
@@ -1675,6 +1686,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                 dragHandleProps={provided.dragHandleProps}
                 visibleColumns={visibleColumns}
                 onNotesUpdate={updateEntryNotes}
+                onImageLoaded={updateEntryImage}
               />
             )}
           >
@@ -1699,6 +1711,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                         visibleColumns,
                         gridTemplate: getGridTemplate(),
                         updateEntryNotes,
+                        updateEntryImage,
                       }}
                       overscanCount={50} // Increased from 20 to handle fast scrolling better
                       onItemsRendered={({
