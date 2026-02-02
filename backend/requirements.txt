@@ -41,7 +41,7 @@ tqdm==4.67.1
 typing_extensions==4.15.0
 url-normalize==1.4.3
 urllib3==2.6.3
-uvicorn==0.34.0
+uvicorn==0.40.0
 python-multipart==0.0.22
 
 # technically not a req, but good to have in case user needs to manually apply migrations
