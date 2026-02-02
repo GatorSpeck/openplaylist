@@ -28,7 +28,7 @@ PlexAPI==4.16.1
 pluggy==1.6.0
 pydantic==2.10.6
 pydantic_core==2.27.2
-python-dotenv==1.0.1
+python-dotenv==1.2.1
 redis==7.1.0
 requests==2.32.3
 requests-cache==1.2.1
