@@ -1337,7 +1337,6 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   // Update BatchActions to be a modal component
   const BatchActionsModal = ({ selectedCount, onRemove, onClear, onHide, visible, onClose }) => {
-    console.log('BatchActionsModal render:', { visible, selectedCount }); // Debug log
     return (
       <Modal
         open={visible}
