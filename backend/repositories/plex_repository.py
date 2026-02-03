@@ -228,3 +228,49 @@ class PlexRepository(RemotePlaylistRepository):
                 playlist.removeItems(playlist.items())
         except Exception as e:
             logging.error(f"Error clearing Plex playlist {self.playlist_name}: {e}")
+    
+    def search_tracks(self, query: str, title: str = None, artist: str = None, album: str = None, max_results: int = 20):
+        """Search for tracks in Plex library"""
+        try:
+            # Build search filters
+            filters = {}
+            if artist:
+                filters["artist.title"] = artist
+            if album:
+                filters["album.title"] = album
+            
+            # Use title if provided, otherwise fall back to general query
+            search_title = title if title else query
+            
+            # Search for tracks in Plex library
+            plex_items = self.server.library.section(self.plex_library).search(
+                libtype="track",
+                title=search_title,
+                filters=filters,
+                maxresults=max_results
+            )
+            
+            results = []
+            for item in plex_items:
+                try:
+                    artist_obj = item.artist()
+                    album_obj = item.album()
+                    
+                    result = {
+                        "title": item.title,
+                        "artist": artist_obj.title if artist_obj else "Unknown Artist",
+                        "album": album_obj.title if album_obj else "Unknown Album",
+                        "service": "plex",
+                        "plex_rating_key": str(item.ratingKey),
+                        "score": 0
+                    }
+                    results.append(result)
+                except Exception as e:
+                    logging.warning(f"Error processing Plex item {item.title}: {e}")
+                    continue
+            
+            return results
+            
+        except Exception as e:
+            logging.error(f"Error searching Plex: {e}")
+            raise e
