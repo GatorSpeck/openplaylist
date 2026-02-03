@@ -9,9 +9,15 @@ export interface PlexSearchResult {
 }
 
 export class PlexRepository {
-  async searchTracks(query: string): Promise<PlexSearchResult[]> {
+  async searchTracks(query: string, title?: string, artist?: string, album?: string): Promise<PlexSearchResult[]> {
     try {
-      const response = await fetch(`/api/plex/search?query=${encodeURIComponent(query)}`);
+      // Build query parameters
+      const params = new URLSearchParams({ query });
+      if (title) params.append('title', title);
+      if (artist) params.append('artist', artist);
+      if (album) params.append('album', album);
+      
+      const response = await fetch(`/api/plex/search?${params.toString()}`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);

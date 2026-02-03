@@ -15,11 +15,19 @@ interface TrackDetailsModalProps {
 }
 
 const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({ 
-  entry, 
+  entry: entryProp, 
   playlistId, 
   onClose, 
   onEntryUpdated 
 }) => {
+  // Use local state for entry so we can update it immediately without waiting for parent
+  const [entry, setEntry] = useState(entryProp);
+  
+  // Update local entry state when prop changes
+  useEffect(() => {
+    setEntry(entryProp);
+  }, [entryProp]);
+  
   const [playlists, setPlaylists] = useState([]);
   const [showLinkSection, setShowLinkSection] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
@@ -45,6 +53,11 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
   const [isSearchingPlex, setIsSearchingPlex] = useState(false);
   const [showPlexSearch, setShowPlexSearch] = useState(false);
   const [plexSearchQuery, setPlexSearchQuery] = useState(() => `${entry.getArtist()} ${entry.getTitle()}`.trim());
+  const [plexSearchFields, setPlexSearchFields] = useState({
+    title: entry.getTitle() || '',
+    artist: entry.getArtist() || '',
+    album: entry.getAlbum() || ''
+  });
   const [showFullSizeArt, setShowFullSizeArt] = useState(false);
   const [modalAlbumArt, setModalAlbumArt] = useState(null);
   
@@ -335,7 +348,26 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
         onEntryUpdated(updatedEntry);
       }
       
-      onClose();
+      // Update local entry state immediately for UI responsiveness
+      setEntry(updatedEntry);
+      
+      // Clear external link input if this was an external source
+      if (sourceType !== 'local') {
+        const inputFieldMapping = {
+          'lastfm': 'last_fm_url',
+          'spotify': 'spotify_uri', 
+          'youtube': 'youtube_url',
+          'musicbrainz': 'mbid',
+          'plex': 'plex_rating_key'
+        };
+        const inputField = inputFieldMapping[sourceType];
+        if (inputField) {
+          setExternalLinkInputs(prev => ({ 
+            ...prev, 
+            [inputField]: '' 
+          }));
+        }
+      }
     } catch (error) {
       console.error(`Error unlinking ${sourceType}:`, error);
       alert(`Failed to unlink ${sourceType}. Please try again.`);
@@ -455,8 +487,24 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
   const handleSearchPlex = async () => {
     setIsSearchingPlex(true);
     try {
-      const query = plexSearchQuery.trim() || `${entry.getArtist()} ${entry.getTitle()}`.trim();
-      const results = await plexRepository.searchTracks(query);
+      // Build query from individual fields, fallback to combined query
+      let query = '';
+      if (plexSearchFields.title && plexSearchFields.artist) {
+        query = `${plexSearchFields.artist} ${plexSearchFields.title}`;
+      } else if (plexSearchFields.title) {
+        query = plexSearchFields.title;
+      } else if (plexSearchFields.artist) {
+        query = plexSearchFields.artist;
+      } else {
+        query = plexSearchQuery.trim() || `${entry.getArtist()} ${entry.getTitle()}`.trim();
+      }
+      
+      const results = await plexRepository.searchTracks(
+        query, 
+        plexSearchFields.title, 
+        plexSearchFields.artist, 
+        plexSearchFields.album
+      );
       
       setPlexSearchResults(results || []);
       setShowPlexSearch(true);
@@ -515,15 +563,18 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
         onEntryUpdated(updatedEntry);
       }
       
-      // Close search results
+      // Update local entry state immediately for UI responsiveness
+      setEntry(updatedEntry);
+      
+      // Close search results but keep the main modal open
       setShowPlexSearch(false);
       setPlexSearchResults([]);
       setLinkingExternal(null);
       
-      // Also fill in the manual input field for user visibility
+      // Clear the manual input field since it's now linked
       setExternalLinkInputs(prev => ({ 
         ...prev, 
-        plex_rating_key: plexRatingKey 
+        plex_rating_key: '' 
       }));
       
     } catch (error) {
@@ -784,28 +835,52 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                     </button>
                   </div>
                   
-                  <div className="search-input-group">
-                    <label htmlFor="plex-search-query">Search Query:</label>
-                    <input
-                      id="plex-search-query"
-                      type="text"
-                      value={plexSearchQuery}
-                      onChange={(e) => setPlexSearchQuery(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && plexSearchQuery.trim()) {
-                          handleSearchPlex();
-                        }
-                      }}
-                      placeholder="Enter artist and/or track name..."
-                      className="search-input"
-                    />
-                    <button 
-                      onClick={handleSearchPlex} 
-                      disabled={isSearchingPlex || !plexSearchQuery.trim()}
-                      className="search-button"
-                    >
-                      {isSearchingPlex ? 'Searching...' : 'Search Plex'}
-                    </button>
+                  <div className="search-fields-group">
+                    <div className="search-field">
+                      <label htmlFor="plex-search-title">Title:</label>
+                      <input
+                        id="plex-search-title"
+                        type="text"
+                        value={plexSearchFields.title}
+                        onChange={(e) => setPlexSearchFields(prev => ({ ...prev, title: e.target.value }))}
+                        placeholder="Enter track title..."
+                        className="search-input"
+                      />
+                    </div>
+                    
+                    <div className="search-field">
+                      <label htmlFor="plex-search-artist">Artist:</label>
+                      <input
+                        id="plex-search-artist"
+                        type="text"
+                        value={plexSearchFields.artist}
+                        onChange={(e) => setPlexSearchFields(prev => ({ ...prev, artist: e.target.value }))}
+                        placeholder="Enter artist name..."
+                        className="search-input"
+                      />
+                    </div>
+                    
+                    <div className="search-field">
+                      <label htmlFor="plex-search-album">Album:</label>
+                      <input
+                        id="plex-search-album"
+                        type="text"
+                        value={plexSearchFields.album}
+                        onChange={(e) => setPlexSearchFields(prev => ({ ...prev, album: e.target.value }))}
+                        placeholder="Enter album name..."
+                        className="search-input"
+                      />
+                    </div>
+                    
+                    <div className="search-actions">
+                      <button 
+                        onClick={handleSearchPlex} 
+                        disabled={isSearchingPlex || (!plexSearchFields.title && !plexSearchFields.artist)}
+                        className="search-button"
+                      >
+                        {isSearchingPlex ? 'Searching...' : 'Search Plex'}
+                      </button>
+                    </div>
                   </div>
                   
                   {plexSearchResults.length > 0 ? (

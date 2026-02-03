@@ -1052,6 +1052,9 @@ def import_plex_playlist(
 @router.get("/plex/search")
 def search_plex_tracks(
     query: str = Query(..., description="Search query for Plex tracks"),
+    title: Optional[str] = Query(None, description="Track title"),
+    artist: Optional[str] = Query(None, description="Artist name"),
+    album: Optional[str] = Query(None, description="Album name"),
     plex_repo: PlexRepository = Depends(get_plex_repository)
 ):
     """Search for tracks in Plex library"""
@@ -1059,23 +1062,34 @@ def search_plex_tracks(
         if not plex_repo.is_authenticated():
             raise HTTPException(status_code=401, detail="Plex authentication required")
         
+        # Build search filters
+        filters = {}
+        if artist:
+            filters["artist.title"] = artist
+        if album:
+            filters["album.title"] = album
+        
+        # Use title if provided, otherwise fall back to general query
+        search_title = title if title else query
+        
         # Search for tracks in Plex library
         plex_items = plex_repo.server.library.section(plex_repo.plex_library).search(
             libtype="track",
-            title=query,
+            title=search_title,
+            filters=filters,
             maxresults=20
         )
         
         results = []
         for item in plex_items:
             try:
-                artist = item.artist()
-                album = item.album()
+                artist_obj = item.artist()
+                album_obj = item.album()
                 
                 result = TrackSearchResult(
                     title=item.title,
-                    artist=artist.title if artist else "Unknown Artist",
-                    album=album.title if album else "Unknown Album",
+                    artist=artist_obj.title if artist_obj else "Unknown Artist",
+                    album=album_obj.title if album_obj else "Unknown Album",
                     service="plex",
                     plex_rating_key=str(item.ratingKey),
                     score=0
