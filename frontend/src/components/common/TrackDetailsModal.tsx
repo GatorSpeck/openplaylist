@@ -5,6 +5,7 @@ import playlistRepository from '../../repositories/PlaylistRepository';
 import libraryRepository from '../../repositories/LibraryRepository';
 import PlaylistEntry from '../../lib/PlaylistEntry';
 import { LastFMRepository } from '../../repositories/LastFMRepository';
+import { plexRepository, PlexSearchResult } from '../../repositories/PlexRepository';
 
 interface TrackDetailsModalProps {
   entry: PlaylistEntry;
@@ -40,6 +41,10 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
   const [lastFmSearchResults, setLastFmSearchResults] = useState([]);
   const [isSearchingLastFm, setIsSearchingLastFm] = useState(false);
   const [showLastFmSearch, setShowLastFmSearch] = useState(false);
+  const [plexSearchResults, setPlexSearchResults] = useState<PlexSearchResult[]>([]);
+  const [isSearchingPlex, setIsSearchingPlex] = useState(false);
+  const [showPlexSearch, setShowPlexSearch] = useState(false);
+  const [plexSearchQuery, setPlexSearchQuery] = useState(() => `${entry.getArtist()} ${entry.getTitle()}`.trim());
   const [showFullSizeArt, setShowFullSizeArt] = useState(false);
   const [modalAlbumArt, setModalAlbumArt] = useState(null);
   
@@ -447,6 +452,87 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
     }
   };
 
+  const handleSearchPlex = async () => {
+    setIsSearchingPlex(true);
+    try {
+      const query = plexSearchQuery.trim() || `${entry.getArtist()} ${entry.getTitle()}`.trim();
+      const results = await plexRepository.searchTracks(query);
+      
+      setPlexSearchResults(results || []);
+      setShowPlexSearch(true);
+    } catch (error) {
+      console.error('Error searching Plex:', error);
+      alert('Failed to search Plex. Please try again.');
+    } finally {
+      setIsSearchingPlex(false);
+    }
+  };
+
+  const handleSelectPlexResult = async (result: PlexSearchResult) => {
+    if (!playlistId) {
+      console.error('Cannot link without playlist ID');
+      return;
+    }
+
+    const plexRatingKey = result.plex_rating_key;
+    if (!plexRatingKey) {
+      alert('Selected result does not have a Plex rating key');
+      return;
+    }
+
+    setLinkingExternal('plex_rating_key');
+    
+    try {
+      const linkRequest = {
+        track_id: entry.id,
+        updates: {
+          plex_rating_key: plexRatingKey
+        }
+      };
+
+      const response = await fetch(`/api/playlists/${playlistId}/links`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(linkRequest)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Create updated entry with the new Plex rating key
+      const updatedEntry = new PlaylistEntry({
+        ...entry,
+        details: {
+          ...entry.details,
+          plex_rating_key: plexRatingKey
+        }
+      });
+
+      if (onEntryUpdated) {
+        onEntryUpdated(updatedEntry);
+      }
+      
+      // Close search results
+      setShowPlexSearch(false);
+      setPlexSearchResults([]);
+      setLinkingExternal(null);
+      
+      // Also fill in the manual input field for user visibility
+      setExternalLinkInputs(prev => ({ 
+        ...prev, 
+        plex_rating_key: plexRatingKey 
+      }));
+      
+    } catch (error) {
+      console.error('Error linking Plex result:', error);
+      alert('Failed to link Plex result. Please try again.');
+      setLinkingExternal(null);
+    }
+  };
+
   const handleSaveNotes = async () => {
     if (!playlistId) {
       console.error('Cannot save notes without playlist ID');
@@ -566,6 +652,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
     
     const unlinkType = unlinkTypeMapping[sourceType];
     const isLastFm = sourceType === 'last_fm_url';
+    const isPlex = sourceType === 'plex_rating_key';
     
     return (
       <div className="external-source-item" key={sourceType}>
@@ -620,6 +707,15 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                     {isSearchingLastFm ? 'Searching...' : 'Search Last.fm'}
                   </button>
                 )}
+                {isPlex && (
+                  <button 
+                    onClick={handleSearchPlex}
+                    disabled={isSearchingPlex}
+                    className="search-button"
+                  >
+                    {isSearchingPlex ? 'Searching...' : 'Search Plex'}
+                  </button>
+                )}
               </div>
               
               {/* Last.fm Search Results */}
@@ -671,6 +767,73 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                     </div>
                   ) : (
                     <p className="no-results">No results found. Try searching with different terms or enter the URL manually.</p>
+                  )}
+                </div>
+              )}
+              
+              {/* Plex Search Results */}
+              {isPlex && showPlexSearch && (
+                <div className="plex-search-results">
+                  <div className="search-header">
+                    <h4>Plex Search Results:</h4>
+                    <button 
+                      onClick={() => setShowPlexSearch(false)}
+                      className="close-search-button"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  
+                  <div className="search-input-group">
+                    <label htmlFor="plex-search-query">Search Query:</label>
+                    <input
+                      id="plex-search-query"
+                      type="text"
+                      value={plexSearchQuery}
+                      onChange={(e) => setPlexSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && plexSearchQuery.trim()) {
+                          handleSearchPlex();
+                        }
+                      }}
+                      placeholder="Enter artist and/or track name..."
+                      className="search-input"
+                    />
+                    <button 
+                      onClick={handleSearchPlex} 
+                      disabled={isSearchingPlex || !plexSearchQuery.trim()}
+                      className="search-button"
+                    >
+                      {isSearchingPlex ? 'Searching...' : 'Search Plex'}
+                    </button>
+                  </div>
+                  
+                  {plexSearchResults.length > 0 ? (
+                    <div className="search-results-list">
+                      {plexSearchResults.map((result, index) => (
+                        <div key={index} className="search-result-item">
+                          <div className="result-content">
+                            <div className="result-info">
+                              <strong>{result.title}</strong>
+                              {result.artist && <><br /><em>by {result.artist}</em></>}
+                              {result.album && <><br /><span>Album: {result.album}</span></>}
+                              <br /><small>Rating Key: {result.plex_rating_key}</small>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => handleSelectPlexResult(result)}
+                            className="select-button"
+                            disabled={linkingExternal === 'plex_rating_key'}
+                          >
+                            {linkingExternal === 'plex_rating_key' ? 'Linking...' : 'Select'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    plexSearchResults.length === 0 && !isSearchingPlex && (
+                      <p className="no-results">No results found. Try searching with different terms or enter the rating key manually.</p>
+                    )
                   )}
                 </div>
               )}

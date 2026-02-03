@@ -1049,6 +1049,48 @@ def import_plex_playlist(
     
     return new_playlist
 
+@router.get("/plex/search")
+def search_plex_tracks(
+    query: str = Query(..., description="Search query for Plex tracks"),
+    plex_repo: PlexRepository = Depends(get_plex_repository)
+):
+    """Search for tracks in Plex library"""
+    try:
+        if not plex_repo.is_authenticated():
+            raise HTTPException(status_code=401, detail="Plex authentication required")
+        
+        # Search for tracks in Plex library
+        plex_items = plex_repo.server.library.section(plex_repo.plex_library).search(
+            libtype="track",
+            title=query,
+            maxresults=20
+        )
+        
+        results = []
+        for item in plex_items:
+            try:
+                artist = item.artist()
+                album = item.album()
+                
+                result = TrackSearchResult(
+                    title=item.title,
+                    artist=artist.title if artist else "Unknown Artist",
+                    album=album.title if album else "Unknown Album",
+                    service="plex",
+                    plex_rating_key=str(item.ratingKey),
+                    score=0
+                )
+                results.append(result)
+            except Exception as e:
+                logging.warning(f"Error processing Plex item {item.title}: {e}")
+                continue
+        
+        return results
+        
+    except Exception as e:
+        logging.error(f"Error searching Plex: {e}")
+        raise HTTPException(status_code=500, detail=f"Error searching Plex: {str(e)}")
+
 @router.post("/youtube/import")
 def import_youtube_playlist(
     params: dict,
