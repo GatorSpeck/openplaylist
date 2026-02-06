@@ -246,7 +246,7 @@ class PlexRepository(RemotePlaylistRepository):
             search_title = title if title else query
             
             # Search for tracks in Plex library
-            plex_items = self.server.library.section(self.plex_library).search(
+            plex_items = self.section.search(
                 libtype="track",
                 title=search_title,
                 filters=filters,
@@ -255,14 +255,11 @@ class PlexRepository(RemotePlaylistRepository):
             
             results = []
             for item in plex_items:
-                try:
-                    artist_obj = item.grandparentTitle
-                    album_obj = item.parentTitle
-                    
+                try:                    
                     result = {
                         "title": item.title,
-                        "artist": artist_obj.title if artist_obj else "Unknown Artist",
-                        "album": album_obj.title if album_obj else "Unknown Album",
+                        "artist": item.grandparentTitle,
+                        "album": item.parentTitle,
                         "service": "plex",
                         "plex_rating_key": str(item.ratingKey),
                         "score": 0
