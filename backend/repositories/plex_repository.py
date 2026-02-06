@@ -10,13 +10,14 @@ from typing import List, Optional, Dict, Any
 from tqdm import tqdm
 from lib.normalize   import normalize_title
 from lib.match import TrackStub, get_match_score
+from lib.timing import timing
 
 from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz
 
 class PlexRepository(RemotePlaylistRepository):
     """Repository for Plex playlists"""
     
-    def __init__(self, session, config: Dict[str, str] = None, music_file_repo=None):
+    def __init__(self, session, config: Dict[str, str] = None, music_file_repo=None, redis_session=None):
         super().__init__(session, config)
         
         # Store the music file repository for updating rating keys
@@ -27,12 +28,16 @@ class PlexRepository(RemotePlaylistRepository):
         self.plex_token = self.config.get("token") or os.getenv("PLEX_TOKEN")
         self.plex_library = self.config.get("library") or os.getenv("PLEX_LIBRARY", "Music")
         self.playlist_name = self.config.get("playlist_name")
+        self.redis_session = redis_session
         
         if not self.plex_endpoint or not self.plex_token:
             raise ValueError("Plex endpoint and token must be provided")
             
         self.server = PlexServer(self.plex_endpoint, token=self.plex_token)
 
+        self.section = self.server.library.section(self.plex_library)
+
+    @timing
     def fetch_media_item(self, item: PlaylistItem) -> Any:
         """Fetch a media item from Plex"""
         try:
@@ -51,13 +56,9 @@ class PlexRepository(RemotePlaylistRepository):
             def score_plex_results(items):
                 match_stub = TrackStub(artist=item.artist, title=item.title, album=item.album)
                 for plex_item in items:
-                    artist = plex_item.artist()
-                    if artist:
-                        artist = artist.title
+                    artist = plex_item.grandparentTitle
                     
-                    album = plex_item.album()
-                    if album:
-                        album = album.title
+                    album = plex_item.parentTitle
                         
                     score = get_match_score(match_stub, TrackStub(
                         artist=artist,
@@ -79,7 +80,7 @@ class PlexRepository(RemotePlaylistRepository):
             if item.album:
                 filters["album.title"] = item.album
             
-            plex_items = self.server.library.section(self.plex_library).search(
+            plex_items = self.section.search(
                 libtype="track",
                 title=normalized_title,
                 filters=filters,
@@ -88,13 +89,13 @@ class PlexRepository(RemotePlaylistRepository):
 
             plex_items = score_plex_results(plex_items)
 
-            if plex_items and plex_items[0].score == 30:
+            if plex_items and plex_items[0].score >= 30:
                 # Update music file with Plex rating key if we have the repository
                 self._update_music_file_plex_rating_key(item, str(plex_items[0].ratingKey))
                 return plex_items[0]
 
             # no exact match - try a wider search
-            plex_items = self.server.library.section(self.plex_library).search(
+            plex_items = self.section.search(
                 libtype="track",
                 title=normalized_title,
                 maxresults=50
@@ -148,6 +149,7 @@ class PlexRepository(RemotePlaylistRepository):
         playlist = PlexPlaylist.create(self.server, title=playlist_name, items=audio_items)
         return playlist
     
+    @timing
     def get_playlist_snapshot(self, playlist_name: str) -> Optional[PlaylistSnapshot]:
         """Get a snapshot of a Plex playlist"""
         try:
@@ -168,10 +170,10 @@ class PlexRepository(RemotePlaylistRepository):
             )
 
             for item in tqdm(playlist.items(), desc="Fetching Plex playlist entries"):
-                album = item.album()
+                album = item.parentTitle
                 i = PlaylistItem(
-                    artist=item.artist().title,
-                    album=album.title if album else None,
+                    artist=item.grandparentTitle,
+                    album=album,
                     title=item.title,
                     local_path=item.media[0].parts[0].file if item.media else None,
                     plex_rating_key=str(item.ratingKey),
@@ -229,6 +231,7 @@ class PlexRepository(RemotePlaylistRepository):
         except Exception as e:
             logging.error(f"Error clearing Plex playlist {self.playlist_name}: {e}")
     
+    @timing
     def search_tracks(self, query: str, title: str = None, artist: str = None, album: str = None, max_results: int = 20):
         """Search for tracks in Plex library"""
         try:
@@ -253,8 +256,8 @@ class PlexRepository(RemotePlaylistRepository):
             results = []
             for item in plex_items:
                 try:
-                    artist_obj = item.artist()
-                    album_obj = item.album()
+                    artist_obj = item.grandparentTitle
+                    album_obj = item.parentTitle
                     
                     result = {
                         "title": item.title,
