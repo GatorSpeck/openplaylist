@@ -45,7 +45,7 @@ uvicorn==0.40.0
 python-multipart==0.0.22
 
 # technically not a req, but good to have in case user needs to manually apply migrations
-alembic==1.18.1
+alembic==1.18.3
 
 # MariaDB deps
 pymysql==1.1.0
