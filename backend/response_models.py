@@ -738,17 +738,39 @@ class PlaylistItem(BaseModel):
     def __hash__(self):
         return hash(self.to_string(normalize=True))
 
+    def match_keys(self) -> List[str]:
+        keys = []
+
+        if self.spotify_uri:
+            keys.append(f"spotify:{self.spotify_uri}")
+        if self.youtube_url:
+            keys.append(f"youtube:{self.youtube_url}")
+        if self.plex_rating_key:
+            keys.append(f"plex:{self.plex_rating_key}")
+        if self.music_file_id:
+            keys.append(f"music_file:{self.music_file_id}")
+        if self.local_path:
+            keys.append(f"path:{self.local_path}")
+
+        keys.append(f"title_artist:{normalize_artist(self.artist)}:{normalize_title(self.title)}")
+        return keys
+
 class PlaylistSnapshot(BaseModel):
     name: str
     last_updated: datetime
     items: List[PlaylistItem]
     item_set: set = set()
     local_paths: set = set()
+    music_file_ids: set = set()
     youtube_uris: set = set()
     spotify_uris: set = set()
     plex_rating_keys: set = set()
 
     def has(self, item: PlaylistItem):
+        if item.music_file_id:
+            if item.music_file_id in self.music_file_ids:
+                return True
+
         if item.local_path:
             if item.local_path in self.local_paths:
                 return True
@@ -771,6 +793,8 @@ class PlaylistSnapshot(BaseModel):
         self.items.append(item)
         self.item_set.add(item.to_string(normalize=True))
 
+        if item.music_file_id:
+            self.music_file_ids.add(item.music_file_id)
         if item.local_path:
             self.local_paths.add(item.local_path)
         if item.youtube_url:
@@ -783,6 +807,10 @@ class PlaylistSnapshot(BaseModel):
     def search_track(self, item: PlaylistItem):
         # Search for a track in the playlist snapshot
         for existing_item in self.items:
+            if item.music_file_id and existing_item.music_file_id:
+                if item.music_file_id == existing_item.music_file_id:
+                    return existing_item
+
             if item.local_path and existing_item.local_path:
                 if item.local_path == existing_item.local_path:
                     return existing_item
@@ -803,6 +831,21 @@ class PlaylistSnapshot(BaseModel):
                 normalize_title(existing_item.title) == normalize_title(item.title)):
                 return existing_item
             
+        return None
+
+    def build_key_index(self) -> Dict[str, PlaylistItem]:
+        index: Dict[str, PlaylistItem] = {}
+        for item in self.items:
+            for key in item.match_keys():
+                if key not in index:
+                    index[key] = item
+        return index
+
+    def find_by_keys(self, item: PlaylistItem) -> Optional[PlaylistItem]:
+        index = self.build_key_index()
+        for key in item.match_keys():
+            if key in index:
+                return index[key]
         return None
 
     def diff(self, other):
