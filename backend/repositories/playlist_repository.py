@@ -42,6 +42,7 @@ from enum import IntEnum
 from lib.normalize import normalize_title
 from lib.match import TrackStub, get_match_score, AlbumStub, get_album_match_score, get_artist_match_score
 from tqdm import tqdm
+import time
 
 import dotenv
 dotenv.load_dotenv(override=True)
@@ -735,6 +736,8 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
     def add_music_file(self, playlist_id: int, item: List[PlaylistItem], normalize=False):
         if not isinstance(item, list):
             item = [item]
+
+        logging.info("Matching playlist entries to local music files...")
         
         music_files = []
         for i in tqdm(item):
@@ -745,30 +748,41 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                 if PLEX_MAP_SOURCE and PLEX_MAP_TARGET:
                     path_to_use = i.local_path.replace(PLEX_MAP_TARGET, PLEX_MAP_SOURCE)
 
+                start_time = time.time()
                 matches = (
                     self.session.query(MusicFileDB)
                     .join(LocalFileDB, MusicFileDB.local_file)
                     .filter(LocalFileDB.path == path_to_use)
                     .one_or_none()
                 )
+                end_time = time.time()
+                # logging.info(f"Lookup by path took {end_time - start_time:.2f} seconds")
                 
                 if matches:
                     music_file_entry = MusicFileEntry(
                         music_file_id=matches.id,
-                        details=MusicFile.from_orm(matches),
+                        details=MusicFile.from_orm(matches, include_genres=False),
                     )
                     music_files.append(music_file_entry)
                     continue
 
+            # fallback to lookup by title
             # TODO: refactor to use music_file repo
+            start_time = time.time()
             matches = (
                 self.session.query(MusicFileDB)
                 .filter(
                     func.lower(MusicFileDB.title) == normalize_title(i.title) if normalize 
-                    else func.lower(MusicFileDB.title) == func.lower(i.title)
+                    else func.lower(MusicFileDB.title) == func.lower(i.title),
+                    func.lower(MusicFileDB.artist) == normalize_title(i.artist) if normalize 
+                    else func.lower(MusicFileDB.artist) == func.lower(i.artist),
+                    func.lower(MusicFileDB.album) == normalize_title(i.album) if normalize 
+                    else func.lower(MusicFileDB.album) == func.lower(i.album)
                 )
                 .all()
             )
+            end_time = time.time()
+            # logging.info(f"Lookup by title took {end_time - start_time:.2f} seconds")
 
             match_stub = TrackStub(artist=i.artist, title=i.title, album=i.album)
 
@@ -806,7 +820,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             # Create a new MusicFileEntryDB object
             music_file_entry = MusicFileEntry(
                 music_file_id=matches[0].id,
-                details=MusicFile.from_orm(matches[0]),
+                details=MusicFile.from_orm(matches[0], include_genres=False),
             )
 
             music_files.append(music_file_entry)
