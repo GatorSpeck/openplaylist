@@ -27,7 +27,8 @@ from response_models import (
     SearchQuery,
     SyncTarget,
     TrackDetails,
-    MusicFile
+    MusicFile,
+    PlaylistItem
 )
 from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 from sqlalchemy import select, tuple_, and_, func, or_, case
@@ -40,12 +41,16 @@ from pydantic import BaseModel
 from enum import IntEnum
 from lib.normalize import normalize_title
 from lib.match import TrackStub, get_match_score, AlbumStub, get_album_match_score, get_artist_match_score
+from tqdm import tqdm
 
 import dotenv
 dotenv.load_dotenv(override=True)
 
 import logging
 logger = logging.getLogger(__name__)
+
+PLEX_MAP_SOURCE = os.getenv("PLEX_MAP_SOURCE", None)
+PLEX_MAP_TARGET = os.getenv("PLEX_MAP_TARGET", None)
 
 def playlist_orm_to_response(playlist_entry: PlaylistEntryDB, order: Optional[int] = None, details: bool = True) -> PlaylistEntry:
     try:
@@ -727,13 +732,34 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         self.add_entries(playlist_id, items)
         return items
     
-    def add_music_file(self, playlist_id: int, item, normalize=False):
+    def add_music_file(self, playlist_id: int, item: List[PlaylistItem], normalize=False):
         if not isinstance(item, list):
             item = [item]
         
         music_files = []
-        for i in item:
+        for i in tqdm(item):
             # look up music file by path
+            if i.local_path is not None:
+                # do mapping from Plex to m3u
+                path_to_use = i.local_path
+                if PLEX_MAP_SOURCE and PLEX_MAP_TARGET:
+                    path_to_use = i.local_path.replace(PLEX_MAP_TARGET, PLEX_MAP_SOURCE)
+
+                matches = (
+                    self.session.query(MusicFileDB)
+                    .join(LocalFileDB, MusicFileDB.local_file)
+                    .filter(LocalFileDB.path == path_to_use)
+                    .one_or_none()
+                )
+                
+                if matches:
+                    music_file_entry = MusicFileEntry(
+                        music_file_id=matches.id,
+                        details=MusicFile.from_orm(matches),
+                    )
+                    music_files.append(music_file_entry)
+                    continue
+
             # TODO: refactor to use music_file repo
             matches = (
                 self.session.query(MusicFileDB)
