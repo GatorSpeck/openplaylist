@@ -83,7 +83,6 @@ class Database:
         
         cls._engine = create_engine(
             database_url,
-            echo=(os.getenv("LOG_LEVEL", "INFO") == "DEBUG"),
             # SQLite specific connection args
             connect_args={"check_same_thread": False},
             # Use StaticPool to maintain the same connection for in-memory DB
@@ -111,7 +110,6 @@ class Database:
             # Try to connect to the database directly
             cls._engine = create_engine(
                 database_url, 
-                echo=(os.getenv("LOG_LEVEL", "INFO") == "DEBUG"),
                 connect_args=connect_args,
                 pool_pre_ping=True,
                 pool_recycle=3600,
@@ -154,7 +152,6 @@ class Database:
                                     # Retry the original connection
                                     cls._engine = create_engine(
                                         database_url, 
-                                        echo=(os.getenv("LOG_LEVEL", "INFO") == "DEBUG"),
                                         connect_args=connect_args,
                                         pool_pre_ping=True,
                                         pool_recycle=3600,
@@ -201,7 +198,6 @@ class Database:
                         # Now connect with the original user
                         cls._engine = create_engine(
                             database_url, 
-                            echo=(os.getenv("LOG_LEVEL", "INFO") == "DEBUG"),
                             connect_args=connect_args,
                             pool_pre_ping=True,
                             pool_recycle=3600,
@@ -263,7 +259,6 @@ class Database:
             # Now connect to the created database
             cls._engine = create_engine(
                 database_url, 
-                echo=(os.getenv("LOG_LEVEL", "INFO") == "DEBUG"),
                 connect_args=connect_args,
                 pool_pre_ping=True,
                 pool_recycle=3600,

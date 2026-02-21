@@ -149,6 +149,9 @@ async def startup_event():
         Database()  # This triggers the database creation/connection logic
         logging.info("Database initialization completed")
         
+        # Create the database tables
+        Base.metadata.create_all(bind=Database.get_engine())
+        
         # Initialize task scheduler
         task_scheduler.start()
         logging.info("Task scheduler initialized")
@@ -169,8 +172,9 @@ app.add_middleware(TimingMiddleware)
 
 dotenv.load_dotenv(override=True)
 
-# read log level from environment variable
+# read log levels from environment variables
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+sqlalchemy_log_level = os.getenv("SQLALCHEMY_LOG_LEVEL", log_level).upper()
 
 # Set up logging
 logging.basicConfig(
@@ -178,6 +182,10 @@ logging.basicConfig(
     format='%(asctime)s.%(msecs)03d - %(levelname)s - %(name)s:%(filename)s:%(lineno)d - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+
+# Configure specific logger verbosity
+for logger in ("sqlalchemy", "sqlalchemy.engine", "sqlalchemy.engine.Engine", "sqlalchemy.pool",):
+    logging.getLogger(logger).setLevel(sqlalchemy_log_level)
 
 # Create global log handler instance
 log_handler = LogHandler()
@@ -195,9 +203,6 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
-
-# Create the database tables
-Base.metadata.create_all(bind=Database.get_engine())
 
 SUPPORTED_FILETYPES = (".mp3", ".flac", ".wav", ".ogg", ".m4a")
 

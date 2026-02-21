@@ -103,7 +103,7 @@ class MusicFile(MusicEntity, TrackDetails, LocalTrackDetails, ExternalTrackDetai
         return self.artist
 
     @classmethod
-    def from_orm(cls, obj: MusicFileDB):
+    def from_orm(cls, obj: MusicFileDB, include_genres=True) -> "MusicFile":
         return cls(
             id=obj.id,
             path=obj.path,
@@ -117,7 +117,7 @@ class MusicFile(MusicEntity, TrackDetails, LocalTrackDetails, ExternalTrackDetai
             year=obj.year,
             length=obj.length,
             publisher=obj.publisher,
-            genres=[str(s.genre) for s in obj.genres],
+            genres=[str(s.genre) for s in obj.genres] if include_genres else [],
             missing=obj.missing,
             rating=obj.rating,
             exact_release_date=obj.exact_release_date,

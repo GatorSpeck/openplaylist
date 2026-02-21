@@ -27,7 +27,8 @@ from response_models import (
     SearchQuery,
     SyncTarget,
     TrackDetails,
-    MusicFile
+    MusicFile,
+    PlaylistItem
 )
 from sqlalchemy.orm import joinedload, aliased, contains_eager, selectin_polymorphic, selectinload, with_polymorphic
 from sqlalchemy import select, tuple_, and_, func, or_, case
@@ -40,12 +41,17 @@ from pydantic import BaseModel
 from enum import IntEnum
 from lib.normalize import normalize_title
 from lib.match import TrackStub, get_match_score, AlbumStub, get_album_match_score, get_artist_match_score
+from tqdm import tqdm
+import time
 
 import dotenv
 dotenv.load_dotenv(override=True)
 
 import logging
 logger = logging.getLogger(__name__)
+
+PLEX_MAP_SOURCE = os.getenv("PLEX_MAP_SOURCE", None)
+PLEX_MAP_TARGET = os.getenv("PLEX_MAP_TARGET", None)
 
 def playlist_orm_to_response(playlist_entry: PlaylistEntryDB, order: Optional[int] = None, details: bool = True) -> PlaylistEntry:
     try:
@@ -727,63 +733,132 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         self.add_entries(playlist_id, items)
         return items
     
-    def add_music_file(self, playlist_id: int, item, normalize=False):
+    def add_music_file(self, playlist_id: int, item: List[PlaylistItem], normalize=False):
         if not isinstance(item, list):
             item = [item]
+
+        logging.info("Matching playlist entries to local music files...")
         
-        music_files = []
+        def _chunks(values, chunk_size):
+            for idx in range(0, len(values), chunk_size):
+                yield values[idx:idx + chunk_size]
+
+        def _normalize_value(value: Optional[str]) -> Optional[str]:
+            if value is None:
+                return None
+            value_to_use = normalize_title(value) if normalize else value
+            return value_to_use.lower()
+
+        path_candidates = []
+        item_to_path = {}
         for i in item:
-            # look up music file by path
-            # TODO: refactor to use music_file repo
-            matches = (
-                self.session.query(MusicFileDB)
-                .filter(
-                    func.lower(MusicFileDB.title) == normalize_title(i.title) if normalize 
-                    else func.lower(MusicFileDB.title) == func.lower(i.title)
-                )
+            if i.local_path is None:
+                continue
+            path_to_use = i.local_path
+            if PLEX_MAP_SOURCE and PLEX_MAP_TARGET:
+                path_to_use = i.local_path.replace(PLEX_MAP_TARGET, PLEX_MAP_SOURCE)
+            item_to_path[id(i)] = path_to_use
+            path_candidates.append(path_to_use)
+
+        music_files = []
+        path_to_music_file = {}
+        for chunk in _chunks(path_candidates, 500):
+            rows = (
+                self.session.query(LocalFileDB.path, MusicFileDB)
+                .join(MusicFileDB, LocalFileDB.music_file)
+                .filter(LocalFileDB.path.in_(chunk))
                 .all()
             )
+            for path, music_file in rows:
+                path_to_music_file[path] = music_file
 
-            match_stub = TrackStub(artist=i.artist, title=i.title, album=i.album)
+        unmatched_items = []
+        for i in tqdm(item):
+            path_to_use = item_to_path.get(id(i))
+            if path_to_use:
+                match = path_to_music_file.get(path_to_use)
+                if match:
+                    music_file_entry = MusicFileEntry(
+                        music_file_id=match.id,
+                        details=MusicFile.from_orm(match, include_genres=False),
+                    )
+                    music_files.append(music_file_entry)
+                    continue
+            unmatched_items.append(i)
 
-            for music_file in matches:
-                score = get_match_score(match_stub, TrackStub(
-                    artist=music_file.artist,
-                    title=music_file.title,
-                    album=music_file.album
-                ))
-                music_file.score = score
-            
-            matches = sorted(matches, key=lambda x: x.score, reverse=True)
-            if not matches:
-                logging.warning(f"No matching music file found for {i.artist} - {i.album} - {i.title}")
-
-                requested_track = MusicFileEntry(
-                    details=MusicFile(
-                        artist=i.artist,
-                        title=i.title,
-                        album=i.album,
-                        spotify_uri=i.spotify_uri,
-                        youtube_url=i.youtube_url,
-                        plex_rating_key=i.plex_rating_key
-                    ),
+        if unmatched_items:
+            key_items = []
+            for i in unmatched_items:
+                key_items.append(
+                    (
+                        _normalize_value(i.title),
+                        _normalize_value(i.artist),
+                        _normalize_value(i.album)
+                    )
                 )
-                
-                music_files.append(requested_track)
-                continue
-            
-            # enrich the first match with external details if they exist
-            matches[0].spotify_uri = i.spotify_uri
-            matches[0].youtube_url = i.youtube_url
-            matches[0].plex_rating_key = i.plex_rating_key
-            
-            # Create a new MusicFileEntryDB object
-            music_file_entry = MusicFileEntry(
-                music_file_id=matches[0].id,
-                details=MusicFile.from_orm(matches[0]),
-            )
 
-            music_files.append(music_file_entry)
+            key_to_matches = {}
+            unique_keys = list(dict.fromkeys(key_items))
+            for chunk in _chunks(unique_keys, 500):
+                matches = (
+                    self.session.query(MusicFileDB)
+                    .filter(
+                        tuple_(
+                            func.lower(MusicFileDB.title),
+                            func.lower(MusicFileDB.artist),
+                            func.lower(MusicFileDB.album)
+                        ).in_(chunk)
+                    )
+                    .all()
+                )
+                for music_file in matches:
+                    key = (
+                        music_file.title.lower() if music_file.title else None,
+                        music_file.artist.lower() if music_file.artist else None,
+                        music_file.album.lower() if music_file.album else None
+                    )
+                    key_to_matches.setdefault(key, []).append(music_file)
+
+            for i, key in tqdm(list(zip(unmatched_items, key_items))):
+                matches = key_to_matches.get(key, [])
+                match_stub = TrackStub(artist=i.artist, title=i.title, album=i.album)
+
+                for music_file in matches:
+                    score = get_match_score(match_stub, TrackStub(
+                        artist=music_file.artist,
+                        title=music_file.title,
+                        album=music_file.album
+                    ))
+                    music_file.score = score
+                
+                matches = sorted(matches, key=lambda x: x.score, reverse=True)
+                if not matches:
+                    logging.warning(f"No matching music file found for {i.artist} - {i.album} - {i.title}")
+
+                    requested_track = MusicFileEntry(
+                        details=MusicFile(
+                            artist=i.artist,
+                            title=i.title,
+                            album=i.album,
+                            spotify_uri=i.spotify_uri,
+                            youtube_url=i.youtube_url,
+                            plex_rating_key=i.plex_rating_key
+                        ),
+                    )
+                    
+                    music_files.append(requested_track)
+                    continue
+                
+                matches[0].spotify_uri = i.spotify_uri
+                matches[0].youtube_url = i.youtube_url
+                matches[0].plex_rating_key = i.plex_rating_key
+                
+                music_file_entry = MusicFileEntry(
+                    music_file_id=matches[0].id,
+                    details=MusicFile.from_orm(matches[0], include_genres=False),
+                )
+
+                music_files.append(music_file_entry)
         
         if not music_files:
             return None
