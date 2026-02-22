@@ -6,7 +6,7 @@ import logging
 from plexapi.server import PlexServer
 from plexapi.playlist import Playlist as PlexPlaylist
 import plexapi
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from tqdm import tqdm
 from lib.normalize   import normalize_title
 from lib.match import TrackStub, get_match_score
@@ -82,18 +82,18 @@ class PlexRepository(RemotePlaylistRepository):
 
         return None
 
-    def _ensure_playlist(self, playlist_name: str, seed_items: Optional[List[Any]] = None) -> Optional[PlexPlaylist]:
-        """Ensure playlist exists in Plex; when missing, create it with provided seed items."""
+    def _ensure_playlist(self, playlist_name: str, seed_items: Optional[List[Any]] = None) -> Tuple[Optional[PlexPlaylist], bool]:
+        """Ensure playlist exists in Plex; returns (playlist, created_with_seed)."""
         playlist = self._find_playlist(playlist_name)
         if playlist:
-            return playlist
+            return playlist, False
 
         if not seed_items:
             logging.warning(
                 "Cannot create missing Plex playlist '%s' without seed items; Plex requires items at creation time",
                 playlist_name,
             )
-            return None
+            return None, False
 
         try:
             duplicate_matches = self._find_matching_playlists(playlist_name)
@@ -102,11 +102,11 @@ class PlexRepository(RemotePlaylistRepository):
                     "Found existing Plex playlist '%s' during ensure; reusing existing playlist",
                     playlist_name,
                 )
-                return duplicate_matches[0]
-            return PlexPlaylist.create(self.server, title=playlist_name, items=seed_items)
+                return duplicate_matches[0], False
+            return PlexPlaylist.create(self.server, title=playlist_name, items=seed_items), True
         except Exception as e:
             logging.error(f"Failed to create Plex playlist '{playlist_name}': {e}")
-            return None
+            return None, False
 
     @timing
     def fetch_media_item(self, item: PlaylistItem) -> Any:
@@ -344,8 +344,8 @@ class PlexRepository(RemotePlaylistRepository):
         if plex_items:
             playlist = self._find_playlist(playlist_name)
             if not playlist:
-                playlist = self._ensure_playlist(playlist_name, seed_items=plex_items)
-                if playlist:
+                playlist, created_with_seed = self._ensure_playlist(playlist_name, seed_items=plex_items)
+                if created_with_seed:
                     return
 
             if not playlist:
