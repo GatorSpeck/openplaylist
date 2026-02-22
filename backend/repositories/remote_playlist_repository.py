@@ -402,6 +402,64 @@ class RemotePlaylistRepository(ABC):
                         logging.info(f"Removed track {change.item.to_string()} from local playlist")
                 except Exception as e:
                     logging.error(f"Error removing {change.item.to_string()} from local playlist: {e}")
+
+    def _apply_local_removal_guardrails(
+        self,
+        plan: List[SyncChange],
+        new_local_snapshot: PlaylistSnapshot,
+        sync_target: SyncTarget,
+        target_name: str,
+    ) -> List[SyncChange]:
+        """Prevent unexpectedly large remote-driven local deletions unless explicitly allowed."""
+        if not plan:
+            return plan
+
+        config = sync_target.config or {}
+        allow_bulk_receive_removals = bool(config.get("allow_bulk_receive_removals", False))
+
+        if allow_bulk_receive_removals:
+            return plan
+
+        max_receive_removal_percent = float(config.get("max_receive_removal_percent", 0.30))
+        max_receive_removal_count = int(config.get("max_receive_removal_count", 25))
+        min_local_size_for_guard = int(config.get("min_local_size_for_removal_guard", 10))
+
+        local_removes = [
+            change for change in plan
+            if change.action == 'remove' and change.source == 'remote'
+        ]
+
+        local_size = len(new_local_snapshot.items)
+        remove_count = len(local_removes)
+
+        if remove_count == 0 or local_size < min_local_size_for_guard:
+            return plan
+
+        removal_ratio = remove_count / local_size if local_size else 0
+        exceeds_count = remove_count > max_receive_removal_count
+        exceeds_ratio = removal_ratio > max_receive_removal_percent
+
+        if not (exceeds_count or exceeds_ratio):
+            return plan
+
+        blocked = len(local_removes)
+        filtered_plan = [
+            change for change in plan
+            if not (change.action == 'remove' and change.source == 'remote')
+        ]
+
+        logging.warning(
+            "Guardrail blocked %d local deletions from target %s (%d/%d = %.1f%%). "
+            "Set config allow_bulk_receive_removals=true to bypass, or tune "
+            "max_receive_removal_percent/max_receive_removal_count.",
+            blocked,
+            target_name,
+            remove_count,
+            local_size,
+            removal_ratio * 100,
+        )
+
+        return filtered_plan
     
     def sync_playlist(self, local_repo, playlist_id: int, sync_target: SyncTarget):
         """
@@ -463,6 +521,13 @@ class RemotePlaylistRepository(ABC):
             new_remote_snapshot=current_remote_snapshot,
             new_local_snapshot=local_snapshot,
             sync_target=sync_target
+        )
+
+        sync_plan = self._apply_local_removal_guardrails(
+            plan=sync_plan,
+            new_local_snapshot=local_snapshot,
+            sync_target=sync_target,
+            target_name=target_name,
         )
         
         # Apply sync plan
