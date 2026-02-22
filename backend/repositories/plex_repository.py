@@ -85,7 +85,7 @@ class PlexRepository(RemotePlaylistRepository):
     def _ensure_playlist(self, playlist_name: str, seed_items: Optional[List[Any]] = None) -> Tuple[Optional[PlexPlaylist], bool]:
         """Ensure playlist exists in Plex; returns (playlist, created_with_seed)."""
         playlist = self._find_playlist(playlist_name)
-        if playlist:
+        if playlist is not None:
             return playlist, False
 
         if not seed_items:
@@ -272,7 +272,7 @@ class PlexRepository(RemotePlaylistRepository):
                     audio_items.append(audio)
 
         existing_playlist = self._find_playlist(playlist_name)
-        if existing_playlist:
+        if existing_playlist is not None:
             try:
                 existing_playlist.removeItems(existing_playlist.items())
             except Exception as e:
@@ -343,12 +343,12 @@ class PlexRepository(RemotePlaylistRepository):
         
         if plex_items:
             playlist = self._find_playlist(playlist_name)
-            if not playlist:
+            if playlist is None:
                 playlist, created_with_seed = self._ensure_playlist(playlist_name, seed_items=plex_items)
                 if created_with_seed:
                     return
 
-            if not playlist:
+            if playlist is None:
                 logging.error(f"Unable to add items; Plex playlist '{playlist_name}' could not be created or found")
                 return
             playlist.addItems(plex_items)
@@ -356,7 +356,7 @@ class PlexRepository(RemotePlaylistRepository):
     def remove_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
         """Remove items from a Plex playlist"""
         playlist = self._find_playlist(playlist_name)
-        if not playlist:
+        if playlist is None:
             logging.info(f"Plex playlist '{playlist_name}' not found during remove; skipping")
             return
 
@@ -385,7 +385,7 @@ class PlexRepository(RemotePlaylistRepository):
         """Clear all items from the Plex playlist"""
         try:
             playlist = self._find_playlist(self.playlist_name)
-            if playlist:
+            if playlist is not None:
                 playlist.removeItems(playlist.items())
         except Exception as e:
             logging.error(f"Error clearing Plex playlist {self.playlist_name}: {e}")
