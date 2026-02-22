@@ -13,6 +13,7 @@ updates:
       prefix: "deps"
       prefix-development: "deps-dev"
       include: "scope"
+    target-branch: "develop"
 
   # Frontend npm dependencies
   - package-ecosystem: "npm"
@@ -27,7 +28,7 @@ updates:
       prefix: "deps"
       prefix-development: "deps-dev"
       include: "scope"
-
+    target-branch: "develop"
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -40,6 +41,7 @@ updates:
     commit-message:
       prefix: "ci"
       include: "scope"
+    target-branch: "develop"
 
   # Docker
   - package-ecosystem: "docker"
@@ -53,3 +55,4 @@ updates:
     commit-message:
       prefix: "docker"
       include: "scope"
+    target-branch: "develop"
