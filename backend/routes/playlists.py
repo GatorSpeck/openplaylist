@@ -3,7 +3,7 @@ from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
 from repositories.playlist_repository import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
 from fastapi import Query, APIRouter, Depends, Body, File, UploadFile
-from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, LinkChangeRequest, MusicFileEntry, RequestedAlbumEntry, Album, TrackDetails, PlaylistEntryStub, SyncTarget, SyncLogEntry
+from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, LinkChangeRequest, MusicFileEntry, RequestedAlbumEntry, Album, TrackDetails, PlaylistEntryStub, SyncTarget, SyncLogEntry, PersistentSyncLogEntry
 import json
 from repositories.playlist_repository import PlaylistRepository
 from repositories.music_file import MusicFileRepository
@@ -14,12 +14,13 @@ from fastapi.exceptions import HTTPException
 from dependencies import get_music_file_repository, get_playlist_repository, get_plex_repository
 from typing import Optional, List
 from database import Database
-from models import PlaylistDB, PlaylistEntryDB, MusicFileEntryDB
+from models import PlaylistDB, PlaylistEntryDB, MusicFileEntryDB, RemoteSyncRunDB, RemoteSyncEventDB
 import pathlib
 import os
 from repositories.requests_cache_session import requests_cache_session
 from pydantic import BaseModel
 from typing import Dict, Optional, List, Union, Any
+from datetime import datetime
 from repositories.remote_repository_factory import create_remote_repository
 from repositories.remote_playlist_repository import SyncChange, create_snapshot
 
@@ -486,6 +487,28 @@ def sync_playlist(
     """
     sync_log = []  # Initialize sync log
     remote_batch_size = 100
+    db = None
+    sync_run = None
+
+    def _persist_sync_log_entries():
+        if not db or not sync_run:
+            return
+
+        for event in sync_log:
+            db.add(RemoteSyncEventDB(
+                sync_run_id=sync_run.id,
+                playlist_id=playlist_id,
+                created_at=datetime.now(),
+                event_kind=event.eventKind or "change",
+                action=event.action,
+                track=event.track,
+                target=event.target,
+                target_name=event.target_name,
+                reason=event.reason,
+                success=event.success,
+                error=event.error,
+                event_metadata=event.metadata
+            ))
 
     def _chunk_changes(changes: List[SyncChange], chunk_size: int):
         for idx in range(0, len(changes), chunk_size):
@@ -520,6 +543,16 @@ def sync_playlist(
         playlist = repo.get_by_id(playlist_id)
         if not playlist:
             raise HTTPException(status_code=404, detail="Playlist not found")
+
+        sync_run = RemoteSyncRunDB(
+            playlist_id=playlist_id,
+            started_at=datetime.now(),
+            status="running",
+            force_push=force_push,
+        )
+        db.add(sync_run)
+        db.commit()
+        db.refresh(sync_run)
     
         local_snapshot = create_snapshot(playlist)
         
@@ -570,7 +603,8 @@ def sync_playlist(
                         target=target.service,
                         target_name=target_name,
                         reason="Remote playlist did not exist",
-                        success=True
+                        success=True,
+                        eventKind="system"
                     ))
                     logging.info(f"Creating new remote playlist for {target.service} target {target.id}")
 
@@ -603,7 +637,8 @@ def sync_playlist(
                 target="system",
                 target_name="All targets",
                 reason="Force push sync initiated - all remote content will be replaced",
-                success=True
+                success=True,
+                eventKind="system"
             ))
         
         for target_id, repo_info in remote_repos.items():
@@ -716,6 +751,27 @@ def sync_playlist(
                         if not result:
                             logging.info(f"Could not find music file for {change.item.to_string()}, adding as requested track")
                             repo.add_requested_track(playlist_id, change.item)
+                        else:
+                            unmatched_entries = [entry for entry in result if not getattr(entry, "music_file_id", None)]
+                            for unmatched_entry in unmatched_entries:
+                                unmatched_details = getattr(unmatched_entry, "details", None)
+                                unmatched_track = change.item.to_string()
+                                if unmatched_details and unmatched_details.artist and unmatched_details.title:
+                                    unmatched_track = f"{unmatched_details.artist} - {unmatched_details.title}"
+
+                                sync_log.append(SyncLogEntry(
+                                    action="failed_match",
+                                    track=unmatched_track,
+                                    target="local",
+                                    target_name=playlist.name,
+                                    reason="No local library match found; added as requested track",
+                                    success=False,
+                                    eventKind="failed_match",
+                                    metadata={
+                                        "source": change.source,
+                                        "original_reason": change.reason
+                                    }
+                                ))
                         
                         sync_log.append(SyncLogEntry(
                             action="add",
@@ -723,7 +779,8 @@ def sync_playlist(
                             target="local",
                             target_name=playlist.name,
                             reason=change.reason,
-                            success=True
+                            success=True,
+                            eventKind="change"
                         ))
 
                     if change.action == 'remove':
@@ -736,7 +793,8 @@ def sync_playlist(
                             target="local",
                             target_name=playlist.name,
                             reason=change.reason,
-                            success=True
+                            success=True,
+                            eventKind="change"
                         ))
                         
                 except Exception as e:
@@ -748,7 +806,8 @@ def sync_playlist(
                         target_name=playlist.name,
                         reason=change.reason,
                         success=False,
-                        error=str(e)
+                        error=str(e),
+                        eventKind="error"
                     ))
 
             # Apply changes to each remote target
@@ -781,8 +840,9 @@ def sync_playlist(
                                     track=change.item.to_string(),
                                     target=target.service,
                                     target_name=target_name,
-                                    reason=f"Received from {target.service} playlist",
-                                    success=True
+                                    reason=change.reason,
+                                    success=True,
+                                    eventKind="change"
                                 ))
 
                         elif change.action == "remove":
@@ -798,8 +858,9 @@ def sync_playlist(
                                     track=change.item.to_string(),
                                     target=target.service,
                                     target_name=target_name,
-                                    reason=f"Removed from {target.service} playlist",
-                                    success=True
+                                    reason=change.reason,
+                                    success=True,
+                                    eventKind="change"
                                 ))
                 
                 except Exception as e:
@@ -811,7 +872,8 @@ def sync_playlist(
                         target_name=repo_info['target_name'],
                         reason=change.reason,
                         success=False,
-                        error=str(e)
+                        error=str(e),
+                        eventKind="error"
                     ))
                     results["failed"].append({
                         "service": repo_info['target'].service,
@@ -837,8 +899,9 @@ def sync_playlist(
                                 track=change.item.to_string(),
                                 target=target.service,
                                 target_name=target_name,
-                                reason=f"Added to {target.service} playlist",
-                                success=True
+                                reason=change.reason,
+                                success=True,
+                                eventKind="change"
                             ))
                 except Exception as e:
                     logging.error(f"Failed to apply batched add sync for target {target_id}: {e}", exc_info=True)
@@ -850,7 +913,8 @@ def sync_playlist(
                             target_name=target_name,
                             reason=change.reason,
                             success=False,
-                            error=str(e)
+                            error=str(e),
+                            eventKind="error"
                         ))
                     results["failed"].append({
                         "service": target.service,
@@ -869,8 +933,9 @@ def sync_playlist(
                                 track=change.item.to_string(),
                                 target=target.service,
                                 target_name=target_name,
-                                reason=f"Removed from {target.service} playlist",
-                                success=True
+                                reason=change.reason,
+                                success=True,
+                                eventKind="change"
                             ))
                 except Exception as e:
                     logging.error(f"Failed to apply batched remove sync for target {target_id}: {e}", exc_info=True)
@@ -882,7 +947,8 @@ def sync_playlist(
                             target_name=target_name,
                             reason=change.reason,
                             success=False,
-                            error=str(e)
+                            error=str(e),
+                            eventKind="error"
                         ))
                     results["failed"].append({
                         "service": target.service,
@@ -919,8 +985,9 @@ def sync_playlist(
         first_repo = next(iter(remote_repos.values()))['repo']
         first_repo.write_snapshot(new_local_snapshot)
         
-        return {
-            "status": "success" if not results["failed"] else "partial",
+        status = "success" if not results["failed"] else "partial"
+        response_payload = {
+            "status": status,
             "synced": results["success"],
             "failed": results["failed"],
             "summary": {
@@ -930,16 +997,92 @@ def sync_playlist(
             },
             "log": sync_log  # Include the detailed sync log
         }
+
+        if sync_run:
+            sync_run.completed_at = datetime.now()
+            sync_run.status = status
+            sync_run.summary = response_payload["summary"]
+            _persist_sync_log_entries()
+            db.commit()
+
+        return response_payload
     
-    except HTTPException:
-        # Re-raise HTTP exceptions
+    except HTTPException as e:
+        if sync_run and db:
+            sync_run.completed_at = datetime.now()
+            sync_run.status = "failed"
+            sync_run.error = str(e.detail)
+            _persist_sync_log_entries()
+            db.commit()
         raise
     except Exception as e:
         logging.error(f"Failed to sync playlist: {e}", exc_info=True)
+        if sync_run and db:
+            sync_run.completed_at = datetime.now()
+            sync_run.status = "failed"
+            sync_run.error = str(e)
+            _persist_sync_log_entries()
+            db.commit()
         raise HTTPException(status_code=500, detail="Failed to sync playlist")
     finally:
-        if 'db' in locals():
+        if db:
             db.close()
+
+
+@router.get("/{playlist_id}/sync-log", response_model=List[PersistentSyncLogEntry])
+def get_playlist_sync_log(
+    playlist_id: int,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    run_id: Optional[int] = None,
+    include_success: bool = True,
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+):
+    playlist = repo.get_by_id(playlist_id)
+    if not playlist:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+
+    db = Database.get_session()
+    try:
+        query = db.query(RemoteSyncEventDB).filter(RemoteSyncEventDB.playlist_id == playlist_id)
+
+        if run_id is not None:
+            query = query.filter(RemoteSyncEventDB.sync_run_id == run_id)
+
+        if not include_success:
+            query = query.filter(RemoteSyncEventDB.success == False)
+
+        events = (
+            query
+            .order_by(RemoteSyncEventDB.created_at.desc(), RemoteSyncEventDB.id.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+        return [
+            PersistentSyncLogEntry(
+                id=event.id,
+                syncRunId=event.sync_run_id,
+                playlistId=event.playlist_id,
+                createdAt=event.created_at,
+                eventKind=event.event_kind,
+                action=event.action,
+                track=event.track,
+                target=event.target,
+                targetName=event.target_name,
+                reason=event.reason,
+                success=event.success,
+                error=event.error,
+                metadata=event.event_metadata,
+            )
+            for event in events
+        ]
+    except Exception as e:
+        logging.error(f"Failed to read sync log for playlist {playlist_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to read sync log")
+    finally:
+        db.close()
 
 def merge_sync_plans(plan1, plan2):
     """Merge two sync plans (lists of SyncChange instances) into a unified plan"""

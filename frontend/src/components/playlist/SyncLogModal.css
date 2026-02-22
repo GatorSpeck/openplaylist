@@ -65,6 +65,28 @@
   color: #333;
 }
 
+.sync-log-filter-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.sync-log-filter-btn {
+  border: 1px solid #d0d7de;
+  background: #fff;
+  color: #333;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.sync-log-filter-btn.active {
+  background: #007bff;
+  border-color: #007bff;
+  color: #fff;
+}
+
 .target-group {
   margin-bottom: 25px;
   border: 1px solid #e0e0e0;
@@ -156,6 +178,14 @@
   text-transform: capitalize;
   min-width: 80px;
   text-align: right;
+}
+
+.log-time {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  font-weight: normal;
+  color: #666;
+  text-transform: none;
 }
 
 .no-changes {

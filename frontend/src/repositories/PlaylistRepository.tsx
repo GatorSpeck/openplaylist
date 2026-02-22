@@ -10,6 +10,22 @@ interface PlaylistFilter {
     countOnly?: Boolean
 };
 
+export interface PersistentSyncLogEntry {
+    id: number;
+    syncRunId: number;
+    playlistId: number;
+    createdAt?: string;
+    eventKind: string;
+    action: string;
+    track?: string;
+    target: string;
+    targetName?: string;
+    reason?: string;
+    success: boolean;
+    error?: string;
+    metadata?: Record<string, any>;
+}
+
 export class PlaylistRepository {
     async getPlaylistDetails(playlistID: number) {
         try {
@@ -138,6 +154,29 @@ export class PlaylistRepository {
     async syncToPlex(id: number, forcePush: boolean = false) {
         const response = await axios.post(`/api/playlists/${id}/sync?force_push=${forcePush}`);
         return response.data;
+    }
+
+    async getSyncLog(id: number, params: {
+        limit?: number;
+        offset?: number;
+        runId?: number;
+        includeSuccess?: boolean;
+    } = {}) {
+        const queryParams = new URLSearchParams();
+
+        queryParams.append('limit', (params.limit ?? 200).toString());
+        queryParams.append('offset', (params.offset ?? 0).toString());
+
+        if (params.runId !== undefined) {
+            queryParams.append('run_id', params.runId.toString());
+        }
+
+        if (params.includeSuccess !== undefined) {
+            queryParams.append('include_success', params.includeSuccess.toString());
+        }
+
+        const response = await axios.get(`/api/playlists/${id}/sync-log?${queryParams.toString()}`);
+        return response.data as PersistentSyncLogEntry[];
     }
 
     async clone(fromID: number, toName: String) {
