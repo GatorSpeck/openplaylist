@@ -202,10 +202,13 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             
             # Score the results similar to Spotify implementation
             for track in search_results:
+                artist = track["artists"][0]["name"] if track.get("artists") else ""
+                title = track["title"] if track.get("title") else ""
+                album = track["album"]["name"] if track.get("album") else ""
                 score = get_match_score(match_stub, TrackStub(
-                    artist=track["artists"][0]["name"] if track.get("artists") else "",
-                    title=track["title"],
-                    album=track["album"]["name"] if track.get("album") else ""
+                    artist=artist,
+                    title=title,
+                    album=album,
                 ))
                 
                 track["score"] = score
