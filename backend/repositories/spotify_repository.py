@@ -373,13 +373,34 @@ class SpotifyRepository(RemotePlaylistRepository):
                 logging.error("Not authenticated with Spotify")
                 return None
 
+            resolved_playlist_id = None
+
+            # First try explicit ID/URI formats
+            if playlist_id:
+                if playlist_id.startswith("spotify:playlist:"):
+                    resolved_playlist_id = playlist_id.split(":")[-1]
+                elif "playlist/" in playlist_id:
+                    resolved_playlist_id = playlist_id.split("playlist/")[-1].split("?")[0]
+                else:
+                    # Could be either a raw playlist ID or a playlist name.
+                    # Try direct ID first, then fallback to name lookup.
+                    try:
+                        self.sp.playlist(playlist_id)
+                        resolved_playlist_id = playlist_id
+                    except Exception:
+                        resolved_playlist_id = self.get_playlist_id_by_name(playlist_id)
+
+            if not resolved_playlist_id:
+                logging.info(f"Spotify playlist not found for identifier: {playlist_id}")
+                return None
+
             result = PlaylistSnapshot(
                 name=playlist_id,  # Use the provided name for consistency
                 last_updated=datetime.now(get_local_tz()),  # Spotify doesn't provide last updated time
                 items=[]
             )
 
-            self.playlist_id = playlist_id
+            self.playlist_id = resolved_playlist_id
             
             # Get all tracks (handle pagination)
             tracks = []
