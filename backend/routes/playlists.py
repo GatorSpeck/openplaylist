@@ -486,6 +486,11 @@ def sync_playlist(
         playlist_id: The ID of the playlist to sync
     """
     sync_log = []  # Initialize sync log
+    remote_batch_size = 100
+
+    def _chunk_changes(changes: List[SyncChange], chunk_size: int):
+        for idx in range(0, len(changes), chunk_size):
+            yield changes[idx:idx + chunk_size]
     
     try:
         # Get all enabled sync targets for this playlist
@@ -571,6 +576,7 @@ def sync_playlist(
                     logging.info(f"Creating new remote playlist for {target.service} target {target.id}")
 
                     remote_repo.create_playlist(target_name or f"{target.service}_playlist", local_snapshot)
+                    current_snapshots[target.id] = remote_repo.get_playlist_snapshot(target_name or f"{target.service}_playlist")
 
                 logging.info(f"Initialized {target.service} repository for target {target.id}")
                 
@@ -682,6 +688,14 @@ def sync_playlist(
         logging.info("Unified sync plan:")
         for change in unified_plan:
             logging.info(f"{change.action} {change.item.to_string()} (source: {change.source}, reason: {change.reason})")
+
+        pending_remote_ops = {
+            target_id: {
+                "add": [],
+                "remove": []
+            }
+            for target_id in individual_plans.keys()
+        }
         
         # Step 4: Apply the unified sync plan
         for change in unified_plan:
@@ -752,15 +766,7 @@ def sync_playlist(
                                 should_add = force_push or (not this_snapshot) or (not this_snapshot.has(change.item))
                                 
                                 if should_add:
-                                    remote_repo.add_items(target_name, [change.item])
-                                    sync_log.append(SyncLogEntry(
-                                        action="add",
-                                        track=change.item.to_string(),
-                                        target=target.service,
-                                        target_name=target_name,
-                                        reason=f"Added to {target.service} playlist",
-                                        success=True
-                                    ))
+                                    pending_remote_ops[target_id]["add"].append(change)
                             
                             # Receive adds from remote if enabled
                             elif target.receiveEntryAdds and change.source == "remote":
@@ -777,15 +783,7 @@ def sync_playlist(
                             # Send removes to remote if enabled
                             if target.sendEntryRemovals and change.source == "local":
                                 if (not this_snapshot) or this_snapshot.has(change.item):
-                                    remote_repo.remove_items(target_name, [change.item])
-                                    sync_log.append(SyncLogEntry(
-                                        action="remove",
-                                        track=change.item.to_string(),
-                                        target=target.service,
-                                        target_name=target_name,
-                                        reason=f"Removed from {target.service} playlist",
-                                        success=True
-                                    ))
+                                    pending_remote_ops[target_id]["remove"].append(change)
                             
                             # Receive removes from remote if enabled
                             elif target.receiveEntryRemovals and change.source == "remote":
@@ -813,6 +811,77 @@ def sync_playlist(
                         "service": repo_info['target'].service,
                         "target_id": target_id,
                         "error": f"Failed to apply sync plan: {str(e)}"
+                    })
+
+        # Flush batched remote operations for each target
+        for target_id, batched_ops in pending_remote_ops.items():
+            repo_info = individual_plans[target_id]['repo_info']
+            remote_repo = repo_info['repo']
+            target = repo_info['target']
+            target_name = repo_info['target_name']
+
+            add_changes = batched_ops["add"]
+            if add_changes:
+                try:
+                    for change_chunk in _chunk_changes(add_changes, remote_batch_size):
+                        remote_repo.add_items(target_name, [change.item for change in change_chunk])
+                        for change in change_chunk:
+                            sync_log.append(SyncLogEntry(
+                                action="add",
+                                track=change.item.to_string(),
+                                target=target.service,
+                                target_name=target_name,
+                                reason=f"Added to {target.service} playlist",
+                                success=True
+                            ))
+                except Exception as e:
+                    logging.error(f"Failed to apply batched add sync for target {target_id}: {e}", exc_info=True)
+                    for change in add_changes:
+                        sync_log.append(SyncLogEntry(
+                            action="add",
+                            track=change.item.to_string(),
+                            target=target.service,
+                            target_name=target_name,
+                            reason=change.reason,
+                            success=False,
+                            error=str(e)
+                        ))
+                    results["failed"].append({
+                        "service": target.service,
+                        "target_id": target_id,
+                        "error": f"Failed to apply batched adds: {str(e)}"
+                    })
+
+            remove_changes = batched_ops["remove"]
+            if remove_changes:
+                try:
+                    for change_chunk in _chunk_changes(remove_changes, remote_batch_size):
+                        remote_repo.remove_items(target_name, [change.item for change in change_chunk])
+                        for change in change_chunk:
+                            sync_log.append(SyncLogEntry(
+                                action="remove",
+                                track=change.item.to_string(),
+                                target=target.service,
+                                target_name=target_name,
+                                reason=f"Removed from {target.service} playlist",
+                                success=True
+                            ))
+                except Exception as e:
+                    logging.error(f"Failed to apply batched remove sync for target {target_id}: {e}", exc_info=True)
+                    for change in remove_changes:
+                        sync_log.append(SyncLogEntry(
+                            action="remove",
+                            track=change.item.to_string(),
+                            target=target.service,
+                            target_name=target_name,
+                            reason=change.reason,
+                            success=False,
+                            error=str(e)
+                        ))
+                    results["failed"].append({
+                        "service": target.service,
+                        "target_id": target_id,
+                        "error": f"Failed to apply batched removes: {str(e)}"
                     })
                     
         # write all remote snapshots

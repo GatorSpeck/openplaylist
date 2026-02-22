@@ -44,6 +44,8 @@ from lib.match import TrackStub, get_match_score, AlbumStub, get_album_match_sco
 from tqdm import tqdm
 import time
 
+from lib.normalize_path import normalize_path, strip_path_root
+
 import dotenv
 dotenv.load_dotenv(override=True)
 
@@ -754,9 +756,13 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         for i in item:
             if i.local_path is None:
                 continue
+
             path_to_use = i.local_path
-            if PLEX_MAP_SOURCE and PLEX_MAP_TARGET:
-                path_to_use = i.local_path.replace(PLEX_MAP_TARGET, PLEX_MAP_SOURCE)
+
+            path_to_use = strip_path_root(path_to_use, PLEX_MAP_SOURCE) if PLEX_MAP_SOURCE else path_to_use
+            path_to_use = strip_path_root(path_to_use, PLEX_MAP_TARGET) if PLEX_MAP_TARGET else path_to_use
+            path_to_use = normalize_path(path_to_use)
+
             item_to_path[id(i)] = path_to_use
             path_candidates.append(path_to_use)
 
