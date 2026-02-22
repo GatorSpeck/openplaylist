@@ -6,6 +6,7 @@ import libraryRepository from '../../repositories/LibraryRepository';
 import PlaylistEntry from '../../lib/PlaylistEntry';
 import { LastFMRepository } from '../../repositories/LastFMRepository';
 import { plexRepository, PlexSearchResult } from '../../repositories/PlexRepository';
+import { youtubeRepository, YouTubeSearchResult } from '../../repositories/YouTubeRepository';
 
 interface TrackDetailsModalProps {
   entry: PlaylistEntry;
@@ -54,6 +55,14 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
   const [showPlexSearch, setShowPlexSearch] = useState(false);
   const [plexSearchQuery, setPlexSearchQuery] = useState(() => `${entry.getArtist()} ${entry.getTitle()}`.trim());
   const [plexSearchFields, setPlexSearchFields] = useState({
+    title: entry.getTitle() || '',
+    artist: entry.getArtist() || '',
+    album: entry.getAlbum() || ''
+  });
+  const [youtubeSearchResults, setYoutubeSearchResults] = useState<YouTubeSearchResult[]>([]);
+  const [isSearchingYoutube, setIsSearchingYoutube] = useState(false);
+  const [showYoutubeSearch, setShowYoutubeSearch] = useState(false);
+  const [youtubeSearchFields, setYoutubeSearchFields] = useState({
     title: entry.getTitle() || '',
     artist: entry.getArtist() || '',
     album: entry.getAlbum() || ''
@@ -584,6 +593,98 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
     }
   };
 
+  const handleSearchYoutube = async () => {
+    setIsSearchingYoutube(true);
+    try {
+      let query = '';
+      if (youtubeSearchFields.title && youtubeSearchFields.artist) {
+        query = `${youtubeSearchFields.artist} ${youtubeSearchFields.title}`;
+      } else if (youtubeSearchFields.title) {
+        query = youtubeSearchFields.title;
+      } else if (youtubeSearchFields.artist) {
+        query = youtubeSearchFields.artist;
+      } else {
+        query = `${entry.getArtist()} ${entry.getTitle()}`.trim();
+      }
+
+      const results = await youtubeRepository.searchTracks(
+        query,
+        youtubeSearchFields.title,
+        youtubeSearchFields.artist,
+        youtubeSearchFields.album
+      );
+
+      setYoutubeSearchResults(results || []);
+      setShowYoutubeSearch(true);
+    } catch (error) {
+      console.error('Error searching YouTube Music:', error);
+      alert('Failed to search YouTube Music. Please try again.');
+    } finally {
+      setIsSearchingYoutube(false);
+    }
+  };
+
+  const handleSelectYoutubeResult = async (result: YouTubeSearchResult) => {
+    if (!playlistId) {
+      console.error('Cannot link without playlist ID');
+      return;
+    }
+
+    const youtubeVideoId = result.youtube_url;
+    if (!youtubeVideoId) {
+      alert('Selected result does not have a YouTube video ID');
+      return;
+    }
+
+    setLinkingExternal('youtube_url');
+
+    try {
+      const linkRequest = {
+        track_id: entry.id,
+        updates: {
+          youtube_url: youtubeVideoId
+        }
+      };
+
+      const response = await fetch(`/api/playlists/${playlistId}/links`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(linkRequest)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const updatedEntry = new PlaylistEntry({
+        ...entry,
+        details: {
+          ...entry.details,
+          youtube_url: youtubeVideoId
+        }
+      });
+
+      if (onEntryUpdated) {
+        onEntryUpdated(updatedEntry);
+      }
+
+      setEntry(updatedEntry);
+      setShowYoutubeSearch(false);
+      setYoutubeSearchResults([]);
+      setExternalLinkInputs(prev => ({
+        ...prev,
+        youtube_url: ''
+      }));
+      setLinkingExternal(null);
+    } catch (error) {
+      console.error('Error linking YouTube Music result:', error);
+      alert('Failed to link YouTube Music result. Please try again.');
+      setLinkingExternal(null);
+    }
+  };
+
   const handleSaveNotes = async () => {
     if (!playlistId) {
       console.error('Cannot save notes without playlist ID');
@@ -704,6 +805,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
     const unlinkType = unlinkTypeMapping[sourceType];
     const isLastFm = sourceType === 'last_fm_url';
     const isPlex = sourceType === 'plex_rating_key';
+    const isYoutube = sourceType === 'youtube_url';
     
     return (
       <div className="external-source-item" key={sourceType}>
@@ -765,6 +867,15 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                     className="search-button"
                   >
                     {isSearchingPlex ? 'Searching...' : 'Search Plex'}
+                  </button>
+                )}
+                {isYoutube && (
+                  <button
+                    onClick={handleSearchYoutube}
+                    disabled={isSearchingYoutube}
+                    className="search-button"
+                  >
+                    {isSearchingYoutube ? 'Searching...' : 'Search YouTube Music'}
                   </button>
                 )}
               </div>
@@ -908,6 +1019,109 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                   ) : (
                     plexSearchResults.length === 0 && !isSearchingPlex && (
                       <p className="no-results">No results found. Try searching with different terms or enter the rating key manually.</p>
+                    )
+                  )}
+                </div>
+              )}
+
+              {/* YouTube Music Search Results */}
+              {isYoutube && showYoutubeSearch && (
+                <div className="lastfm-search-results">
+                  <div className="search-header">
+                    <h4>YouTube Music Search Results:</h4>
+                    <button
+                      onClick={() => setShowYoutubeSearch(false)}
+                      className="close-search-button"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  <div className="search-fields-group">
+                    <div className="search-field">
+                      <label htmlFor="youtube-search-title">Title:</label>
+                      <input
+                        id="youtube-search-title"
+                        type="text"
+                        value={youtubeSearchFields.title}
+                        onChange={(e) => setYoutubeSearchFields(prev => ({ ...prev, title: e.target.value }))}
+                        placeholder="Enter track title..."
+                        className="search-input"
+                      />
+                    </div>
+
+                    <div className="search-field">
+                      <label htmlFor="youtube-search-artist">Artist:</label>
+                      <input
+                        id="youtube-search-artist"
+                        type="text"
+                        value={youtubeSearchFields.artist}
+                        onChange={(e) => setYoutubeSearchFields(prev => ({ ...prev, artist: e.target.value }))}
+                        placeholder="Enter artist name..."
+                        className="search-input"
+                      />
+                    </div>
+
+                    <div className="search-field">
+                      <label htmlFor="youtube-search-album">Album:</label>
+                      <input
+                        id="youtube-search-album"
+                        type="text"
+                        value={youtubeSearchFields.album}
+                        onChange={(e) => setYoutubeSearchFields(prev => ({ ...prev, album: e.target.value }))}
+                        placeholder="Enter album name..."
+                        className="search-input"
+                      />
+                    </div>
+
+                    <div className="search-actions">
+                      <button
+                        onClick={handleSearchYoutube}
+                        disabled={isSearchingYoutube || (!youtubeSearchFields.title && !youtubeSearchFields.artist)}
+                        className="search-button"
+                      >
+                        {isSearchingYoutube ? 'Searching...' : 'Search YouTube Music'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {youtubeSearchResults.length > 0 ? (
+                    <div className="search-results-list">
+                      {youtubeSearchResults.map((result, index) => (
+                        <div key={index} className="search-result-item">
+                          <div className="result-content">
+                            <div className="result-info">
+                              <strong>{result.title}</strong>
+                              {result.artist && <><br /><em>by {result.artist}</em></>}
+                              {result.album && <><br /><span>Album: {result.album}</span></>}
+                              {result.youtube_url && (
+                                <>
+                                  <br />
+                                  <a
+                                    href={`https://www.youtube.com/watch?v=${result.youtube_url}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="lastfm-link"
+                                  >
+                                    View on YouTube
+                                  </a>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleSelectYoutubeResult(result)}
+                            className="select-button"
+                            disabled={linkingExternal === 'youtube_url'}
+                          >
+                            {linkingExternal === 'youtube_url' ? 'Linking...' : 'Select'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    youtubeSearchResults.length === 0 && !isSearchingYoutube && (
+                      <p className="no-results">No results found. Try searching with different terms or enter the URL manually.</p>
                     )
                   )}
                 </div>
