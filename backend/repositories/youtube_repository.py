@@ -10,6 +10,9 @@ from response_models import PlaylistSnapshot, PlaylistItem
 from lib.normalize import normalize_title
 from lib.match import TrackStub, get_match_score
 
+import dotenv
+dotenv.load_dotenv(override=True)
+
 def get_video_id_from_track(track: Dict[str, Any]) -> Optional[str]:
     """Extract video ID from a YouTube Music track dictionary"""
     if not track:
@@ -53,11 +56,7 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             #     client_secret=os.getenv("YOUTUBE_CLIENT_SECRET"))
             # )
 
-            # simplified browser-based auth
             self.ytmusic = YTMusic(oauth_path)
-            account_info = self.ytmusic.get_account_info()
-            if not account_info or not account_info.get("accountName"):
-                raise ValueError("YouTube Music authentication failed - invalid account info")
 
             logging.info("YouTube Music client initialized successfully")
         except Exception as e:
