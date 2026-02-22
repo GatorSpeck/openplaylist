@@ -1831,6 +1831,12 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
                 setSyncConfigOpen(true);
               },
             },
+            {
+              label: "View Sync Log",
+              action: () => {
+                setSyncLogModalOpen(true);
+              },
+            },
             { label: "Sync Now", action: () => onSyncToPlex(false) },
             { 
               label: "Force Push Sync", 
@@ -1896,6 +1902,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         <SyncLogModal
           open={syncLogModalOpen}
           onClose={() => setSyncLogModalOpen(false)}
+          playlistId={playlistID}
           syncResult={syncResult}
           playlistName={name}
         />

@@ -863,6 +863,24 @@ class SyncLogEntry(BaseModel):
     reason: str
     success: bool = True
     error: Optional[str] = None
+    eventKind: Optional[str] = "change"
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class PersistentSyncLogEntry(BaseModel):
+    id: int
+    syncRunId: int
+    playlistId: int
+    createdAt: Optional[datetime] = None
+    eventKind: str
+    action: str
+    track: Optional[str] = None
+    target: str
+    targetName: Optional[str] = None
+    reason: Optional[str] = None
+    success: bool
+    error: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 class SyncResult(BaseModel):
     status: str  # 'success', 'partial', or 'failed'
