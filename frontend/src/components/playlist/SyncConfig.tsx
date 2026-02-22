@@ -21,7 +21,7 @@ interface SyncTarget {
   id?: number;
   service: 'plex' | 'spotify' | 'youtube';
   config: {
-    [key: string]: string;
+    [key: string]: any;
   };
 
   enabled: boolean;
