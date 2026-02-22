@@ -662,6 +662,13 @@ def sync_playlist(
                         change for change in sync_plan
                         if change.action != 'remove' or change.source != 'remote'
                     ]
+
+                sync_plan = remote_repo.apply_sync_guardrails(
+                    plan=sync_plan,
+                    new_local_snapshot=local_snapshot,
+                    sync_target=target,
+                    target_name=target_name,
+                )
                 
                 # Create or merge into unified plan
                 if unified_plan is None:

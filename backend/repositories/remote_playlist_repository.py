@@ -414,15 +414,47 @@ class RemotePlaylistRepository(ABC):
         if not plan:
             return plan
 
+        def parse_bool(value: Any, default: bool = False) -> bool:
+            if value is None:
+                return default
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, (int, float)):
+                return value != 0
+            if isinstance(value, str):
+                normalized = value.strip().casefold()
+                if normalized in {"1", "true", "yes", "y", "on"}:
+                    return True
+                if normalized in {"0", "false", "no", "n", "off", ""}:
+                    return False
+                return default
+            return default
+
+        def parse_float(value: Any, default: float) -> float:
+            if value is None:
+                return default
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return default
+
+        def parse_int(value: Any, default: int) -> int:
+            if value is None:
+                return default
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
         config = sync_target.config or {}
-        allow_bulk_receive_removals = bool(config.get("allow_bulk_receive_removals", False))
+        allow_bulk_receive_removals = parse_bool(config.get("allow_bulk_receive_removals"), False)
 
         if allow_bulk_receive_removals:
             return plan
 
-        max_receive_removal_percent = float(config.get("max_receive_removal_percent", 0.30))
-        max_receive_removal_count = int(config.get("max_receive_removal_count", 25))
-        min_local_size_for_guard = int(config.get("min_local_size_for_removal_guard", 10))
+        max_receive_removal_percent = parse_float(config.get("max_receive_removal_percent"), 0.30)
+        max_receive_removal_count = parse_int(config.get("max_receive_removal_count"), 25)
+        min_local_size_for_guard = parse_int(config.get("min_local_size_for_removal_guard"), 10)
 
         local_removes = [
             change for change in plan
@@ -460,6 +492,21 @@ class RemotePlaylistRepository(ABC):
         )
 
         return filtered_plan
+
+    def apply_sync_guardrails(
+        self,
+        plan: List[SyncChange],
+        new_local_snapshot: PlaylistSnapshot,
+        sync_target: SyncTarget,
+        target_name: str,
+    ) -> List[SyncChange]:
+        """Apply guardrails to a sync plan before any local/remote mutations occur."""
+        return self._apply_local_removal_guardrails(
+            plan=plan,
+            new_local_snapshot=new_local_snapshot,
+            sync_target=sync_target,
+            target_name=target_name,
+        )
     
     def sync_playlist(self, local_repo, playlist_id: int, sync_target: SyncTarget):
         """
@@ -523,7 +570,7 @@ class RemotePlaylistRepository(ABC):
             sync_target=sync_target
         )
 
-        sync_plan = self._apply_local_removal_guardrails(
+        sync_plan = self.apply_sync_guardrails(
             plan=sync_plan,
             new_local_snapshot=local_snapshot,
             sync_target=sync_target,

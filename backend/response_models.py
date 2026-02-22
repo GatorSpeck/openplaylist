@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Union, Literal, Dict
+from typing import List, Optional, Union, Literal, Dict, Any
 from enum import Enum
 from datetime import datetime
 from models import (
@@ -711,7 +711,7 @@ class SyncTarget(BaseModel):
     """Model for playlist sync targets"""
     id: Optional[int] = None
     service: str  # 'plex', 'spotify', 'youtube'
-    config: Dict[str, str] = {}
+    config: Dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
     sendEntryAdds: bool = True
     sendEntryRemovals: bool = True
