@@ -1081,6 +1081,32 @@ def search_plex_tracks(
         logging.error(f"Error searching Plex: {e}")
         raise HTTPException(status_code=500, detail=f"Error searching Plex: {str(e)}")
 
+@router.get("/youtube/search")
+def search_youtube_tracks(
+    query: str = Query(..., description="Search query for YouTube Music tracks"),
+    title: Optional[str] = Query(None, description="Track title"),
+    artist: Optional[str] = Query(None, description="Artist name"),
+    album: Optional[str] = Query(None, description="Album name")
+):
+    """Search for tracks in YouTube Music"""
+    db = Database.get_session()
+    try:
+        from repositories.youtube_repository import YouTubeMusicRepository
+
+        youtube_repo = YouTubeMusicRepository(session=db, config={})
+
+        if not youtube_repo.is_authenticated():
+            raise HTTPException(status_code=401, detail="YouTube Music authentication required")
+
+        return youtube_repo.search_tracks(query, title, artist, album)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error searching YouTube Music: {e}")
+        raise HTTPException(status_code=500, detail=f"Error searching YouTube Music: {str(e)}")
+    finally:
+        db.close()
+
 @router.post("/youtube/import")
 def import_youtube_playlist(
     params: dict,

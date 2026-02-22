@@ -167,6 +167,79 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
         except Exception as e:
             logging.error(f"Error looking up YouTube Music playlist by name {playlist_name}: {e}")
             return None
+
+    def search_tracks(self, query: str, title: str = None, artist: str = None, album: str = None, max_results: int = 20):
+        """Search for tracks in YouTube Music library"""
+        if not self.ytmusic:
+            raise ValueError("Not authenticated with YouTube Music")
+
+        search_query = query or ""
+        if title and artist:
+            search_query = f"{artist} {title}"
+        elif title:
+            search_query = title
+        elif artist:
+            search_query = artist
+
+        if album and album.strip():
+            search_query = f"{search_query} {album}".strip()
+
+        if not search_query.strip():
+            return []
+
+        source_stub = TrackStub(
+            artist=artist or "",
+            title=title or "",
+            album=album or "",
+        )
+
+        try:
+            search_results = self.ytmusic.search(search_query[:100], filter="songs", limit=max_results)
+            if not search_results:
+                return []
+
+            results = []
+            for track in search_results:
+                video_id = get_video_id_from_track(track)
+                if not video_id:
+                    continue
+
+                artists = ", ".join(
+                    [artist_item.get("name", "") for artist_item in (track.get("artists") or []) if artist_item.get("name")]
+                )
+
+                album_name = ""
+                if isinstance(track.get("album"), dict):
+                    album_name = track.get("album", {}).get("name", "")
+
+                result = {
+                    "title": track.get("title", ""),
+                    "artist": artists,
+                    "album": album_name,
+                    "service": "youtube",
+                    "youtube_url": video_id,
+                    "score": 0,
+                }
+
+                if title or artist or album:
+                    result["score"] = get_match_score(
+                        source_stub,
+                        TrackStub(
+                            artist=result["artist"],
+                            title=result["title"],
+                            album=result["album"],
+                        ),
+                    )
+
+                results.append(result)
+
+            if title or artist or album:
+                results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+            return results
+        except Exception as e:
+            logging.error(f"Error searching YouTube Music tracks: {e}")
+            raise
     
     def fetch_media_item(self, item: PlaylistItem) -> Any:
         """Search for a track on YouTube Music"""
@@ -202,10 +275,13 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             
             # Score the results similar to Spotify implementation
             for track in search_results:
+                artist = track["artists"][0]["name"] if track.get("artists") else ""
+                title = track["title"] if track.get("title") else ""
+                album = track["album"]["name"] if track.get("album") else ""
                 score = get_match_score(match_stub, TrackStub(
-                    artist=track["artists"][0]["name"] if track.get("artists") else "",
-                    title=track["title"],
-                    album=track["album"]["name"] if track.get("album") else ""
+                    artist=artist,
+                    title=title,
+                    album=album,
                 ))
                 
                 track["score"] = score
