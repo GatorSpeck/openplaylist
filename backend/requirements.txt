@@ -2,7 +2,7 @@ annotated-types==0.7.0
 anyio==4.8.0
 async-timeout==5.0.1
 attrs==25.4.0
-cattrs==24.1.2
+cattrs==25.3.0
 certifi==2026.1.4
 charset-normalizer==3.4.1
 click==8.1.8
