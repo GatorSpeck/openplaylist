@@ -1,21 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
-import '../../styles/PlaylistSidebar.css';
 import RenameDialog from './RenameDialog';
 import SettingsModal from './SettingsModal'; 
 import ImportPlaylistModal from './ImportPlaylistModal'; // Add this import
 import PlaylistAutoSyncDialog from '../playlist/PlaylistAutoSyncDialog';
-import playlistRepository from '../../repositories/PlaylistRepository';
 
 const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex, pinned, onTogglePin, onShowSyncOptions, onShowAutoSync }) => (
-  <div className="playlist-context-menu" style={{ left: x, top: y }}>
-    <div onClick={onTogglePin}>{pinned ? 'Unpin Playlist' : 'Pin Playlist'}</div>
-    <div onClick={onRenamePlaylist}>Rename Playlist</div>
-    <div onClick={onClone}>Clone Playlist</div>
-    <div onClick={onDelete}>Delete Playlist</div>
-    <div onClick={onExport}>Export Playlist</div>
-    <div onClick={onSyncToPlex}>Sync to Plex</div>
-    {onShowSyncOptions && <div onClick={onShowSyncOptions}>Sync Options</div>}
-    {onShowAutoSync && <div onClick={onShowAutoSync}>Auto-Sync Settings</div>}
+  <div
+    className="fixed z-[1001] min-w-48 overflow-hidden rounded border border-black/10 bg-surface py-1 text-sm text-text shadow-sm dark:border-white/20 dark:bg-surface-dark-elevated dark:text-text-dark"
+    style={{ left: x, top: y }}
+  >
+    <div className="cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark" onClick={onTogglePin}>{pinned ? 'Unpin Playlist' : 'Pin Playlist'}</div>
+    <div className="cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark" onClick={onRenamePlaylist}>Rename Playlist</div>
+    <div className="cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark" onClick={onClone}>Clone Playlist</div>
+    <div className="cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark" onClick={onDelete}>Delete Playlist</div>
+    <div className="cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark" onClick={onExport}>Export Playlist</div>
+    <div className="cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark" onClick={onSyncToPlex}>Sync to Plex</div>
+    {onShowSyncOptions && <div className="cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark" onClick={onShowSyncOptions}>Sync Options</div>}
+    {onShowAutoSync && <div className="cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark" onClick={onShowAutoSync}>Auto-Sync Settings</div>}
   </div>
 );
 
@@ -104,17 +105,41 @@ const PlaylistSidebar = ({
 
   return (
     <>
-      <button ref={hamburgerRef} className="hamburger-menu" onClick={() => onClose(!isOpen)}>
+      <button
+        ref={hamburgerRef}
+        className="fixed left-4 top-4 z-[1002] rounded border border-black/10 bg-surface px-3 py-2 text-xl leading-none text-text shadow-sm transition hover:bg-surface-subtle dark:border-white/20 dark:bg-surface-dark-elevated dark:text-text-dark dark:hover:bg-surface-dark"
+        onClick={() => onClose(!isOpen)}
+      >
         ☰
       </button>
-      <div ref={sidebarRef} className={`playlist-sidebar ${isOpen ? 'open' : ''}`}>
-        <div className="playlist-sidebar-content">
-          <h2>OpenPlaylist</h2>
-          <div className="playlist-actions">
-            <button onClick={onNewPlaylist}>New Playlist</button>
-            <button onClick={() => setImportModalOpen(true)}>Import</button>
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-[1000] bg-black/35 backdrop-blur-[1px]"
+          onClick={() => onClose(false)}
+          aria-hidden="true"
+        />
+      )}
+      <div
+        ref={sidebarRef}
+        className={`fixed inset-y-0 left-0 z-[1001] w-[300px] max-w-[86vw] transform bg-surface text-text shadow-xl transition-transform duration-300 ease-in-out dark:bg-surface-dark-elevated dark:text-text-dark ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        <div className="flex h-full flex-col overflow-y-auto p-4">
+          <h2 className="mb-4 text-xl font-semibold">OpenPlaylist</h2>
+          <div className="mb-4 flex gap-2">
+            <button
+              onClick={onNewPlaylist}
+              className="rounded border border-black/15 bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+            >
+              New Playlist
+            </button>
+            <button
+              onClick={() => setImportModalOpen(true)}
+              className="rounded border border-black/15 bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+            >
+              Import
+            </button>
           </div>
-          <div className="playlist-list">
+          <div className="space-y-1">
             {playlists
               .sort((a, b) => {
                 // First sort by pinned status
@@ -134,19 +159,22 @@ const PlaylistSidebar = ({
               .map((playlist, index) => (
                 <div
                   key={index} // Using playlist ID instead of index for a more stable key
-                  className={`playlist-item ${selectedPlaylist?.id === playlist.id ? 'selected' : ''}`}
+                  className={`cursor-pointer rounded px-2 py-2 text-sm transition ${selectedPlaylist?.id === playlist.id ? 'bg-surface-subtle font-medium dark:bg-surface-dark' : 'hover:bg-surface-subtle dark:hover:bg-surface-dark'}`}
                   onClick={() => handlePlaylistClick(playlist.id)}
                   onContextMenu={(e) => handleContextMenu(e, playlist)}
                 >
-                  {playlist.pinned && <span className="pinned-indicator">📌 </span>}
+                  {playlist.pinned && <span className="mr-1">📌</span>}
                   {playlist.name}
                 </div>
               ))}
           </div>
           
           {/* Add settings section at bottom of sidebar */}
-          <div className="admin-actions">
-            <button onClick={() => setSettingsOpen(true)}>
+          <div className="mt-auto border-t border-black/10 pt-4 dark:border-white/20">
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="w-full rounded border border-black/15 bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+            >
               Settings
             </button>
           </div>
@@ -154,7 +182,7 @@ const PlaylistSidebar = ({
       </div>
 
       {contextMenu.visible && (
-        <div className="context-menu" 
+        <div className="fixed z-[1000]" 
           style={{
             display: contextMenu.visible ? 'block' : 'none',
             left: contextMenu.x,

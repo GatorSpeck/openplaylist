@@ -57,16 +57,16 @@ description: "Task list for Tailwind CSS Migration"
 
 ### G2 — Layout / Navigation
 
-- [ ] T012 [US1] Migrate `frontend/src/components/nav/PlaylistSidebar.tsx` to Tailwind; add `dark:` variants for all background, text, and border classes; remove `frontend/src/styles/PlaylistSidebar.css` import
-- [ ] T013 [P] [US1] Migrate `frontend/src/components/main/Playlists.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/Playlists.css` import
+- [x] T012 [US1] Migrate `frontend/src/components/nav/PlaylistSidebar.tsx` to Tailwind; add `dark:` variants for all background, text, and border classes; remove `frontend/src/styles/PlaylistSidebar.css` import
+- [x] T013 [P] [US1] Migrate `frontend/src/components/main/Playlists.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/Playlists.css` import
 
 ### G3 — Core Playlist View
 
 - [ ] T014 [US1] Migrate `frontend/src/components/playlist/PlaylistGrid.tsx` to Tailwind; retain `style={{ gridTemplateColumns: getGridTemplate() }}` inline prop for runtime column widths; add dark variants for grid, row, zebra, header, controls; remove `frontend/src/styles/PlaylistGrid.css` import
 - [ ] T015 [P] [US1] Migrate `frontend/src/components/playlist/PlaylistEntryRow.tsx` to Tailwind; add dark variants for row background, selected state, hover state; no separate CSS file to remove (styles were in PlaylistGrid.css)
 - [ ] T016 [P] [US1] Migrate `frontend/src/components/EntryTypeBadge.tsx` to Tailwind with dark variants
-- [ ] T017 [P] [US1] Migrate `frontend/src/components/playlist/AlbumArtGrid.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/AlbumArtGrid.css` import
-- [ ] T018 [P] [US1] Migrate `frontend/src/components/playlist/AnniversaryTimeline.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/AnniversaryTimeline.css` import
+- [x] T017 [P] [US1] Migrate `frontend/src/components/playlist/AlbumArtGrid.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/AlbumArtGrid.css` import
+- [x] T018 [P] [US1] Migrate `frontend/src/components/playlist/AnniversaryTimeline.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/AnniversaryTimeline.css` import
 
 ### G4 — Generic Modals
 
