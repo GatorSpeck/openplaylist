@@ -70,8 +70,8 @@ description: "Task list for Tailwind CSS Migration"
 
 ### G4 — Generic Modals
 
-- [ ] T019 [US1] Migrate `frontend/src/components/common/Modal.jsx` to Tailwind; add dark variants for overlay, panel, header, close button; remove `frontend/src/styles/Modal.css` import
-- [ ] T020 [P] [US1] Migrate `frontend/src/components/common/BaseModal.tsx` to Tailwind with dark variants (inherits from Modal — verify no double-styling)
+- [x] T019 [US1] Migrate `frontend/src/components/common/Modal.jsx` to Tailwind; add dark variants for overlay, panel, header, close button; remove `frontend/src/styles/Modal.css` import
+- [x] T020 [P] [US1] Migrate `frontend/src/components/common/BaseModal.tsx` to Tailwind with dark variants (inherits from Modal — verify no double-styling)
 - [ ] T021 [P] [US1] Migrate `frontend/src/components/common/TrackDetailsModal.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/TrackDetailsModal.css` import
 
 ### G5 — Playlist Modals

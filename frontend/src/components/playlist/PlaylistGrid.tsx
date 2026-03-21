@@ -965,7 +965,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   const handleShowDetails = (track: PlaylistEntry) => {
     setSelectedTrack(track);
-    setShowTrackDetails(true);
+    // Defer open so the originating context-menu click cannot also dismiss the modal backdrop.
+    setTimeout(() => setShowTrackDetails(true), 0);
   }
 
   const handleAddToOtherPlaylist = (tracks: PlaylistEntry[]) => {

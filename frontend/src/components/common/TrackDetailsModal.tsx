@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import '../../styles/TrackDetailsModal.css';
 import { formatDate, formatDuration, formatSize } from '../../lib/misc';
 import playlistRepository from '../../repositories/PlaylistRepository';
@@ -1144,9 +1145,18 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
     youtubeUrlToUse = `https://www.youtube.com/watch?v=${youtubeUrlToUse}`;
   }
 
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()}>
+  const handleBackdropMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
+  const modalMarkup = (
+    <div className="track-details-modal-shell overflow-y-auto px-4 py-6" onMouseDown={handleBackdropMouseDown}>
+      <div
+        className="track-details-modal-panel my-4 max-w-[700px] max-h-[calc(100vh-3rem)] overflow-y-auto rounded border border-black/10 bg-surface p-5 text-text shadow-lg dark:border-white/20 dark:bg-surface-dark-elevated dark:text-text-dark"
+        onClick={e => e.stopPropagation()}
+      >
         <h2>Entry Details</h2>
         <div className="track-details">
           {/* Album Art Display */}
@@ -1393,16 +1403,15 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
           )}
         </div>
         <div className="modal-actions">
-          <button onClick={onClose}>Close</button>
+          <button className="rounded border border-black/15 bg-surface-subtle px-3 py-2 text-sm !text-text transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated" onClick={onClose}>Close</button>
         </div>
       </div>
       
       {/* Full-size album art modal */}
       {showFullSizeArt && modalAlbumArt && (
         <div 
-          className="modal-overlay" 
+          className="fixed inset-0 z-[6000] flex items-center justify-center bg-black/70 px-4 py-6" 
           onClick={() => setShowFullSizeArt(false)}
-          style={{ zIndex: 2000 }}
         >
           <div 
             className="fullsize-art-container"
@@ -1453,6 +1462,12 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
       )}
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return modalMarkup;
+  }
+
+  return createPortal(modalMarkup, document.body);
 };
 
 export default TrackDetailsModal;

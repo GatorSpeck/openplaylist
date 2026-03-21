@@ -1232,19 +1232,16 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
 
         {/* Column Configuration Modal */}
         {columnConfigOpen && (
-          <div className="modal-overlay" onClick={() => setColumnConfigOpen(false)}>
+          <div className="fixed inset-0 z-[1200] flex items-center justify-center overflow-y-auto bg-black/50 px-4 py-6" onClick={() => setColumnConfigOpen(false)}>
             <div 
-              className="modal-content"
+              className="w-full max-w-[500px] max-h-[calc(100vh-3rem)] overflow-y-auto rounded border border-black/10 bg-surface text-text shadow-lg dark:border-white/20 dark:bg-surface-dark-elevated dark:text-text-dark"
               style={{
-                maxWidth: '500px',
                 width: '90vw',
-                maxHeight: '80vh',
-                overflow: 'auto',
                 boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ padding: '20px', borderBottom: '1px solid #eee' }}>
+              <div style={{ padding: '20px', borderBottom: '1px solid rgba(127,127,127,0.35)' }}>
                 <h3 style={{ margin: '0', fontSize: '18px' }}>Configure Columns</h3>
               </div>
               <div className="column-config-content" style={{ padding: '20px' }}>
