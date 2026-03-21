@@ -14,6 +14,7 @@ const MatchTrackModal = ({
 }) => {
   const [matchingTracks, setMatchingTracks] = useState(initialMatches);
   const [isLoading, setIsLoading] = useState(false);
+  const [searchText, setSearchText] = useState(`${track.getArtist() || ''} ${track.getTitle() || ''}`);
 
   const handleSearch = async (searchQuery) => {
     if (!searchQuery.trim()) return;
@@ -49,43 +50,42 @@ const MatchTrackModal = ({
       title={`Select a match for "${track.getTitle()}"`}
       onClose={onClose}
     >
-      <div className="match-search-container">
+      <div className="mb-3 flex flex-wrap gap-2">
         <input
           type="text"
           placeholder="Search for more matches..."
-          defaultValue={`${track.getArtist() || ''} ${track.getTitle() || ''}`}
-          className="match-search-input"
-          ref={(input) => input && setTimeout(() => input.select(), 100)}
-          onKeyDown={(e) => e.key === 'Enter' && document.getElementById('match-search-button').click()}
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          className="min-w-[240px] flex-1 rounded border border-black/15 bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/20 dark:bg-surface-dark dark:text-text-dark"
+          onKeyDown={(e) => e.key === 'Enter' && handleSearch(searchText)}
         />
         <button 
-          id="match-search-button"
-          className="match-search-button"
-          onClick={(e) => handleSearch(e.target.previousSibling.value)}
+          className="rounded bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-hover"
+          onClick={() => handleSearch(searchText)}
         >
           Search
         </button>
       </div>
-      <div className="match-selection-list">
+      <div className="max-h-[45vh] overflow-y-auto rounded border border-black/10 dark:border-white/20">
         {matchingTracks.map((match) => (
           <div 
             key={match.id}
-            className="match-item"
+            className="cursor-pointer border-b border-black/10 px-3 py-2 transition hover:bg-surface-subtle last:border-b-0 dark:border-white/10 dark:hover:bg-surface-dark-elevated"
             onClick={() => onMatchSelect(match)}
           >
-            <div>{match.getArtist()} - {match.getTitle()}</div>
-            <div className="match-details">
+            <div className="text-sm font-medium text-text dark:text-text-dark">{match.getArtist()} - {match.getTitle()}</div>
+            <div className="text-xs text-text/70 dark:text-text-dark/70">
               Album: {match.getAlbum()} | {match.details.duration ? formatDuration(match.details.duration) : 'Unknown duration'}
             </div>
           </div>
         ))}
       </div>
-      <div className="modal-footer">
-        <button onClick={onClose}>
+      <div className="mt-4 flex justify-end">
+        <button className="rounded border border-black/15 bg-surface-subtle px-4 py-2 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated" onClick={onClose}>
           Cancel
         </button>
       </div>
-      {isLoading && <div className="modal-loading">Searching...</div>}
+      {isLoading && <div className="mt-2 text-sm text-text/70 dark:text-text-dark/70">Searching...</div>}
     </Modal>
   );
 };

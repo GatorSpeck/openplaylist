@@ -72,13 +72,13 @@ description: "Task list for Tailwind CSS Migration"
 
 - [x] T019 [US1] Migrate `frontend/src/components/common/Modal.jsx` to Tailwind; add dark variants for overlay, panel, header, close button; remove `frontend/src/styles/Modal.css` import
 - [x] T020 [P] [US1] Migrate `frontend/src/components/common/BaseModal.tsx` to Tailwind with dark variants (inherits from Modal — verify no double-styling)
-- [ ] T021 [P] [US1] Migrate `frontend/src/components/common/TrackDetailsModal.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/TrackDetailsModal.css` import
+- [x] T021 [P] [US1] Migrate `frontend/src/components/common/TrackDetailsModal.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/TrackDetailsModal.css` import
 
 ### G5 — Playlist Modals
 
 - [x] T022 [P] [US1] Migrate `frontend/src/components/playlist/EditItemModal.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/EditItemModal.css` import
-- [ ] T023 [P] [US1] Migrate `frontend/src/components/playlist/MatchTrackModal.tsx` to Tailwind with dark variants
-- [ ] T024 [P] [US1] Migrate `frontend/src/components/playlist/MatchAlbumModal.tsx` to Tailwind with dark variants
+- [x] T023 [P] [US1] Migrate `frontend/src/components/playlist/MatchTrackModal.tsx` to Tailwind with dark variants
+- [x] T024 [P] [US1] Migrate `frontend/src/components/playlist/MatchAlbumModal.tsx` to Tailwind with dark variants
 - [x] T025 [P] [US1] Migrate `frontend/src/components/playlist/DuplicateSelectionModal.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/DuplicateSelectionModal.css` import
 - [x] T026 [P] [US1] Migrate `frontend/src/components/playlist/SelectPlaylistModal.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/SelectPlaylistModal.css` import
 - [x] T027 [P] [US1] Migrate `frontend/src/components/playlist/SyncConfig.tsx` to Tailwind; add dark variants; remove `frontend/src/components/playlist/SyncConfig.css` import
