@@ -72,12 +72,6 @@
   height: 100%;
 }
 
-/* Add bottom padding to playlist container when at bottom to create space for button */
-.playlist-container.at-bottom {
-  padding-bottom: 80px;
-  box-sizing: border-box;
-  transition: padding-bottom 0.3s ease;
-}
 
 .playlist-grid-row {
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
