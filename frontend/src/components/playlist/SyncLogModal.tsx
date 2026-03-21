@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Modal from '../common/Modal';
 import playlistRepository, { PersistentSyncLogEntry } from '../../repositories/PlaylistRepository';
-import './SyncLogModal.css';
 
 interface SyncLogEntry {
   action: string;
@@ -111,10 +110,6 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
     }
   };
 
-  const getStatusClass = (success: boolean) => {
-    return success ? 'success' : 'error';
-  };
-
   return (
     <Modal 
       open={open} 
@@ -122,30 +117,30 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
       title={`Sync Log - ${playlistName}`}
       size="large"
     >
-      <div className="sync-log-modal">
+      <div className="max-h-[70vh] overflow-y-auto">
         {/* Summary Section */}
         {syncResult && (
-        <div className="sync-summary">
-          <div className={`sync-status ${syncResult.status || 'unknown'}`}>
-            <h3>
+        <div className="mb-5 rounded-lg border border-black/10 bg-surface-subtle p-5 dark:border-white/15 dark:bg-surface-dark">
+          <div>
+            <h3 className={`m-0 text-lg font-semibold ${syncResult.status === 'success' ? 'text-emerald-600 dark:text-emerald-400' : syncResult.status === 'partial' ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
               {syncResult.status === 'success' ? '✅' : 
                syncResult.status === 'partial' ? '⚠️' : '❌'} 
               Sync {(syncResult.status || 'unknown').charAt(0).toUpperCase() + (syncResult.status || 'unknown').slice(1)}
             </h3>
           </div>
           
-          <div className="sync-stats">
-            <div className="stat">
-              <span className="stat-value">{syncResult.summary?.total_targets || 0}</span>
-              <span className="stat-label">Total Targets</span>
+          <div className="mt-4 flex flex-wrap gap-6">
+            <div className="flex flex-col items-center">
+              <span className="text-2xl font-bold text-text dark:text-text-dark">{syncResult.summary?.total_targets || 0}</span>
+              <span className="text-xs font-medium uppercase tracking-wide text-text/70 dark:text-text-dark/70">Total Targets</span>
             </div>
-            <div className="stat">
-              <span className="stat-value success">{syncResult.summary?.successful || 0}</span>
-              <span className="stat-label">Successful</span>
+            <div className="flex flex-col items-center">
+              <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{syncResult.summary?.successful || 0}</span>
+              <span className="text-xs font-medium uppercase tracking-wide text-text/70 dark:text-text-dark/70">Successful</span>
             </div>
-            <div className="stat">
-              <span className="stat-value error">{syncResult.summary?.failed || 0}</span>
-              <span className="stat-label">Failed</span>
+            <div className="flex flex-col items-center">
+              <span className="text-2xl font-bold text-red-600 dark:text-red-400">{syncResult.summary?.failed || 0}</span>
+              <span className="text-xs font-medium uppercase tracking-wide text-text/70 dark:text-text-dark/70">Failed</span>
             </div>
           </div>
         </div>
@@ -153,35 +148,35 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
 
         {/* Global Errors Section */}
         {syncResult?.failed && syncResult.failed.length > 0 && (
-          <div className="sync-errors">
-            <h4>⚠️ Sync Errors</h4>
+          <div className="mb-5 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/30">
+            <h4 className="mb-3 mt-0 text-base font-semibold text-amber-800 dark:text-amber-200">⚠️ Sync Errors</h4>
             {syncResult.failed.map((failure, index) => (
-              <div key={index} className="error-item">
-                <div className="error-service">
+              <div key={index} className="mb-2 rounded border-l-4 border-l-amber-500 bg-surface p-3 last:mb-0 dark:bg-surface-dark-elevated">
+                <div className="mb-1 flex items-center gap-1 text-sm font-semibold text-text dark:text-text-dark">
                   {getTargetIcon(failure.service)} {failure.service}
-                  {failure.target_id && <span className="target-id"> (Target {failure.target_id})</span>}
+                  {failure.target_id && <span className="text-xs font-normal text-text/70 dark:text-text-dark/70"> (Target {failure.target_id})</span>}
                 </div>
-                <div className="error-message">{failure.error}</div>
+                <div className="text-sm text-red-700 dark:text-red-300">{failure.error}</div>
               </div>
             ))}
           </div>
         )}
 
         {/* Detailed Log Section */}
-        <div className="sync-log-details">
-          <h4>Sync Details (Most Recent First)</h4>
+        <div>
+          <h4 className="mb-3 mt-0 text-base font-semibold text-text dark:text-text-dark">Sync Details (Most Recent First)</h4>
 
-          <div className="sync-log-filter-row">
+          <div className="mb-3 flex gap-2">
             <button
               type="button"
-              className={`sync-log-filter-btn ${!errorsOnly ? 'active' : ''}`}
+              className={`rounded border px-3 py-1.5 text-xs font-medium transition ${!errorsOnly ? 'border-accent bg-accent text-white' : 'border-black/15 bg-surface text-text hover:bg-surface-subtle dark:border-white/20 dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated'}`}
               onClick={() => setErrorsOnly(false)}
             >
               All Events
             </button>
             <button
               type="button"
-              className={`sync-log-filter-btn ${errorsOnly ? 'active' : ''}`}
+              className={`rounded border px-3 py-1.5 text-xs font-medium transition ${errorsOnly ? 'border-accent bg-accent text-white' : 'border-black/15 bg-surface text-text hover:bg-surface-subtle dark:border-white/20 dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated'}`}
               onClick={() => setErrorsOnly(true)}
             >
               Errors Only
@@ -189,27 +184,27 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
           </div>
 
           {loading && (
-            <div className="no-changes">
+            <div className="py-10 text-center text-sm text-text/70 dark:text-text-dark/70">
               <p>Loading sync log...</p>
             </div>
           )}
 
           {!loading && error && (
-            <div className="sync-errors">
-              <h4>⚠️ Sync Errors</h4>
-              <div className="error-item">
-                <div className="error-message">{error}</div>
+            <div className="mb-5 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/30">
+              <h4 className="mb-3 mt-0 text-base font-semibold text-amber-800 dark:text-amber-200">⚠️ Sync Errors</h4>
+              <div className="rounded border-l-4 border-l-amber-500 bg-surface p-3 dark:bg-surface-dark-elevated">
+                <div className="text-sm text-red-700 dark:text-red-300">{error}</div>
               </div>
             </div>
           )}
 
           {!loading && !error && orderedEntries.length > 0 && (
-            <div className="target-group">
-              <div className="target-header">
-                <span className="target-name">{orderedEntries.length} events</span>
+            <div className="mb-5 overflow-hidden rounded-lg border border-black/10 dark:border-white/15">
+              <div className="flex items-center gap-2 border-b border-black/10 bg-surface-subtle px-4 py-3 font-semibold text-text dark:border-white/15 dark:bg-surface-dark dark:text-text-dark">
+                <span className="flex-grow">{orderedEntries.length} events</span>
               </div>
 
-              <div className="log-entries">
+              <div className="max-h-[300px] overflow-y-auto">
                 {orderedEntries.map((entry) => {
                   const targetName = entry.targetName || entry.target;
                   const timestamp = entry.createdAt
@@ -219,23 +214,23 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
                   return (
                     <div
                       key={entry.id}
-                      className={`log-entry ${getStatusClass(entry.success)}`}
+                      className={`flex items-start gap-3 border-b px-4 py-3 last:border-b-0 ${entry.success ? 'border-black/10 bg-emerald-50 dark:border-white/10 dark:bg-emerald-900/15' : 'border-black/10 bg-red-50 dark:border-white/10 dark:bg-red-900/15'}`}
                     >
-                      <div className="log-icon">
+                      <div className="w-6 text-center text-lg">
                         {getActionIcon(entry.action)}
                       </div>
-                      <div className="log-content">
-                        <div className="log-track">{entry.track || '(no track provided)'}</div>
-                        <div className="log-reason">
+                      <div className="min-w-0 flex-grow">
+                        <div className="mb-1 text-sm font-semibold text-text dark:text-text-dark">{entry.track || '(no track provided)'}</div>
+                        <div className="mb-1 text-xs text-text/75 dark:text-text-dark/75">
                           [{entry.target.toUpperCase()}] {targetName} • {entry.reason || 'No reason provided'}
                         </div>
                         {entry.error && (
-                          <div className="log-error">Error: {entry.error}</div>
+                          <div className="text-xs italic text-red-700 dark:text-red-300">Error: {entry.error}</div>
                         )}
                       </div>
-                      <div className="log-action">
+                      <div className="min-w-[90px] text-right text-xs font-semibold capitalize text-accent dark:text-sky-300">
                         <div>{entry.action.replace(/_/g, ' ')}</div>
-                        <div className="log-time">{timestamp}</div>
+                        <div className="mt-1 text-[11px] font-normal text-text/70 dark:text-text-dark/70">{timestamp}</div>
                       </div>
                     </div>
                   );
@@ -245,7 +240,7 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
           )}
 
           {!loading && !error && orderedEntries.length === 0 && (
-            <div className="no-changes">
+            <div className="py-10 text-center text-sm text-text/70 dark:text-text-dark/70">
               <p>{errorsOnly ? 'No sync errors found for this playlist.' : 'No sync log events found for this playlist.'}</p>
             </div>
           )}

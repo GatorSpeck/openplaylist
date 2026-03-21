@@ -1820,7 +1820,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         />
       )}
 
-      {playlistModalVisible && (
+      {playlistModalVisible && !syncConfigOpen && !syncLogModalOpen && (
         <BaseModal
           title="Playlist Options"
           options={[
@@ -1835,13 +1835,23 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             {
               label: "Sync Options",
               action: () => {
-                setSyncConfigOpen(true);
+                setPlaylistModalVisible(false);
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    setSyncConfigOpen(true);
+                  });
+                });
               },
             },
             {
               label: "View Sync Log",
               action: () => {
-                setSyncLogModalOpen(true);
+                setPlaylistModalVisible(false);
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    setSyncLogModalOpen(true);
+                  });
+                });
               },
             },
             { label: "Sync Now", action: () => onSyncToPlex(false) },

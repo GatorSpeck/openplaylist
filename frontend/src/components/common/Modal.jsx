@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 const Modal = ({ children, title, open, onClose }) => {
   // Close on ESC key
@@ -14,14 +15,21 @@ const Modal = ({ children, title, open, onClose }) => {
 
   if (!open) return null;
 
-  return (
+  const handleBackdropMouseDown = (e) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
+  const modalMarkup = (
     <div
-      className="fixed inset-0 z-[1200] flex items-center justify-center overflow-y-auto bg-black/50 px-4 py-6"
-      onClick={onClose}
+      className="z-[5000] flex items-center justify-center overflow-y-auto bg-black/50 px-4 py-6"
+      style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0 }}
+      onMouseDown={handleBackdropMouseDown}
     >
       <div
         className="w-full max-w-[600px] max-h-[calc(100vh-3rem)] overflow-y-auto rounded border border-black/10 bg-surface text-text shadow-lg dark:border-white/20 dark:bg-surface-dark-elevated dark:text-text-dark"
-        onClick={e => e.stopPropagation()}
+        onMouseDown={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-black/10 px-4 py-3 dark:border-white/15">
           <h2 className="m-0 text-lg font-semibold">{title}</h2>
@@ -38,6 +46,12 @@ const Modal = ({ children, title, open, onClose }) => {
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return modalMarkup;
+  }
+
+  return createPortal(modalMarkup, document.body);
 };
 
 export default Modal;

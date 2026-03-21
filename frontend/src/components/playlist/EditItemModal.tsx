@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
-import '../../styles/EditItemModal.css';
 import PlaylistEntry from '../../lib/PlaylistEntry';
 
 interface EditItemModalProps {
@@ -33,49 +32,59 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ isOpen, onClose, item, on
 
   return (
     <Modal open={isOpen} onClose={onClose} title={`Edit ${isAlbum ? 'Album' : 'Track'} Details`}>
-      <form onSubmit={handleSubmit} className="edit-form">
-        <div className="form-group">
-          <label htmlFor="title">{isAlbum ? 'Album Title' : 'Track Title'}</label>
+      <form onSubmit={handleSubmit} className="flex w-full flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <label htmlFor="title" className="text-sm font-medium text-text dark:text-text-dark">{isAlbum ? 'Album Title' : 'Track Title'}</label>
           <input
             id="title"
             name="title"
             type="text"
             value={editedItem.getTitle() || ''}
             onChange={handleChange}
+            className="w-full rounded border border-black/15 bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/20 dark:bg-surface-dark dark:text-text-dark"
             required
           />
         </div>
         
-        <div className="form-group">
-          <label htmlFor="artist">Artist</label>
+        <div className="flex flex-col gap-2">
+          <label htmlFor="artist" className="text-sm font-medium text-text dark:text-text-dark">Artist</label>
           <input
             id="artist"
             name="artist"
             type="text"
             value={editedItem.getArtist() || ''}
             onChange={handleChange}
+            className="w-full rounded border border-black/15 bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/20 dark:bg-surface-dark dark:text-text-dark"
             required
           />
         </div>
         
         {!isAlbum && (
-          <div className="form-group">
-            <label htmlFor="album">Album</label>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="album" className="text-sm font-medium text-text dark:text-text-dark">Album</label>
             <input
               id="album"
               name="album"
               type="text"
               value={editedItem.getAlbum() || ''}
               onChange={handleChange}
+              className="w-full rounded border border-black/15 bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/20 dark:bg-surface-dark dark:text-text-dark"
             />
           </div>
         )}
         
-        <div className="form-actions">
-          <button type="button" onClick={onClose} className="cancel-button">
+        <div className="mt-2 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded border border-black/15 bg-surface-subtle px-4 py-2 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+          >
             Cancel
           </button>
-          <button type="submit" className="save-button">
+          <button
+            type="submit"
+            className="rounded bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-hover"
+          >
             Save Changes
           </button>
         </div>

@@ -76,13 +76,13 @@ description: "Task list for Tailwind CSS Migration"
 
 ### G5 — Playlist Modals
 
-- [ ] T022 [P] [US1] Migrate `frontend/src/components/playlist/EditItemModal.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/EditItemModal.css` import
+- [x] T022 [P] [US1] Migrate `frontend/src/components/playlist/EditItemModal.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/EditItemModal.css` import
 - [ ] T023 [P] [US1] Migrate `frontend/src/components/playlist/MatchTrackModal.tsx` to Tailwind with dark variants
 - [ ] T024 [P] [US1] Migrate `frontend/src/components/playlist/MatchAlbumModal.tsx` to Tailwind with dark variants
-- [ ] T025 [P] [US1] Migrate `frontend/src/components/playlist/DuplicateSelectionModal.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/DuplicateSelectionModal.css` import
-- [ ] T026 [P] [US1] Migrate `frontend/src/components/playlist/SelectPlaylistModal.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/SelectPlaylistModal.css` import
-- [ ] T027 [P] [US1] Migrate `frontend/src/components/playlist/SyncConfig.tsx` to Tailwind; add dark variants; remove `frontend/src/components/playlist/SyncConfig.css` import
-- [ ] T028 [P] [US1] Migrate `frontend/src/components/playlist/SyncLogModal.tsx` to Tailwind; add dark variants; remove `frontend/src/components/playlist/SyncLogModal.css` import
+- [x] T025 [P] [US1] Migrate `frontend/src/components/playlist/DuplicateSelectionModal.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/DuplicateSelectionModal.css` import
+- [x] T026 [P] [US1] Migrate `frontend/src/components/playlist/SelectPlaylistModal.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/SelectPlaylistModal.css` import
+- [x] T027 [P] [US1] Migrate `frontend/src/components/playlist/SyncConfig.tsx` to Tailwind; add dark variants; remove `frontend/src/components/playlist/SyncConfig.css` import
+- [x] T028 [P] [US1] Migrate `frontend/src/components/playlist/SyncLogModal.tsx` to Tailwind; add dark variants; remove `frontend/src/components/playlist/SyncLogModal.css` import
 - [ ] T029 [P] [US1] Migrate `frontend/src/components/playlist/PlaylistAutoSyncDialog.tsx` to Tailwind with dark variants
 
 ### G6 — Nav Modals
