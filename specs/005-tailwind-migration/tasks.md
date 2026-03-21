@@ -63,8 +63,8 @@ description: "Task list for Tailwind CSS Migration"
 ### G3 — Core Playlist View
 
 - [ ] T014 [US1] Migrate `frontend/src/components/playlist/PlaylistGrid.tsx` to Tailwind; retain `style={{ gridTemplateColumns: getGridTemplate() }}` inline prop for runtime column widths; add dark variants for grid, row, zebra, header, controls; remove `frontend/src/styles/PlaylistGrid.css` import
-- [ ] T015 [P] [US1] Migrate `frontend/src/components/playlist/PlaylistEntryRow.tsx` to Tailwind; add dark variants for row background, selected state, hover state; no separate CSS file to remove (styles were in PlaylistGrid.css)
-- [ ] T016 [P] [US1] Migrate `frontend/src/components/EntryTypeBadge.tsx` to Tailwind with dark variants
+- [x] T015 [P] [US1] Migrate `frontend/src/components/playlist/PlaylistEntryRow.tsx` to Tailwind; add dark variants for row background, selected state, hover state; no separate CSS file to remove (styles were in PlaylistGrid.css)
+- [x] T016 [P] [US1] Migrate `frontend/src/components/EntryTypeBadge.tsx` to Tailwind with dark variants
 - [x] T017 [P] [US1] Migrate `frontend/src/components/playlist/AlbumArtGrid.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/AlbumArtGrid.css` import
 - [x] T018 [P] [US1] Migrate `frontend/src/components/playlist/AnniversaryTimeline.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/AnniversaryTimeline.css` import
 
