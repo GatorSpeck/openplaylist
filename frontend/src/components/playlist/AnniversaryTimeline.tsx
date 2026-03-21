@@ -322,12 +322,20 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
       key={date}
       className={`timeline-day relative min-w-[200px] flex-shrink-0 border-t-4 pt-4 sm:min-w-[240px] md:min-w-[280px] ${today ? 'today border-accent' : 'border-black/15 dark:border-white/20'} ${past ? 'past opacity-70' : ''}`}
     >
-      <div className={`day-header mb-3 text-center ${today ? 'rounded px-2 py-2' : ''}`}>
-        <div className="day-date flex flex-col items-center">
-          <span className="day-short text-base font-bold">{formatDate(date)}</span>
-          <span className="day-full text-xs opacity-70 sm:text-sm">{formatFullDate(date)}</span>
+      <div
+        className={`day-header relative mb-3 min-h-[76px] rounded-md border px-2 py-2 text-center ${today ? 'border-accent/40 bg-accent/10 dark:border-accent/60 dark:bg-accent/20' : 'border-black/10 bg-surface-subtle dark:border-white/15 dark:bg-surface-dark'}`}
+      >
+        <div className="day-date flex flex-col items-center gap-1.5">
+          <span className="day-short rounded-full bg-black/[0.06] px-3 py-1 text-sm font-semibold tracking-wide text-text dark:bg-white/[0.12] dark:text-text-dark sm:text-base">
+            {formatDate(date)}
+          </span>
+          <span className="day-full rounded-md bg-black/[0.04] px-2.5 py-1 text-xs font-medium opacity-85 dark:bg-white/[0.08] sm:text-sm">{formatFullDate(date)}</span>
         </div>
-        {today && <span className="today-badge mt-1 inline-block rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-white">Today</span>}
+        {today && (
+          <span className="today-badge pointer-events-none absolute right-2 top-2 inline-flex rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
+            Today
+          </span>
+        )}
       </div>
 
       <div className="day-anniversaries flex flex-col gap-2">
@@ -338,13 +346,19 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
             onClick={() => handleAlbumClick(anniversary)}
           >
             <div className="album-info flex flex-1 flex-col">
-              <div className="album-title mb-1 text-sm font-semibold leading-tight">{anniversary.album}</div>
-              <div className="album-artist mb-2 text-xs leading-tight opacity-80">{anniversary.artist}</div>
-              <div className="anniversary-info mt-auto flex flex-col gap-1">
-                <span className={`years-badge ${getAnniversaryBadgeColor(anniversary.years_since_release)}`}>
-                  {anniversary.years_since_release} year{anniversary.years_since_release !== 1 ? 's' : ''}
-                </span>
-                <span className="original-date text-[11px] opacity-60">
+              <div className="album-title mb-1 rounded-md bg-black/[0.05] px-2.5 py-1.5 text-sm font-semibold leading-tight text-text dark:bg-white/[0.10] dark:text-text-dark">{anniversary.album}</div>
+              <div className="album-artist mb-2 inline-flex w-fit rounded-full bg-black/[0.04] px-2.5 py-1 text-xs font-medium leading-tight text-text/85 dark:bg-white/[0.12] dark:text-text-dark/90">{anniversary.artist}</div>
+              <div className="anniversary-info mt-auto flex flex-col gap-1 border-t border-black/10 pt-2 dark:border-white/15">
+                {(() => {
+                  const badgeMeta = getAnniversaryBadgeMeta(anniversary.years_since_release);
+                  return (
+                    <span className={`years-badge ${badgeMeta.className}`} title={badgeMeta.title}>
+                      <span aria-hidden="true" className="mr-1">{badgeMeta.marker}</span>
+                      {anniversary.years_since_release} year{anniversary.years_since_release !== 1 ? 's' : ''}
+                    </span>
+                  );
+                })()}
+                <span className="original-date inline-flex w-fit rounded-md bg-black/[0.04] px-2 py-1 text-[11px] font-medium text-text/70 dark:bg-white/[0.10] dark:text-text-dark/75">
                   Released {formatFullDate(anniversary.original_release_date)}
                 </span>
               </div>
@@ -412,15 +426,31 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
   );
 };
 
-export function getAnniversaryBadgeColor(years: number): string {
+export function getAnniversaryBadgeMeta(years: number): { className: string; marker: string; title: string } {
   if (years <= 0) {
-    return 'inline-flex w-fit rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-semibold text-white';
+    return {
+      className: 'inline-flex w-fit items-center rounded-full bg-emerald-500 px-2.5 py-1 text-[11px] font-semibold text-white ring-1 ring-emerald-300/70 shadow-sm',
+      marker: '●',
+      title: 'New release anniversary',
+    };
   } else if (years % 10 === 0) {
-    return 'inline-flex w-fit rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-semibold text-white';
+    return {
+      className: 'inline-flex w-fit items-center rounded-full bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 px-2.5 py-1 text-[11px] font-semibold text-amber-950 ring-1 ring-amber-200/90 shadow-sm',
+      marker: '🥇',
+      title: 'Gold milestone anniversary',
+    };
   } else if (years % 5 === 0) {
-    return 'inline-flex w-fit rounded-full bg-slate-400 px-2 py-0.5 text-[11px] font-semibold text-white';
+    return {
+      className: 'inline-flex w-fit items-center rounded-full bg-gradient-to-r from-slate-200 via-slate-300 to-slate-400 px-2.5 py-1 text-[11px] font-semibold text-slate-900 ring-1 ring-slate-200/80 shadow-sm',
+      marker: '🥈',
+      title: 'Silver milestone anniversary',
+    };
   } else {
-    return 'inline-flex w-fit rounded-full bg-orange-600 px-2 py-0.5 text-[11px] font-semibold text-white';
+    return {
+      className: 'inline-flex w-fit items-center rounded-full bg-gradient-to-r from-amber-700 via-orange-600 to-amber-800 px-2.5 py-1 text-[11px] font-semibold text-amber-50 ring-1 ring-amber-500/50 shadow-sm',
+      marker: '🥉',
+      title: 'Bronze anniversary',
+    };
   }
 }
 
