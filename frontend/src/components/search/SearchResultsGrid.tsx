@@ -976,42 +976,37 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
         </div>
 
         <div 
+          className="bg-surface-subtle dark:bg-surface-dark border border-border dark:border-border-dark p-2.5 my-2.5 rounded"
           style={{ 
-            minHeight: '40px', 
+            minHeight: '40px',
             display: selectedSearchResults.length > 0 ? 'block' : 'none',
-            backgroundColor: '#f0f0f0',
-            padding: '10px',
-            border: '1px solid #ccc',
-            margin: '10px 0',
             zIndex: 9999,
             position: 'relative'
           }}
         >
           <button 
             onClick={() => addSongs(selectedSearchResults)}
-            style={{ marginRight: '10px', padding: '8px 16px', backgroundColor: 'lightblue' }}
+            className="mr-2.5 px-4 py-2 rounded bg-accent text-text-dark font-medium transition hover:bg-accent-hover"
           >
             Add {selectedSearchResults.length} Selected to Playlist
           </button>
           <button 
             onClick={() => clearSelectedSongs()}
-            style={{ padding: '8px 16px', backgroundColor: 'lightcoral' }}
+            className="px-4 py-2 rounded bg-red-600 text-text-dark font-medium transition hover:bg-red-700"
           >
             Clear Selection
           </button>
         </div>
 
-        <div className="search-grid-container" style={{
+        <div className="search-grid-container border border-border dark:border-border-dark rounded" style={{
           overflowX: 'auto',
           overflowY: 'hidden',
-          maxHeight: '600px',
-          border: '1px solid #ddd',
-          borderRadius: '4px'
+          maxHeight: '600px'
         }}>
           <div style={{
             minWidth: 'fit-content'
           }}>
-            <div className="search-grid-header-row" style={{
+            <div className="search-grid-header-row bg-surface text-text dark:bg-surface-dark dark:text-text-dark" style={{
               gridTemplateColumns: getGridTemplate(),
               position: 'sticky',
               top: 0,
@@ -1055,12 +1050,12 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                             e.stopPropagation(); // Prevent sort when clicking settings
                             setColumnConfigOpen(true);
                           }}
+                          className="text-text-muted dark:text-text-dark/60 hover:text-text dark:hover:text-text-dark"
                           style={{
                             background: 'none',
                             border: 'none',
                             cursor: 'pointer',
                             fontSize: '14px',
-                            color: '#666',
                             marginLeft: '8px'
                           }}
                           title="Configure columns"
@@ -1131,7 +1126,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                           top: '25%',
                           bottom: '25%',
                           width: '2px',
-                          backgroundColor: '#ccc',
+                          backgroundColor: 'var(--op-border)',
                           borderRadius: '1px',
                           transition: 'background-color 0.2s'
                         }}></div>
@@ -1254,7 +1249,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                     return (
                       <label 
                         key={column.key} 
-                        className="column-checkbox-item draggable-column"
+                        className="column-checkbox-item draggable-column border border-border dark:border-border-dark rounded"
                         draggable
                         onDragStart={(e) => {
                           e.dataTransfer.setData('text/plain', index.toString());
@@ -1284,8 +1279,6 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                           alignItems: 'center',
                           marginBottom: '10px',
                           padding: '8px',
-                          border: '1px solid #eee',
-                          borderRadius: '4px',
                           cursor: 'grab'
                         }}
                       >
@@ -1303,7 +1296,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                         />
                         <div>
                           <div style={{ fontWeight: 'bold' }}>{column.label}</div>
-                          <div style={{ fontSize: '12px', color: '#666' }}>{column.description}</div>
+                          <div className="text-xs text-text-muted dark:text-text-dark/60">{column.description}</div>
                         </div>
                       </label>
                     );
@@ -1315,15 +1308,12 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                     .map(column => (
                       <label 
                         key={column.key} 
-                        className="column-checkbox-item"
+                        className="column-checkbox-item border border-border dark:border-border-dark rounded opacity-60"
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           marginBottom: '10px',
-                          padding: '8px',
-                          border: '1px solid #eee',
-                          borderRadius: '4px',
-                          opacity: 0.6
+                          padding: '8px'
                         }}
                       >
                         <input
@@ -1338,30 +1328,24 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                         />
                         <div>
                           <div style={{ fontWeight: 'bold' }}>{column.label}</div>
-                          <div style={{ fontSize: '12px', color: '#666' }}>{column.description}</div>
+                          <div className="text-xs text-text-muted dark:text-text-dark/60">{column.description}</div>
                         </div>
                       </label>
                     ))
                   }
                 </div>
-                <div style={{ 
+                <div className="flex gap-2.5 justify-end mt-5 border-t border-border dark:border-border-dark pt-4" style={{ 
                   display: 'flex', 
                   gap: '10px', 
-                  justifyContent: 'flex-end',
-                  marginTop: '20px',
-                  borderTop: '1px solid #eee',
-                  paddingTop: '15px'
+                  justifyContent: 'flex-end'
                 }}>
                   <button 
                     onClick={() => {
                       updateColumnVisibility(defaultColumns);
                       setColumnWidths(defaultColumnWidths);
                     }}
+                    className="px-4 py-2 rounded bg-surface-subtle dark:bg-surface-dark border border-border dark:border-border-dark text-text dark:text-text-dark transition hover:bg-surface-muted dark:hover:bg-surface-dark-elevated"
                     style={{
-                      padding: '8px 16px',
-                      backgroundColor: '#f0f0f0',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
                       cursor: 'pointer'
                     }}
                   >

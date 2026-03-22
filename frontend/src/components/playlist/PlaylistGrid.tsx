@@ -1496,7 +1496,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           </button>
         </div>
 
-        <div className="filter-container mt-2 flex flex-wrap items-center gap-2">
+        <div className="filter-container mt-2 flex flex-wrap items-center justify-center gap-2">
           <input
             type="text"
             placeholder="Filter playlist..."
@@ -1504,7 +1504,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             onChange={(e) => {
               setFilter(e.target.value);
             }}
-            className="filter-input min-w-[220px] flex-1 rounded border border-border bg-surface px-3 py-1.5 text-sm dark:border-border-dark dark:bg-surface-dark"
+            className="filter-input w-64 rounded border border-border bg-surface px-3 py-1.5 text-sm text-text placeholder-text/40 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:placeholder-text-dark/40"
           />
 
           {filter && (

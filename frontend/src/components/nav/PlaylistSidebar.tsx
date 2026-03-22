@@ -121,31 +121,33 @@ const PlaylistSidebar = ({
       )}
       <div
         ref={sidebarRef}
-        className={`fixed inset-y-0 left-0 z-[1001] w-[300px] max-w-[86vw] transform bg-surface text-text shadow-xl transition-transform duration-300 ease-in-out dark:bg-surface-dark-elevated dark:text-text-dark ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`fixed inset-y-0 left-0 z-[1001] h-screen w-[300px] max-w-[86vw] transform bg-surface text-text shadow-xl transition-transform duration-300 ease-in-out dark:bg-surface-dark-elevated dark:text-text-dark ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
-        <div className="flex h-full flex-col overflow-y-auto p-4">
-          <h2 className="mb-3 text-xl font-semibold tracking-tight">OpenPlaylist</h2>
-          <div className="mb-4 flex gap-2">
-            <button
-              onClick={onNewPlaylist}
-              className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-semibold text-text transition hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-accent/25 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
-            >
-              New Playlist
-            </button>
-            <button
-              onClick={() => setImportModalOpen(true)}
-              className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-semibold text-text transition hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-accent/25 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
-            >
-              Import
-            </button>
+        <div className="flex h-full flex-col overflow-hidden">
+          <div className="shrink-0 px-4 pt-4">
+            <h2 className="mb-3 text-xl font-semibold tracking-tight">OpenPlaylist</h2>
+            <div className="mb-4 flex gap-2">
+              <button
+                onClick={onNewPlaylist}
+                className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-semibold text-text transition hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-accent/25 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+              >
+                New Playlist
+              </button>
+              <button
+                onClick={() => setImportModalOpen(true)}
+                className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-semibold text-text transition hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-accent/25 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+              >
+                Import
+              </button>
+            </div>
+            <div className="mb-2 flex items-center justify-between px-1 text-xs text-text/60 dark:text-text-dark/60">
+              <span>Playlists</span>
+              <span>{playlists.length}</span>
+            </div>
           </div>
 
-          <div className="mb-2 flex items-center justify-between px-1 text-xs text-text/60 dark:text-text-dark/60">
-            <span>Playlists</span>
-            <span>{playlists.length}</span>
-          </div>
-
-          <div className="space-y-1.5">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4">
+            <div className="space-y-1.5">
             {playlists
               .sort((a, b) => {
                 // First sort by pinned status
@@ -191,10 +193,11 @@ const PlaylistSidebar = ({
                   )}
                 </div>
               ))}
+            </div>
           </div>
           
-          {/* Add settings section at bottom of sidebar */}
-          <div className="mt-auto border-t border-border pt-4 dark:border-border-dark">
+          {/* Settings pinned at bottom */}
+          <div className="shrink-0 border-t border-border px-4 pb-4 pt-3 dark:border-border-dark">
             <button
               onClick={() => setSettingsOpen(true)}
               className="w-full rounded border border-accent/40 bg-accent px-3 py-2 text-sm font-semibold text-text-dark shadow-sm transition hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-accent/50 dark:bg-accent dark:text-text-dark dark:hover:bg-accent/90"
