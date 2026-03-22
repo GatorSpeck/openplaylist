@@ -80,7 +80,7 @@ html.dark {
   position: fixed;
   right: 20px;
   top: 20px;
-  z-index: 100;
+  z-index: 1102;
   padding: 8px 16px;
   border-radius: 4px;
   background: #4CAF50;
@@ -92,7 +92,7 @@ html.dark {
 .search-results-panel {
   position: fixed;
   top: 0;
-  right: calc(-1 * var(--panel-width, 400px));
+  right: calc(-1 * var(--panel-width, 400px) - 8px);
   width: var(--panel-width, 400px);
   height: 100vh;
   background: var(--op-surface);
@@ -380,4 +380,80 @@ html.dark {
 .album-option.no-results {
   font-style: italic;
   color: var(--op-text-muted);
+}
+
+.search-floating-batch-button {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1101;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: none;
+  background: #2196f3;
+  color: white;
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.search-floating-batch-button:hover {
+  background: #1976d2;
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(33, 150, 243, 0.5);
+}
+
+.search-floating-batch-button .batch-count {
+  font-size: 14px;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.search-floating-batch-button .batch-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.search-batch-actions-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.search-batch-action-button {
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  color: var(--op-on-accent);
+  cursor: pointer;
+  transition: filter 0.2s ease;
+}
+
+.search-batch-action-button:hover {
+  filter: brightness(0.95);
+}
+
+.search-batch-action-button.add-button {
+  background: #2080ff;
+}
+
+.search-batch-action-button.clear-button {
+  background: #dc2626;
+}
+
+html.dark .search-batch-action-button.add-button {
+  background: #4a9eff;
+}
+
+html.dark .search-batch-action-button.clear-button {
+  background: #ef4444;
 }

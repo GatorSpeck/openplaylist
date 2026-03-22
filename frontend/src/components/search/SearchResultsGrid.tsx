@@ -13,6 +13,7 @@ import libraryRepository from '../../repositories/LibraryRepository';
 import ContextMenu from '../common/ContextMenu';
 import SimilarTracksPopup from '../common/SimilarTracksPopup';
 import TrackDetailsModal from '../common/TrackDetailsModal';
+import Modal from '../common/Modal';
 import { FixedSizeList as List } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
@@ -55,7 +56,9 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [similarTracks, setSimilarTracks] = useState<PlaylistEntry[]>([]);
   const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [batchActionsModalVisible, setBatchActionsModalVisible] = useState(false);
   const panelRef = useRef(null);
+  const toggleButtonRef = useRef<HTMLButtonElement | null>(null);
   const [libraryStats, setLibraryStats] = useState({
     visible: false,
     trackCount: 0,
@@ -300,6 +303,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const clearSelectedSongs = () => {
     setSelectedSearchResults([]);
     setAllSearchResultsSelected(false);
+    setBatchActionsModalVisible(false);
   };
 
   const toggleAllSongs = () => {
@@ -579,15 +583,18 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
 
   useEffect(() => {
     const handleClickOutside = (event) => {
+      if (toggleButtonRef.current && toggleButtonRef.current.contains(event.target)) {
+        return;
+      }
+
       if (panelRef.current && !panelRef.current.contains(event.target)) {
-        setIsPanelOpen(false);
-        onPanelClose();
+        closePanelAndClearSelection();
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isPanelOpen, selectedSearchResults.length]);
 
   useEffect(() => {
     const handleClickOutside = () => {
@@ -793,6 +800,21 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     setSearchResults([]);
   };
 
+  const closePanelAndClearSelection = () => {
+    clearSelectedSongs();
+    setIsPanelOpen(false);
+    onPanelClose();
+  };
+
+  const handleTogglePanel = () => {
+    if (isPanelOpen) {
+      closePanelAndClearSelection();
+      return;
+    }
+
+    setIsPanelOpen(true);
+  };
+
   // Create a new function to directly add manual entries
   const addManualEntry = (title: string, artist: string, album: string) => {
     const artistToUse = artist ? artist : 'Unknown Artist';
@@ -817,11 +839,43 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     });
   }
 
+  const SearchBatchActionsModal = ({ selectedCount, onAdd, onClear, visible, onClose }) => {
+    return (
+      <Modal
+        open={visible}
+        onClose={onClose}
+        title={`Batch Actions (${selectedCount} selected)`}
+      >
+        <div className="search-batch-actions-modal-content">
+          <button
+            className="search-batch-action-button add-button"
+            onClick={() => {
+              onAdd();
+              onClose();
+            }}
+          >
+            Add {selectedCount} Selected to Playlist
+          </button>
+          <button
+            className="search-batch-action-button clear-button"
+            onClick={() => {
+              onClear();
+              onClose();
+            }}
+          >
+            Clear Selection
+          </button>
+        </div>
+      </Modal>
+    );
+  };
+
   return (
     <>
       <button 
+        ref={toggleButtonRef}
         className="search-panel-toggle"
-        onClick={() => setIsPanelOpen(!isPanelOpen)}
+        onClick={handleTogglePanel}
       >
         {isPanelOpen ? '✕' : '+ Add Songs'}
       </button>
@@ -841,7 +895,6 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
         
         <div className="search-panel-header">
           <h2>Add Songs</h2>
-          <button onClick={() => setIsPanelOpen(false)}>✕</button>
         </div>
 
         <div className="search-container">
@@ -971,8 +1024,8 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                 Add Requested Entry
               </button>
               <button onClick={() => {
-                setFilters({ title: '', artist: '', album: '' });
                 clearSearchResults();
+                clearSelectedSongs();
               }}>
                 Clear
               </button>
@@ -980,33 +1033,11 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           </div>
         </div>
 
-        <div 
-          className="bg-surface-subtle dark:bg-surface-dark border border-border dark:border-border-dark p-2.5 my-2.5 rounded"
-          style={{ 
-            minHeight: '40px',
-            display: selectedSearchResults.length > 0 ? 'block' : 'none',
-            zIndex: 9999,
-            position: 'relative'
-          }}
-        >
-          <button 
-            onClick={() => addSongs(selectedSearchResults)}
-            className="mr-2.5 px-4 py-2 rounded bg-accent text-text-dark font-medium transition hover:bg-accent-hover"
-          >
-            Add {selectedSearchResults.length} Selected to Playlist
-          </button>
-          <button 
-            onClick={() => clearSelectedSongs()}
-            className="px-4 py-2 rounded bg-red-600 text-text-dark font-medium transition hover:bg-red-700"
-          >
-            Clear Selection
-          </button>
-        </div>
-
         <div className="search-grid-container border border-border dark:border-border-dark rounded" style={{
           overflowX: 'auto',
           overflowY: 'hidden',
-          maxHeight: '600px'
+          maxHeight: '600px',
+          position: 'relative'
         }}>
           <div style={{
             minWidth: 'fit-content'
@@ -1178,7 +1209,26 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
               </AutoSizer>
             </div>
           </div>
+
+          {selectedSearchResults.length > 0 && (
+            <button
+              className="search-floating-batch-button"
+              onClick={() => setBatchActionsModalVisible(true)}
+              title={`${selectedSearchResults.length} items selected - Click for batch actions`}
+            >
+              <span className="batch-count">{selectedSearchResults.length}</span>
+              <span className="batch-icon">⚡</span>
+            </button>
+          )}
         </div>
+
+        <SearchBatchActionsModal
+          selectedCount={selectedSearchResults.length}
+          onAdd={() => addSongs(selectedSearchResults)}
+          onClear={clearSelectedSongs}
+          visible={batchActionsModalVisible}
+          onClose={() => setBatchActionsModalVisible(false)}
+        />
 
         {showLastFMSearch && (
           <LastFMSearch
