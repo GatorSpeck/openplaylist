@@ -2,17 +2,18 @@ import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
 import PathSelector from './PathSelector';
 import LogsPanel from './LogsPanel';
+import DarkModeToggle from '../common/DarkModeToggle';
 import JobsPanel from '../job/JobsPanel';
 import ScheduledTasksPanel from './ScheduledTasksPanel';
 import axios from 'axios';
 
 const TABS = [
   'Music Paths', 'Jobs', 'Scheduled Tasks', 'Database', 'Last.fm',
-  'Plex', 'OpenAI', 'Redis', 'Spotify', 'YouTube Music', 'Logs',
+  'Plex', 'OpenAI', 'Redis', 'Spotify', 'YouTube Music', 'Logs', 'Theme',
 ];
 
 // Tabs where the Save button is not applicable
-const NO_SAVE_TABS = new Set([1, 2, 3, 10]);
+const NO_SAVE_TABS = new Set([1, 2, 3, 10, 11]);
 
 const SpotifyConnectionPanel = () => {
   const [status, setStatus] = useState({
@@ -523,6 +524,20 @@ const SettingsModal = ({ open, onClose }) => {
           </div>
         )}
         {activeTab === 10 && <LogsPanel />}
+        {activeTab === 11 && (
+          <div className="space-y-4">
+            <h3 className="text-base font-semibold text-text dark:text-text-dark">Appearance</h3>
+            <div className="rounded border border-border bg-surface-subtle p-4 dark:border-border-dark dark:bg-surface-dark">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium text-text dark:text-text-dark">Theme Mode</div>
+                  <div className="text-xs text-text/60 dark:text-text-dark/60">Choose between light and dark mode</div>
+                </div>
+                <DarkModeToggle />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Footer — negative margins to break out of Modal's padding */}

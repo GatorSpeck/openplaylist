@@ -433,7 +433,7 @@ export function getAnniversaryBadgeMeta(years: number): { className: string; mar
       marker: '●',
       title: 'New release anniversary',
     };
-  } else if (years % 10 === 0) {
+  } else if (years % 25 === 0 || years % 10 === 0) {
     return {
       className: 'inline-flex w-fit items-center rounded-full bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 px-2.5 py-1 text-[11px] font-semibold text-amber-950 ring-1 ring-amber-200/90 shadow-sm',
       marker: '🥇',
