@@ -169,68 +169,72 @@ const ImportPlaylistModal = ({ open, onClose, onPlaylistImported }) => {
   let importForm = null;
   if (importSource === "file") {
     importForm = (
-      <div className="form-group">
-        <label htmlFor="file-upload">Select File:</label>
+      <div className="flex flex-col gap-1">
+        <label htmlFor="file-upload" className="text-sm font-medium text-text dark:text-text-dark">Select File:</label>
         <input
           id="file-upload"
           type="file"
           accept=".json,.m3u"
           onChange={handleFileChange}
+          className="w-full cursor-pointer rounded border border-border px-3 py-2 text-sm text-text file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-accent/10 file:px-2 file:py-1 file:text-xs file:font-medium file:text-accent dark:border-border-dark dark:text-text-dark"
         />
-        <small className="helper-text">
+        <span className="text-xs text-text/60 dark:text-text-dark/60">
           Accepts JSON or M3U format files
-        </small>
+        </span>
       </div>
     );
   }
   else if (importSource === "spotify") {
     importForm = (
-      <div className="form-group">
-        <label htmlFor="spotify-id">Spotify Playlist ID:</label>
+      <div className="flex flex-col gap-1">
+        <label htmlFor="spotify-id" className="text-sm font-medium text-text dark:text-text-dark">Spotify Playlist ID:</label>
         <input
           id="spotify-id"
           type="text"
           value={spotifyPlaylistId}
           onChange={(e) => setSpotifyPlaylistId(e.target.value)}
           placeholder="e.g. 37i9dQZEVXcQ9COmYvdajy"
+          className="w-full rounded border border-border bg-transparent px-3 py-2 text-sm text-text placeholder:text-text/50 focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:text-text-dark dark:placeholder:text-text-dark/50"
         />
-        <small className="helper-text">
+        <span className="text-xs text-text/60 dark:text-text-dark/60">
           Enter the Spotify playlist ID (found in the URL or Share link)
-        </small>
+        </span>
       </div>
     );
   }
   else if (importSource === "plex") {
     importForm = (
-      <div className="form-group">
-        <label htmlFor="plex-id">Plex Playlist Name:</label>
+      <div className="flex flex-col gap-1">
+        <label htmlFor="plex-id" className="text-sm font-medium text-text dark:text-text-dark">Plex Playlist Name:</label>
         <input
           id="plex-id"
           type="text"
           value={plexPlaylistName}
           onChange={(e) => setPlexPlaylistName(e.target.value)}
           placeholder="e.g. My Favorite Songs"
+          className="w-full rounded border border-border bg-transparent px-3 py-2 text-sm text-text placeholder:text-text/50 focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:text-text-dark dark:placeholder:text-text-dark/50"
         />
-        <small className="helper-text">
+        <span className="text-xs text-text/60 dark:text-text-dark/60">
           Enter the Plex playlist name
-        </small>
+        </span>
       </div>
     );
   }
   else if (importSource === "youtube") {
     importForm = (
-      <div className="form-group">
-        <label htmlFor="youtube-id">YouTube Music Playlist ID:</label>
+      <div className="flex flex-col gap-1">
+        <label htmlFor="youtube-id" className="text-sm font-medium text-text dark:text-text-dark">YouTube Music Playlist ID:</label>
         <input
           id="youtube-id"
           type="text"
           value={youtubePlaylistId}
           onChange={(e) => setYoutubePlaylistId(e.target.value)}
           placeholder="e.g. PLrAl6w_5dWWDk7WS_CL5lBNxFMlsJ1Y_n"
+          className="w-full rounded border border-border bg-transparent px-3 py-2 text-sm text-text placeholder:text-text/50 focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:text-text-dark dark:placeholder:text-text-dark/50"
         />
-        <small className="helper-text">
+        <span className="text-xs text-text/60 dark:text-text-dark/60">
           Enter the YouTube Music playlist ID (found in the URL after "list=")
-        </small>
+        </span>
       </div>
     );
   }
@@ -241,24 +245,26 @@ const ImportPlaylistModal = ({ open, onClose, onPlaylistImported }) => {
       open={open}
       onClose={onClose}
     >
-      <div className="import-playlist-form">
-        <div className="form-group">
-          <label htmlFor="playlist-name">Playlist Name:</label>
+      <div className="space-y-4">
+        <div className="flex flex-col gap-1">
+          <label htmlFor="playlist-name" className="text-sm font-medium text-text dark:text-text-dark">Playlist Name:</label>
           <input
             id="playlist-name"
             type="text"
             value={playlistName}
             onChange={(e) => setPlaylistName(e.target.value)}
             placeholder="Enter playlist name"
+            className="w-full rounded border border-border bg-transparent px-3 py-2 text-sm text-text placeholder:text-text/50 focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:text-text-dark dark:placeholder:text-text-dark/50"
           />
         </div>
-        
-        <div className="form-group">
-          <label htmlFor="import-source">Import Source:</label>
-          <select 
-            id="import-source" 
+
+        <div className="flex flex-col gap-1">
+          <label htmlFor="import-source" className="text-sm font-medium text-text dark:text-text-dark">Import Source:</label>
+          <select
+            id="import-source"
             value={importSource}
             onChange={handleImportSourceChange}
+            className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
           >
             <option value="file">File (JSON/M3U)</option>
             <option value="spotify">Spotify Playlist</option>
@@ -268,15 +274,26 @@ const ImportPlaylistModal = ({ open, onClose, onPlaylistImported }) => {
         </div>
 
         {importForm}
-        
-        {error && <div className="error-message">{error}</div>}
-        
-        <div className="modal-actions">
-          <button onClick={onClose}>Cancel</button>
-          <button 
-            onClick={handleImport} 
+
+        {error && (
+          <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-700/50 dark:bg-red-900/30 dark:text-red-300">
+            {error}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded border border-border px-4 py-1.5 text-sm text-text transition hover:bg-surface-muted dark:border-border-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleImport}
             disabled={isLoading}
-            className="primary-button"
+            className="inline-flex items-center gap-2 rounded bg-accent px-4 py-1.5 text-sm font-medium text-text-dark transition hover:bg-accent/90 disabled:opacity-50"
           >
             {isLoading ? 'Importing...' : 'Import'}
           </button>

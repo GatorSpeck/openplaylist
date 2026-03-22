@@ -1,21 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  FormControlLabel,
-  Switch,
-  TextField,
-  Typography,
-  Box,
-  Alert,
-  CircularProgress,
-  Paper,
-  Grid,
-} from '@mui/material';
 import axios from 'axios';
+import Modal from '../common/Modal';
 
 const CRON_PRESETS = {
   '0 2 * * *': 'Daily at 2 AM',
@@ -166,190 +151,202 @@ const PlaylistAutoSyncDialog = ({ open, onClose, playlistId, playlistName }) => 
 
   if (loading) {
     return (
-      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-        <DialogContent>
-          <Box display="flex" justifyContent="center" alignItems="center" p={3}>
-            <CircularProgress />
-          </Box>
-        </DialogContent>
-      </Dialog>
+      <Modal open={open} onClose={onClose} title={`Auto-Sync Settings for "${playlistName}"`}>
+        <div className="flex items-center justify-center py-8">
+          <div className="h-7 w-7 animate-spin rounded-full border-2 border-border border-t-accent dark:border-border-dark dark:border-t-accent" />
+        </div>
+      </Modal>
     );
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Auto-Sync Settings for "{playlistName}"</DialogTitle>
-      <DialogContent>
-        <Box sx={{ pt: 1 }}>
-          <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+    <>
+      <Modal open={open} onClose={onClose} title={`Auto-Sync Settings for "${playlistName}"`}>
+        <div className="pt-1">
+          <p className="mb-3 text-sm text-text/75 dark:text-text-dark/75">
             Configure automatic synchronization for this playlist with external services.
-          </Typography>
+          </p>
 
-          <FormControlLabel
-            control={
-              <Switch
-                checked={settings.auto_sync_enabled}
-                onChange={(e) => setSettings(prev => ({ ...prev, auto_sync_enabled: e.target.checked }))}
-              />
-            }
-            label="Enable Auto-Sync"
-            sx={{ mb: 3 }}
-          />
+          <label className="mb-4 inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-text dark:text-text-dark">
+            <input
+              type="checkbox"
+              checked={settings.auto_sync_enabled}
+              onChange={(e) => setSettings(prev => ({ ...prev, auto_sync_enabled: e.target.checked }))}
+              className="h-4 w-4 rounded border border-border text-accent focus:ring-accent dark:border-border-dark dark:bg-surface-dark"
+            />
+            Enable Auto-Sync
+          </label>
 
           {settings.auto_sync_enabled && (
-            <Box>
-              <Typography variant="h6" gutterBottom>
+            <div className="mt-2">
+              <h3 className="mb-2 text-base font-semibold text-text dark:text-text-dark">
                 Sync Schedule (Cron Expression)
-              </Typography>
+              </h3>
               
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="textSecondary" gutterBottom>
+              <div className="mb-2">
+                <p className="mb-2 text-sm text-text/75 dark:text-text-dark/75">
                   Choose a preset or enter a custom cron expression:
-                </Typography>
+                </p>
                 
-                <Grid container spacing={1} sx={{ mb: 2 }}>
+                <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {Object.entries(CRON_PRESETS).map(([cron, label]) => (
-                    <Grid item xs={12} sm={6} md={4} key={cron}>
-                      <Button
-                        fullWidth
-                        variant={settings.auto_sync_schedule === cron ? "contained" : "outlined"}
-                        size="small"
+                    <button
+                      key={cron}
+                      type="button"
+                      className={`w-full rounded border px-3 py-1.5 text-xs font-medium transition ${settings.auto_sync_schedule === cron ? 'border-accent bg-accent text-text-dark' : 'border-border bg-surface text-text hover:bg-surface-subtle dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated'}`}
                         onClick={() => handlePresetChange(cron)}
                       >
                         {label}
-                      </Button>
-                    </Grid>
+                    </button>
                   ))}
-                </Grid>
+                </div>
 
-                <TextField
-                  fullWidth
-                  label="Custom Cron Expression"
+                <label className="mb-1 block text-sm font-medium text-text dark:text-text-dark" htmlFor="custom-cron-expression">
+                  Custom Cron Expression
+                </label>
+                <input
+                  id="custom-cron-expression"
+                  type="text"
                   placeholder="e.g., 0 */4 * * * (every 4 hours)"
                   value={customCron}
                   onChange={(e) => handleCronChange(e.target.value)}
-                  helperText="Format: minute hour day month day_of_week (times are in server timezone)"
-                  sx={{ mb: 2 }}
+                  className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text/60 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:placeholder:text-text-dark/60"
                 />
-              </Box>
+                <p className="mt-1 text-xs text-text/70 dark:text-text-dark/70">
+                  Format: minute hour day month day_of_week (times are in server timezone)
+                </p>
+              </div>
 
               {isValidating ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                  <CircularProgress size={16} />
-                  <Typography variant="body2">Validating...</Typography>
-                </Box>
+                <div className="mb-2 flex items-center gap-2">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-accent dark:border-border-dark dark:border-t-accent" />
+                  <p className="text-sm text-text dark:text-text-dark">Validating...</p>
+                </div>
               ) : (
-                <Box sx={{ mb: 2 }}>
+                <div className="mb-2">
                   {!cronValidation.valid ? (
-                    <Alert severity="error" sx={{ mb: 1 }}>
+                    <div className="mb-2 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200">
                       {cronValidation.error}
-                    </Alert>
+                    </div>
                   ) : (
-                    <Alert severity="success" sx={{ mb: 1 }}>
+                    <div className="mb-2 rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200">
                       Valid cron expression
-                    </Alert>
+                    </div>
                   )}
                   
                   {cronValidation.next_runs && cronValidation.next_runs.length > 0 && (
-                    <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
-                      <Typography variant="body2" fontWeight="medium" gutterBottom>
+                    <div className="rounded border border-border bg-surface-subtle p-3 dark:border-border-dark dark:bg-surface-dark">
+                      <p className="mb-1 text-sm font-medium text-text dark:text-text-dark">
                         Next 5 sync times:
                         {cronValidation.timezone && (
-                          <Typography component="span" variant="caption" color="textSecondary">
+                          <span className="text-xs font-normal text-text/70 dark:text-text-dark/70">
                             {' '}({cronValidation.timezone})
-                          </Typography>
+                          </span>
                         )}
-                      </Typography>
+                      </p>
                       {cronValidation.next_runs.map((time, index) => (
-                        <Typography key={index} variant="body2" color="textSecondary">
+                        <p key={index} className="text-sm text-text/80 dark:text-text-dark/80">
                           {new Date(time).toLocaleString()}
-                        </Typography>
+                        </p>
                       ))}
-                    </Paper>
+                    </div>
                   )}
-                </Box>
+                </div>
               )}
 
-              <Alert severity="info">
+              <div className="rounded border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-200">
                 Auto-sync will use the configured sync targets for this playlist. 
                 Make sure you have set up sync targets in the playlist sync configuration.
-              </Alert>
+              </div>
 
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="h6" gutterBottom>
+              <div className="mt-3">
+                <h3 className="mb-2 text-base font-semibold text-text dark:text-text-dark">
                   Scheduled Tasks
-                </Typography>
+                </h3>
                 
                 {scheduledTasks.length > 0 ? (
-                  <Box>
-                    <Typography variant="body2" color="textSecondary" gutterBottom>
+                  <div>
+                    <p className="mb-2 text-sm text-text/75 dark:text-text-dark/75">
                       This playlist will be synced by the following scheduled tasks:
-                    </Typography>
+                    </p>
                     {scheduledTasks.map((task) => (
-                      <Paper key={task.id} sx={{ p: 2, mt: 1, bgcolor: 'action.hover' }}>
-                        <Typography variant="body2" fontWeight="medium">
+                      <div key={task.id} className="mt-1 rounded border border-border bg-surface-subtle p-3 dark:border-border-dark dark:bg-surface-dark">
+                        <p className="text-sm font-medium text-text dark:text-text-dark">
                           {task.name}
-                        </Typography>
-                        <Typography variant="caption" color="textSecondary">
+                        </p>
+                        <p className="text-xs text-text/70 dark:text-text-dark/70">
                           Schedule: {task.cron_expression}
-                        </Typography>
+                        </p>
                         {task.next_run_at && (
-                          <Typography variant="caption" display="block" color="textSecondary">
+                          <p className="text-xs text-text/70 dark:text-text-dark/70">
                             Next run: {new Date(task.next_run_at).toLocaleString()}
-                          </Typography>
+                          </p>
                         )}
-                      </Paper>
+                      </div>
                     ))}
-                  </Box>
+                  </div>
                 ) : (
-                  <Box>
-                    <Alert severity="warning" sx={{ mb: 2 }}>
+                  <div>
+                    <div className="mb-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
                       No scheduled tasks are configured to sync this playlist. 
                       Auto-sync is enabled but won't run without a scheduled task.
-                    </Alert>
-                    <Button
-                      variant="outlined"
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text transition hover:bg-surface-subtle disabled:cursor-not-allowed disabled:opacity-50 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
                       onClick={() => setShowCreateTask(true)}
                       disabled={!settings.auto_sync_schedule}
                     >
                       Create Scheduled Task
-                    </Button>
-                  </Box>
+                    </button>
+                  </div>
                 )}
-              </Box>
-            </Box>
+              </div>
+            </div>
           )}
 
-          {showCreateTask && (
-            <Dialog open={showCreateTask} onClose={() => setShowCreateTask(false)}>
-              <DialogTitle>Create Scheduled Task</DialogTitle>
-              <DialogContent>
-                <Typography variant="body2" sx={{ mb: 2 }}>
-                  This will create a scheduled task to automatically sync "{playlistName}" 
-                  using the schedule: <strong>{settings.auto_sync_schedule}</strong>
-                </Typography>
-              </DialogContent>
-              <DialogActions>
-                <Button onClick={() => setShowCreateTask(false)}>Cancel</Button>
-                <Button onClick={createScheduledTask} variant="contained">
-                  Create Task
-                </Button>
-              </DialogActions>
-            </Dialog>
-          )}
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button 
+          <div className="mt-4 flex justify-end gap-2 border-t border-border pt-3 dark:border-border-dark">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text transition hover:bg-surface-subtle dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
           onClick={handleSave} 
-          variant="contained"
-          disabled={saving || (settings.auto_sync_enabled && !cronValidation.valid) || isValidating}
-        >
-          {saving ? <CircularProgress size={20} /> : 'Save'}
-        </Button>
-      </DialogActions>
-    </Dialog>
+              className="inline-flex items-center rounded bg-accent px-3 py-1.5 text-sm font-semibold text-text-dark transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={saving || (settings.auto_sync_enabled && !cronValidation.valid) || isValidating}
+            >
+              {saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-text-dark/40 border-t-text-dark" /> : 'Save'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={showCreateTask} onClose={() => setShowCreateTask(false)} title="Create Scheduled Task">
+        <p className="mb-4 text-sm text-text dark:text-text-dark">
+          This will create a scheduled task to automatically sync "{playlistName}" using the schedule: <strong>{settings.auto_sync_schedule}</strong>
+        </p>
+        <div className="flex justify-end gap-2 border-t border-border pt-3 dark:border-border-dark">
+          <button
+            type="button"
+            onClick={() => setShowCreateTask(false)}
+            className="rounded border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text transition hover:bg-surface-subtle dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={createScheduledTask}
+            className="rounded bg-accent px-3 py-1.5 text-sm font-semibold text-text-dark transition hover:bg-accent-hover"
+          >
+            Create Task
+          </button>
+        </div>
+      </Modal>
+    </>
   );
 };
 

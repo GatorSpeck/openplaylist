@@ -112,12 +112,12 @@ const Playlists = () => {
   if (!backendReady) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
-        <div className="w-full max-w-xl rounded-lg border border-black/10 bg-surface p-8 text-center shadow-sm dark:border-white/20 dark:bg-surface-dark-elevated">
+        <div className="w-full max-w-xl rounded-lg border border-border bg-surface p-8 text-center shadow-sm dark:border-border-dark dark:bg-surface-dark-elevated">
           <h2 className="mb-2 text-xl font-semibold">Connecting to server...</h2>
           <p className="text-sm opacity-80">{connectionError || `Checking backend health (attempt ${healthCheckAttempts + 1})`}</p>
           {healthCheckAttempts >= 10 && (
             <button
-              className="mt-4 rounded border border-black/15 bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+              className="mt-4 rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
               onClick={() => {
                 setHealthCheckAttempts(0);
                 setConnectionError(null);
@@ -274,7 +274,7 @@ const Playlists = () => {
           />
         ) : (
           <div className="mx-auto flex max-w-6xl flex-col gap-6">
-            <div className="rounded-lg border border-black/10 bg-surface-subtle p-6 dark:border-white/20 dark:bg-surface-dark-elevated">
+            <div className="rounded-lg border border-border bg-surface-subtle p-6 dark:border-border-dark dark:bg-surface-dark-elevated">
               <h1 className="mb-2 text-3xl font-bold">Welcome to Your Music Library</h1>
               <p className="text-sm opacity-85">Select a playlist from the sidebar to get started, or check out upcoming album anniversaries below.</p>
             </div>
@@ -287,25 +287,25 @@ const Playlists = () => {
         )}
       </div>
       {newPlaylistModalVisible && (
-        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-md rounded-lg border border-black/10 bg-surface p-5 shadow-lg dark:border-white/20 dark:bg-surface-dark-elevated">
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-surface-muted0 px-4">
+          <div className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-lg dark:border-border-dark dark:bg-surface-dark-elevated">
             <h3 className="mb-4 text-lg font-semibold">Create New Playlist</h3>
             <input
               type="text"
               value={newPlaylistNameModal}
               onChange={(e) => setNewPlaylistNameModal(e.target.value)}
               placeholder="New Playlist Name"
-              className="mb-4 w-full rounded border border-black/15 bg-surface px-3 py-2 text-sm dark:border-white/20 dark:bg-surface-dark"
+              className="mb-4 w-full rounded border border-border bg-surface px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-dark"
             />
             <div className="flex justify-end gap-2">
               <button
-                className="rounded border border-black/15 bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+                className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
                 onClick={handleCreateNewPlaylist}
               >
                 Create
               </button>
               <button
-                className="rounded border border-black/15 bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+                className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
                 onClick={() => setNewPlaylistModalVisible(false)}
               >
                 Cancel
@@ -315,25 +315,25 @@ const Playlists = () => {
         </div>
       )}
       {cloneModalVisible && (
-        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-md rounded-lg border border-black/10 bg-surface p-5 shadow-lg dark:border-white/20 dark:bg-surface-dark-elevated">
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-surface-muted0 px-4">
+          <div className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-lg dark:border-border-dark dark:bg-surface-dark-elevated">
             <h3 className="mb-4 text-lg font-semibold">Clone Playlist</h3>
             <input
               type="text"
               value={clonePlaylistName}
               onChange={(e) => setClonePlaylistName(e.target.value)}
               placeholder="New Playlist Name"
-              className="mb-4 w-full rounded border border-black/15 bg-surface px-3 py-2 text-sm dark:border-white/20 dark:bg-surface-dark"
+              className="mb-4 w-full rounded border border-border bg-surface px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-dark"
             />
             <div className="flex justify-end gap-2">
               <button
-                className="rounded border border-black/15 bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+                className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
                 onClick={handleClonePlaylist}
               >
                 Clone
               </button>
               <button
-                className="rounded border border-black/15 bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+                className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
                 onClick={() => {
                   setCloneModalVisible(false);
                   setClonePlaylistName('');

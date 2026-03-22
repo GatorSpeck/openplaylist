@@ -167,7 +167,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
     onContextMenu(e);
   };
 
-  const hiddenClass = entry.isHidden() ? 'opacity-60 bg-black/[0.03] dark:bg-white/[0.04]' : '';
+  const hiddenClass = entry.isHidden() ? 'opacity-60 bg-surface-subtle dark:bg-surface-dark' : '';
 
   const artist = entry.isHidden() ? (
     <s>{entry.getArtist()}</s>
@@ -301,7 +301,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
   return (
     <div
       ref={ref}
-      className={`playlist-entry-row grid !h-[50px] !min-h-[50px] !max-h-[50px] overflow-hidden items-center border-b border-black/10 !text-text dark:border-white/15 dark:!text-text-dark ${className || ''} ${hiddenClass} ${isDragging ? 'shadow-sm' : ''}`}
+      className={`playlist-entry-row grid !h-[50px] !min-h-[50px] !max-h-[50px] overflow-hidden items-center border-b border-border !text-text dark:border-border-dark dark:!text-text-dark ${className || ''} ${hiddenClass} ${isDragging ? 'shadow-sm' : ''}`}
       style={style}
       onContextMenu={onContextMenu}
       {...props}
@@ -406,7 +406,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
                   <span>{contentsHidden}</span>
                 </div>
                 {isMobile && (<button 
-                  className="mobile-menu-button absolute right-1 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-base text-text/70 hover:bg-black/5 dark:text-text-dark/70 dark:hover:bg-white/10"
+                  className="mobile-menu-button absolute right-1 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-base text-text/70 hover:bg-surface-muted dark:text-text-dark/70 dark:hover:bg-surface-dark-elevated"
                   onClick={handleMenuClick}
                   aria-label="More options"
                 >
@@ -430,7 +430,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
                   />
                 ) : (
                   <span 
-                    className="notes-display block min-h-4 rounded px-1 hover:bg-black/5 dark:hover:bg-white/10"
+                    className="notes-display block min-h-4 rounded px-1 hover:bg-surface-muted dark:hover:bg-surface-dark-elevated"
                   >
                     {entry.getNotes()}
                   </span>

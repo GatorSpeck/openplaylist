@@ -47,18 +47,12 @@ const ContextMenu = ({ x, y, options, onClose }) => {
     >
       <div 
         ref={menuRef}
-        className="context-menu"
+        className="context-menu min-w-40 overflow-hidden rounded border border-border bg-surface py-1 text-text shadow-sm dark:border-border-dark dark:bg-surface-dark-elevated dark:text-text-dark"
         style={{ 
           position: 'fixed',
           left: position.x,
           top: position.y,
           zIndex: 4000,
-          background: 'white',
-          color: 'black',
-          border: '1px solid #ddd',
-          borderRadius: '4px',
-          padding: '8px 0',
-          boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
         }}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
@@ -66,12 +60,8 @@ const ContextMenu = ({ x, y, options, onClose }) => {
         {options.map((option, index) => option ? (
           <div
             key={index}
-            className="context-menu-item"
+            className="context-menu-item cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark"
             onClick={() => handleItemClick(option.onClick)}
-            style={{
-              padding: '8px 16px',
-              cursor: 'pointer'
-            }}
           >
             {option.label}
           </div>

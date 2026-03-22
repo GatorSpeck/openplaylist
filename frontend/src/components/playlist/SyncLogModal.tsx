@@ -120,7 +120,7 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
       <div className="max-h-[70vh] overflow-y-auto">
         {/* Summary Section */}
         {syncResult && (
-        <div className="mb-5 rounded-lg border border-black/10 bg-surface-subtle p-5 dark:border-white/15 dark:bg-surface-dark">
+        <div className="mb-5 rounded-lg border border-border bg-surface-subtle p-5 dark:border-border-dark dark:bg-surface-dark">
           <div>
             <h3 className={`m-0 text-lg font-semibold ${syncResult.status === 'success' ? 'text-emerald-600 dark:text-emerald-400' : syncResult.status === 'partial' ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
               {syncResult.status === 'success' ? '✅' : 
@@ -169,14 +169,14 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
           <div className="mb-3 flex gap-2">
             <button
               type="button"
-              className={`rounded border px-3 py-1.5 text-xs font-medium transition ${!errorsOnly ? 'border-accent bg-accent text-white' : 'border-black/15 bg-surface text-text hover:bg-surface-subtle dark:border-white/20 dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated'}`}
+              className={`rounded border px-3 py-1.5 text-xs font-medium transition ${!errorsOnly ? 'border-accent bg-accent text-text-dark' : 'border-border bg-surface text-text hover:bg-surface-subtle dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated'}`}
               onClick={() => setErrorsOnly(false)}
             >
               All Events
             </button>
             <button
               type="button"
-              className={`rounded border px-3 py-1.5 text-xs font-medium transition ${errorsOnly ? 'border-accent bg-accent text-white' : 'border-black/15 bg-surface text-text hover:bg-surface-subtle dark:border-white/20 dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated'}`}
+              className={`rounded border px-3 py-1.5 text-xs font-medium transition ${errorsOnly ? 'border-accent bg-accent text-text-dark' : 'border-border bg-surface text-text hover:bg-surface-subtle dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated'}`}
               onClick={() => setErrorsOnly(true)}
             >
               Errors Only
@@ -199,8 +199,8 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
           )}
 
           {!loading && !error && orderedEntries.length > 0 && (
-            <div className="mb-5 overflow-hidden rounded-lg border border-black/10 dark:border-white/15">
-              <div className="flex items-center gap-2 border-b border-black/10 bg-surface-subtle px-4 py-3 font-semibold text-text dark:border-white/15 dark:bg-surface-dark dark:text-text-dark">
+            <div className="mb-5 overflow-hidden rounded-lg border border-border dark:border-border-dark">
+              <div className="flex items-center gap-2 border-b border-border bg-surface-subtle px-4 py-3 font-semibold text-text dark:border-border-dark dark:bg-surface-dark dark:text-text-dark">
                 <span className="flex-grow">{orderedEntries.length} events</span>
               </div>
 
@@ -214,7 +214,7 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
                   return (
                     <div
                       key={entry.id}
-                      className={`flex items-start gap-3 border-b px-4 py-3 last:border-b-0 ${entry.success ? 'border-black/10 bg-emerald-50 dark:border-white/10 dark:bg-emerald-900/15' : 'border-black/10 bg-red-50 dark:border-white/10 dark:bg-red-900/15'}`}
+                      className={`flex items-start gap-3 border-b px-4 py-3 last:border-b-0 ${entry.success ? 'border-border bg-emerald-50 dark:border-border-dark dark:bg-emerald-900/15' : 'border-border bg-red-50 dark:border-border-dark dark:bg-red-900/15'}`}
                     >
                       <div className="w-6 text-center text-lg">
                         {getActionIcon(entry.action)}

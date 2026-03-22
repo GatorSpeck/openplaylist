@@ -6,7 +6,7 @@ import PlaylistAutoSyncDialog from '../playlist/PlaylistAutoSyncDialog';
 
 const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex, pinned, onTogglePin, onShowSyncOptions, onShowAutoSync }) => (
   <div
-    className="fixed z-[1001] min-w-48 overflow-hidden rounded border border-black/10 bg-surface py-1 text-sm text-text shadow-sm dark:border-white/20 dark:bg-surface-dark-elevated dark:text-text-dark"
+    className="fixed z-[1001] min-w-48 overflow-hidden rounded border border-border bg-surface py-1 text-sm text-text shadow-sm dark:border-border-dark dark:bg-surface-dark-elevated dark:text-text-dark"
     style={{ left: x, top: y }}
   >
     <div className="cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark" onClick={onTogglePin}>{pinned ? 'Unpin Playlist' : 'Pin Playlist'}</div>
@@ -107,14 +107,14 @@ const PlaylistSidebar = ({
     <>
       <button
         ref={hamburgerRef}
-        className="fixed left-4 top-4 z-[1002] rounded border border-black/10 bg-surface px-3 py-2 text-xl leading-none text-text shadow-sm transition hover:bg-surface-subtle dark:border-white/20 dark:bg-surface-dark-elevated dark:text-text-dark dark:hover:bg-surface-dark"
+        className="fixed left-4 top-4 z-[1002] rounded border border-border bg-surface px-3 py-2 text-xl leading-none text-text shadow-sm transition hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-accent/30 dark:border-border-dark dark:bg-surface-dark-elevated dark:text-text-dark dark:hover:bg-surface-dark-elevated"
         onClick={() => onClose(!isOpen)}
       >
         ☰
       </button>
       {isOpen && (
         <div
-          className="fixed inset-0 z-[1000] bg-black/35 backdrop-blur-[1px]"
+          className="fixed inset-0 z-[1000] bg-text/35 backdrop-blur-[1px] dark:bg-text-dark/20"
           onClick={() => onClose(false)}
           aria-hidden="true"
         />
@@ -124,22 +124,28 @@ const PlaylistSidebar = ({
         className={`fixed inset-y-0 left-0 z-[1001] w-[300px] max-w-[86vw] transform bg-surface text-text shadow-xl transition-transform duration-300 ease-in-out dark:bg-surface-dark-elevated dark:text-text-dark ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="flex h-full flex-col overflow-y-auto p-4">
-          <h2 className="mb-4 text-xl font-semibold">OpenPlaylist</h2>
+          <h2 className="mb-3 text-xl font-semibold tracking-tight">OpenPlaylist</h2>
           <div className="mb-4 flex gap-2">
             <button
               onClick={onNewPlaylist}
-              className="rounded border border-black/15 bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+              className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-semibold text-text transition hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-accent/25 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
             >
               New Playlist
             </button>
             <button
               onClick={() => setImportModalOpen(true)}
-              className="rounded border border-black/15 bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+              className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-semibold text-text transition hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-accent/25 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
             >
               Import
             </button>
           </div>
-          <div className="space-y-1">
+
+          <div className="mb-2 flex items-center justify-between px-1 text-xs text-text/60 dark:text-text-dark/60">
+            <span>Playlists</span>
+            <span>{playlists.length}</span>
+          </div>
+
+          <div className="space-y-1.5">
             {playlists
               .sort((a, b) => {
                 // First sort by pinned status
@@ -159,23 +165,41 @@ const PlaylistSidebar = ({
               .map((playlist, index) => (
                 <div
                   key={index} // Using playlist ID instead of index for a more stable key
-                  className={`cursor-pointer rounded px-2 py-2 text-sm transition ${selectedPlaylist?.id === playlist.id ? 'bg-surface-subtle font-medium dark:bg-surface-dark' : 'hover:bg-surface-subtle dark:hover:bg-surface-dark'}`}
+                  className={`cursor-pointer rounded border px-2.5 py-2 text-sm transition ${
+                    selectedPlaylist?.id === playlist.id
+                      ? 'border-accent/60 bg-accent/15 font-semibold text-text dark:border-accent/60 dark:bg-accent/25 dark:text-text-dark'
+                      : 'border-border bg-surface hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:hover:bg-surface-dark-elevated'
+                  }`}
                   onClick={() => handlePlaylistClick(playlist.id)}
                   onContextMenu={(e) => handleContextMenu(e, playlist)}
                 >
-                  {playlist.pinned && <span className="mr-1">📌</span>}
-                  {playlist.name}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate">
+                      {playlist.pinned && <span className="mr-1">📌</span>}
+                      {playlist.name}
+                    </span>
+                    {!playlist.enabled && (
+                      <span className="shrink-0 rounded border border-border px-1 py-0.5 text-[10px] text-text/60 dark:border-border-dark dark:text-text-dark/60">
+                        Off
+                      </span>
+                    )}
+                  </div>
+                  {playlist.updated_at && (
+                    <div className="mt-0.5 text-[11px] text-text/50 dark:text-text-dark/50">
+                      Updated {new Date(playlist.updated_at).toLocaleDateString()}
+                    </div>
+                  )}
                 </div>
               ))}
           </div>
           
           {/* Add settings section at bottom of sidebar */}
-          <div className="mt-auto border-t border-black/10 pt-4 dark:border-white/20">
+          <div className="mt-auto border-t border-border pt-4 dark:border-border-dark">
             <button
               onClick={() => setSettingsOpen(true)}
-              className="w-full rounded border border-black/15 bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+              className="w-full rounded border border-accent/40 bg-accent px-3 py-2 text-sm font-semibold text-text-dark shadow-sm transition hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-accent/50 dark:bg-accent dark:text-text-dark dark:hover:bg-accent/90"
             >
-              Settings
+              Open Settings
             </button>
           </div>
         </div>

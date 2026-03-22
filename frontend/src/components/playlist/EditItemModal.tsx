@@ -41,7 +41,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ isOpen, onClose, item, on
             type="text"
             value={editedItem.getTitle() || ''}
             onChange={handleChange}
-            className="w-full rounded border border-black/15 bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/20 dark:bg-surface-dark dark:text-text-dark"
+            className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
             required
           />
         </div>
@@ -54,7 +54,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ isOpen, onClose, item, on
             type="text"
             value={editedItem.getArtist() || ''}
             onChange={handleChange}
-            className="w-full rounded border border-black/15 bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/20 dark:bg-surface-dark dark:text-text-dark"
+            className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
             required
           />
         </div>
@@ -68,7 +68,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ isOpen, onClose, item, on
               type="text"
               value={editedItem.getAlbum() || ''}
               onChange={handleChange}
-              className="w-full rounded border border-black/15 bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/20 dark:bg-surface-dark dark:text-text-dark"
+              className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
             />
           </div>
         )}
@@ -77,13 +77,13 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ isOpen, onClose, item, on
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-black/15 bg-surface-subtle px-4 py-2 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+            className="rounded border border-border bg-surface-subtle px-4 py-2 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="rounded bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-hover"
+            className="rounded bg-accent px-4 py-2 text-sm font-semibold text-text-dark transition hover:bg-accent-hover"
           >
             Save Changes
           </button>

@@ -1232,19 +1232,19 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
 
         {/* Column Configuration Modal */}
         {columnConfigOpen && (
-          <div className="fixed inset-0 z-[1200] flex items-center justify-center overflow-y-auto bg-black/50 px-4 py-6" onClick={() => setColumnConfigOpen(false)}>
+          <div className="fixed inset-0 z-[1200] flex items-center justify-center overflow-y-auto bg-text/40 px-4 py-6 dark:bg-text-dark/25" onClick={() => setColumnConfigOpen(false)}>
             <div 
-              className="w-full max-w-[500px] max-h-[calc(100vh-3rem)] overflow-y-auto rounded border border-black/10 bg-surface text-text shadow-lg dark:border-white/20 dark:bg-surface-dark-elevated dark:text-text-dark"
+              className="w-full max-w-[500px] max-h-[calc(100vh-3rem)] overflow-y-auto rounded border border-border bg-surface text-text shadow-lg dark:border-border-dark dark:bg-surface-dark-elevated dark:text-text-dark"
               style={{
                 width: '90vw',
                 boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ padding: '20px', borderBottom: '1px solid rgba(127,127,127,0.35)' }}>
+              <div className="border-b border-border p-5 dark:border-border-dark">
                 <h3 style={{ margin: '0', fontSize: '18px' }}>Configure Columns</h3>
               </div>
-              <div className="column-config-content" style={{ padding: '20px' }}>
+              <div className="column-config-content p-5">
                 <p>Select which columns to display:</p>
                 <div className="column-checkboxes">
                   {visibleColumns.map((columnKey, index) => {
@@ -1369,14 +1369,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                   </button>
                   <button 
                     onClick={() => setColumnConfigOpen(false)}
-                    style={{
-                      padding: '8px 16px',
-                      backgroundColor: '#4CAF50',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer'
-                    }}
+                    className="rounded bg-accent px-4 py-2 text-sm font-medium text-text-dark transition hover:bg-accent-hover"
                   >
                     Done
                   </button>

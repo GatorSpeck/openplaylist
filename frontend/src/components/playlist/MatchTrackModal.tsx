@@ -56,21 +56,21 @@ const MatchTrackModal = ({
           placeholder="Search for more matches..."
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
-          className="min-w-[240px] flex-1 rounded border border-black/15 bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/20 dark:bg-surface-dark dark:text-text-dark"
+          className="min-w-[240px] flex-1 rounded border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
           onKeyDown={(e) => e.key === 'Enter' && handleSearch(searchText)}
         />
         <button 
-          className="rounded bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-hover"
+          className="rounded bg-accent px-4 py-2 text-sm font-semibold text-text-dark transition hover:bg-accent-hover"
           onClick={() => handleSearch(searchText)}
         >
           Search
         </button>
       </div>
-      <div className="max-h-[45vh] overflow-y-auto rounded border border-black/10 dark:border-white/20">
+      <div className="max-h-[45vh] overflow-y-auto rounded border border-border dark:border-border-dark">
         {matchingTracks.map((match) => (
           <div 
             key={match.id}
-            className="cursor-pointer border-b border-black/10 px-3 py-2 transition hover:bg-surface-subtle last:border-b-0 dark:border-white/10 dark:hover:bg-surface-dark-elevated"
+            className="cursor-pointer border-b border-border px-3 py-2 transition hover:bg-surface-subtle last:border-b-0 dark:border-border-dark dark:hover:bg-surface-dark-elevated"
             onClick={() => onMatchSelect(match)}
           >
             <div className="text-sm font-medium text-text dark:text-text-dark">{match.getArtist()} - {match.getTitle()}</div>
@@ -81,7 +81,7 @@ const MatchTrackModal = ({
         ))}
       </div>
       <div className="mt-4 flex justify-end">
-        <button className="rounded border border-black/15 bg-surface-subtle px-4 py-2 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated" onClick={onClose}>
+        <button className="rounded border border-border bg-surface-subtle px-4 py-2 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated" onClick={onClose}>
           Cancel
         </button>
       </div>

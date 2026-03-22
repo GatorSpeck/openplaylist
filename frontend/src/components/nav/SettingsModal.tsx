@@ -1,30 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Tabs, Tab, Box, 
-         CircularProgress, Typography, Card, CardContent, Avatar, Paper, 
-         FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel,
-         Alert, List, ListItem, ListItemText, Chip, Divider } from '@mui/material';
-import { MusicNote as SpotifyIcon, YouTube as YouTubeIcon, Storage as DatabaseIcon,
-         CheckCircle as CheckIcon, Warning as WarningIcon, Error as ErrorIcon } from '@mui/icons-material';
+import React, { useState, useEffect } from 'react';
+import Modal from '../common/Modal';
 import PathSelector from './PathSelector';
 import LogsPanel from './LogsPanel';
 import JobsPanel from '../job/JobsPanel';
 import ScheduledTasksPanel from './ScheduledTasksPanel';
 import axios from 'axios';
 
-function TabPanel(props) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`settings-tabpanel-${index}`}
-      aria-labelledby={`settings-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
-    </div>
-  );
-}
+const TABS = [
+  'Music Paths', 'Jobs', 'Scheduled Tasks', 'Database', 'Last.fm',
+  'Plex', 'OpenAI', 'Redis', 'Spotify', 'YouTube Music', 'Logs',
+];
+
+// Tabs where the Save button is not applicable
+const NO_SAVE_TABS = new Set([1, 2, 3, 10]);
 
 const SpotifyConnectionPanel = () => {
   const [status, setStatus] = useState({
@@ -40,7 +28,6 @@ const SpotifyConnectionPanel = () => {
 
   const checkSpotifyStatus = async () => {
     setStatus(prev => ({ ...prev, loading: true }));
-    
     try {
       const response = await axios.get('/api/spotify/status');
       setStatus({
@@ -70,99 +57,72 @@ const SpotifyConnectionPanel = () => {
       checkSpotifyStatus();
     } catch (error) {
       console.error('Error disconnecting from Spotify:', error);
-      setStatus(prev => ({
-        ...prev,
-        error: 'Failed to disconnect from Spotify',
-      }));
+      setStatus(prev => ({ ...prev, error: 'Failed to disconnect from Spotify' }));
     }
   };
 
   if (status.loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" p={3}>
-        <CircularProgress />
-      </Box>
+      <div className="flex items-center justify-center p-8">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-accent dark:border-border-dark dark:border-t-accent" />
+      </div>
     );
   }
 
   return (
     <div>
-      <Typography variant="h6" gutterBottom>
-        Spotify Connection
-      </Typography>
-      
+      <h3 className="mb-4 text-base font-semibold text-text dark:text-text-dark">Spotify Connection</h3>
+
       {status.error && (
-        <Paper 
-          sx={{ 
-            p: 2, 
-            mb: 2, 
-            bgcolor: 'error.light', 
-            color: 'error.contrastText' 
-          }}
-        >
-          <Typography variant="body2">{status.error}</Typography>
-        </Paper>
+        <div className="mb-3 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-700/50 dark:bg-red-900/30 dark:text-red-300">
+          {status.error}
+        </div>
       )}
 
       {status.authenticated ? (
-        <Card variant="outlined" sx={{ mb: 3 }}>
-          <CardContent>
-            <Box display="flex" alignItems="center" mb={2}>
-              <Avatar 
-                src={status.user?.images?.[0]?.url} 
-                alt={status.user?.display_name}
-                sx={{ mr: 2, bgcolor: 'primary.main' }}
-              >
-                <SpotifyIcon />
-              </Avatar>
-              <Box>
-                <Typography variant="subtitle1">
-                  {status.user?.display_name || 'Spotify User'}
-                </Typography>
-                <Typography variant="body2" color="textSecondary">
-                  {status.user?.email || ''}
-                </Typography>
-              </Box>
-            </Box>
-            <Typography variant="body2" color="success.main" gutterBottom>
-              Connected to Spotify
-            </Typography>
-            <Button 
-              variant="outlined" 
-              color="secondary"
-              onClick={handleDisconnect}
-              sx={{ mt: 1 }}
-            >
-              Disconnect
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="mb-4 rounded border border-border bg-surface-subtle p-4 dark:border-border-dark dark:bg-surface-dark">
+          <div className="mb-3 flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1DB954] text-text-dark">
+              {status.user?.images?.[0]?.url ? (
+                <img src={status.user.images[0].url} alt={status.user?.display_name} className="h-full w-full object-cover" />
+              ) : (
+                <span className="text-sm font-bold">S</span>
+              )}
+            </div>
+            <div>
+              <div className="text-sm font-medium text-text dark:text-text-dark">
+                {status.user?.display_name || 'Spotify User'}
+              </div>
+              <div className="text-xs text-text/60 dark:text-text-dark/60">{status.user?.email || ''}</div>
+            </div>
+          </div>
+          <div className="mb-3 text-sm font-medium text-emerald-600 dark:text-emerald-400">Connected to Spotify</div>
+          <button
+            type="button"
+            onClick={handleDisconnect}
+            className="rounded border border-border px-3 py-1.5 text-sm text-text transition hover:bg-surface-muted dark:border-border-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+          >
+            Disconnect
+          </button>
+        </div>
       ) : (
-        <Box textAlign="center" p={3} border={1} borderColor="divider" borderRadius={1}>
-          <Typography variant="body1" gutterBottom>
+        <div className="mb-4 rounded border border-border p-6 text-center dark:border-border-dark">
+          <p className="mb-4 text-sm text-text/80 dark:text-text-dark/80">
             Connect your Spotify account to enable playlist synchronization
-          </Typography>
-          <Button 
-            variant="contained" 
-            color="primary"
+          </p>
+          <button
+            type="button"
             onClick={handleConnect}
-            sx={{ 
-              mt: 2,
-              bgcolor: '#1DB954', // Spotify green
-              '&:hover': {
-                bgcolor: '#1AA34A',
-              }
-            }}
-            startIcon={<SpotifyIcon />}
+            className="inline-flex items-center gap-2 rounded bg-[#1DB954] px-4 py-2 text-sm font-medium text-text-dark transition hover:bg-[#1AA34A]"
           >
             Connect to Spotify
-          </Button>
-        </Box>
+          </button>
+        </div>
       )}
 
-      <Typography variant="body2" color="textSecondary" sx={{ mt: 3 }}>
+      <p className="text-xs text-text/60 dark:text-text-dark/60">
         Connecting to Spotify allows you to synchronize playlists between your local collection and Spotify.
-      </Typography>
+      </p>
     </div>
   );
 };
@@ -181,7 +141,6 @@ const YouTubeMusicConnectionPanel = () => {
 
   const checkYouTubeMusicStatus = async () => {
     setStatus(prev => ({ ...prev, loading: true }));
-    
     try {
       const response = await axios.get('/api/youtube/status');
       setStatus({
@@ -201,103 +160,72 @@ const YouTubeMusicConnectionPanel = () => {
     }
   };
 
-  const handleRefresh = () => {
-    checkYouTubeMusicStatus();
-  };
-
   if (status.loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" p={3}>
-        <CircularProgress />
-      </Box>
+      <div className="flex items-center justify-center p-8">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-accent dark:border-border-dark dark:border-t-accent" />
+      </div>
     );
   }
 
   return (
     <div>
-      <Typography variant="h6" gutterBottom>
-        YouTube Music Connection
-      </Typography>
-      
+      <h3 className="mb-4 text-base font-semibold text-text dark:text-text-dark">YouTube Music Connection</h3>
+
       {status.error && (
-        <Paper 
-          sx={{ 
-            p: 2, 
-            mb: 2, 
-            bgcolor: 'error.light', 
-            color: 'error.contrastText' 
-          }}
-        >
-          <Typography variant="body2">{status.error}</Typography>
-        </Paper>
+        <div className="mb-3 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-700/50 dark:bg-red-900/30 dark:text-red-300">
+          {status.error}
+        </div>
       )}
 
       {status.authenticated ? (
-        <Card variant="outlined" sx={{ mb: 3 }}>
-          <CardContent>
-            <Box display="flex" alignItems="center" mb={2}>
-              <Avatar 
-                sx={{ mr: 2, bgcolor: '#FF0000' }} // YouTube red
-              >
-                <YouTubeIcon />
-              </Avatar>
-              <Box>
-                <Typography variant="subtitle1">
-                  YouTube Music User
-                </Typography>
-                <Typography variant="body2" color="textSecondary">
-                  Library Access: {status.user?.library_accessible ? 'Yes' : 'No'}
-                </Typography>
-                {status.user?.playlists_count !== undefined && (
-                  <Typography variant="body2" color="textSecondary">
-                    Playlists: {status.user.playlists_count}
-                  </Typography>
-                )}
-              </Box>
-            </Box>
-            <Typography variant="body2" color="success.main" gutterBottom>
-              Connected to YouTube Music
-            </Typography>
-            <Button 
-              variant="outlined" 
-              color="primary"
-              onClick={handleRefresh}
-              sx={{ mt: 1 }}
-            >
-              Refresh Status
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="mb-4 rounded border border-border bg-surface-subtle p-4 dark:border-border-dark dark:bg-surface-dark">
+          <div className="mb-3 flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FF0000] text-text-dark">
+              <span className="text-sm font-bold">YT</span>
+            </div>
+            <div>
+              <div className="text-sm font-medium text-text dark:text-text-dark">YouTube Music User</div>
+              <div className="text-xs text-text/60 dark:text-text-dark/60">
+                Library Access: {status.user?.library_accessible ? 'Yes' : 'No'}
+              </div>
+              {status.user?.playlists_count !== undefined && (
+                <div className="text-xs text-text/60 dark:text-text-dark/60">
+                  Playlists: {status.user.playlists_count}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="mb-3 text-sm font-medium text-emerald-600 dark:text-emerald-400">Connected to YouTube Music</div>
+          <button
+            type="button"
+            onClick={checkYouTubeMusicStatus}
+            className="rounded border border-border px-3 py-1.5 text-sm text-text transition hover:bg-surface-muted dark:border-border-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+          >
+            Refresh Status
+          </button>
+        </div>
       ) : (
-        <Box textAlign="center" p={3} border={1} borderColor="divider" borderRadius={1}>
-          <Typography variant="body1" gutterBottom>
+        <div className="mb-4 rounded border border-border p-6 text-center dark:border-border-dark">
+          <p className="mb-2 text-sm text-text/80 dark:text-text-dark/80">
             YouTube Music requires OAuth credentials and authentication
-          </Typography>
-          <Typography variant="body2" color="textSecondary" gutterBottom>
+          </p>
+          <p className="mb-4 text-xs text-text/60 dark:text-text-dark/60">
             Please configure your OAuth credentials and ensure the oauth.json file is properly set up.
-          </Typography>
-          <Button 
-            variant="outlined" 
-            color="primary"
-            onClick={handleRefresh}
-            sx={{ 
-              mt: 2,
-              borderColor: '#FF0000', // YouTube red
-              color: '#FF0000',
-              '&:hover': {
-                bgcolor: 'rgba(255, 0, 0, 0.04)',
-              }
-            }}
-            startIcon={<YouTubeIcon />}
+          </p>
+          <button
+            type="button"
+            onClick={checkYouTubeMusicStatus}
+            className="inline-flex items-center gap-2 rounded border border-[#FF0000] px-4 py-2 text-sm font-medium text-[#FF0000] transition hover:bg-red-50 dark:hover:bg-red-900/20"
           >
             Check Status
-          </Button>
-        </Box>
+          </button>
+        </div>
       )}
 
-      <Typography variant="body2" color="textSecondary" sx={{ mt: 3 }}>
+      <p className="text-xs text-text/60 dark:text-text-dark/60">
         YouTube Music integration allows you to import playlists and synchronize with your YouTube Music library.
-      </Typography>
+      </p>
     </div>
   );
 };
@@ -311,7 +239,7 @@ const DatabaseMigrationsPanel = () => {
     needs_upgrade: false,
     pending_count: 0,
     migrations: [],
-    status: 'checking'
+    status: 'checking',
   });
   const [isUpgrading, setIsUpgrading] = useState(false);
 
@@ -321,189 +249,155 @@ const DatabaseMigrationsPanel = () => {
 
   const checkMigrationStatus = async () => {
     setMigrationStatus(prev => ({ ...prev, loading: true, error: null }));
-    
     try {
       const response = await axios.get('/api/settings/migrations/status');
-      setMigrationStatus({
-        loading: false,
-        error: response.data.error || null,
-        ...response.data
-      });
+      setMigrationStatus({ loading: false, error: response.data.error || null, ...response.data });
     } catch (error) {
       console.error('Failed to check migration status:', error);
       setMigrationStatus(prev => ({
         ...prev,
         loading: false,
-        error: 'Failed to check migration status: ' + (error.response?.data?.detail || error.message)
+        error: 'Failed to check migration status: ' + (error.response?.data?.detail || error.message),
       }));
     }
   };
 
   const runMigrations = async () => {
     setIsUpgrading(true);
-    
     try {
       const response = await axios.post('/api/settings/migrations/upgrade');
-      
       if (response.data.success) {
-        // Refresh status after successful upgrade
         await checkMigrationStatus();
       }
     } catch (error) {
       console.error('Migration upgrade failed:', error);
       const errorMsg = error.response?.data?.detail?.error || error.response?.data?.detail || error.message;
-      setMigrationStatus(prev => ({
-        ...prev,
-        error: 'Migration failed: ' + errorMsg
-      }));
+      setMigrationStatus(prev => ({ ...prev, error: 'Migration failed: ' + errorMsg }));
     } finally {
       setIsUpgrading(false);
     }
   };
 
-  const getStatusIcon = () => {
-    if (migrationStatus.loading) return <CircularProgress size={20} />;
-    if (migrationStatus.error) return <ErrorIcon color="error" />;
-    if (migrationStatus.needs_upgrade) return <WarningIcon color="warning" />;
-    return <CheckIcon color="success" />;
-  };
-
-  const getStatusText = () => {
-    if (migrationStatus.loading) return 'Checking...';
-    if (migrationStatus.error) return 'Error';
-    if (migrationStatus.needs_upgrade) return `${migrationStatus.pending_count} pending migration(s)`;
-    return 'Up to date';
-  };
-
-  const getStatusColor = () => {
-    if (migrationStatus.error) return 'error';
-    if (migrationStatus.needs_upgrade) return 'warning';
-    return 'success';
+  const getStatusBadge = () => {
+    if (migrationStatus.error) {
+      return (
+        <span className="inline-flex items-center rounded border border-red-300 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 dark:border-red-700/50 dark:bg-red-900/30 dark:text-red-300">
+          Error
+        </span>
+      );
+    }
+    if (migrationStatus.needs_upgrade) {
+      return (
+        <span className="inline-flex items-center rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-700/50 dark:bg-amber-900/30 dark:text-amber-300">
+          {migrationStatus.pending_count} pending
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:border-emerald-700/50 dark:bg-emerald-900/30 dark:text-emerald-300">
+        Up to date
+      </span>
+    );
   };
 
   if (migrationStatus.loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" p={3}>
-        <CircularProgress />
-        <Typography variant="body1" sx={{ ml: 2 }}>
-          Checking database migration status...
-        </Typography>
-      </Box>
+      <div className="flex items-center justify-center gap-3 p-8">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-accent dark:border-border-dark dark:border-t-accent" />
+        <span className="text-sm text-text/70 dark:text-text-dark/70">Checking database migration status...</span>
+      </div>
     );
   }
 
   return (
     <div>
-      <Typography variant="h6" gutterBottom display="flex" alignItems="center">
-        <DatabaseIcon sx={{ mr: 1 }} />
-        Database Migrations
-      </Typography>
-      
+      <h3 className="mb-4 text-base font-semibold text-text dark:text-text-dark">Database Migrations</h3>
+
       {migrationStatus.error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          <Typography variant="body2">{migrationStatus.error}</Typography>
-        </Alert>
+        <div className="mb-3 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-700/50 dark:bg-red-900/30 dark:text-red-300">
+          {migrationStatus.error}
+        </div>
       )}
 
-      <Card variant="outlined" sx={{ mb: 3 }}>
-        <CardContent>
-          <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-            <Box display="flex" alignItems="center">
-              {getStatusIcon()}
-              <Box sx={{ ml: 2 }}>
-                <Typography variant="subtitle1">
-                  Migration Status
-                </Typography>
-                <Typography variant="body2" color="textSecondary">
-                  {getStatusText()}
-                </Typography>
-              </Box>
-            </Box>
-            <Chip 
-              label={getStatusText()} 
-              color={getStatusColor()}
-              variant="outlined"
-            />
-          </Box>
-          
-          <Divider sx={{ my: 2 }} />
-          
-          <Typography variant="body2" color="textSecondary" gutterBottom>
-            <strong>Current Revision:</strong> {migrationStatus.current_revision}
-          </Typography>
-          <Typography variant="body2" color="textSecondary" gutterBottom>
-            <strong>Latest Revision:</strong> {migrationStatus.head_revision}
-          </Typography>
-          
-          {migrationStatus.needs_upgrade && (
-            <Box sx={{ mt: 2 }}>
-              <Alert severity="info" sx={{ mb: 2 }}>
-                Your database has {migrationStatus.pending_count} pending migration(s). 
-                Click "Run Migrations" to update your database to the latest version.
-              </Alert>
-              <Button 
-                variant="contained" 
-                color="primary"
-                onClick={runMigrations}
-                disabled={isUpgrading}
-                startIcon={isUpgrading ? <CircularProgress size={16} /> : <DatabaseIcon />}
-              >
-                {isUpgrading ? 'Running Migrations...' : 'Run Migrations'}
-              </Button>
-            </Box>
-          )}
-          
-          <Box sx={{ mt: 2 }}>
-            <Button 
-              variant="outlined" 
-              color="primary"
-              onClick={checkMigrationStatus}
-              disabled={migrationStatus.loading}
+      <div className="mb-4 rounded border border-border bg-surface-subtle p-4 dark:border-border-dark dark:bg-surface-dark">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium text-text dark:text-text-dark">Migration Status</div>
+            <div className="text-xs text-text/60 dark:text-text-dark/60">
+              {migrationStatus.needs_upgrade
+                ? `${migrationStatus.pending_count} pending migration(s)`
+                : migrationStatus.error
+                  ? 'Error'
+                  : 'Up to date'}
+            </div>
+          </div>
+          {getStatusBadge()}
+        </div>
+
+        <div className="my-3 border-t border-border dark:border-border-dark" />
+
+        <div className="space-y-1 text-xs text-text/70 dark:text-text-dark/70">
+          <div><strong>Current Revision:</strong> {migrationStatus.current_revision}</div>
+          <div><strong>Latest Revision:</strong> {migrationStatus.head_revision}</div>
+        </div>
+
+        {migrationStatus.needs_upgrade && (
+          <div className="mt-3">
+            <div className="mb-3 rounded border border-sky-300 bg-sky-50 p-3 text-sm text-sky-700 dark:border-sky-700/50 dark:bg-sky-900/30 dark:text-sky-300">
+              Your database has {migrationStatus.pending_count} pending migration(s).
+              Click "Run Migrations" to update your database to the latest version.
+            </div>
+            <button
+              type="button"
+              onClick={runMigrations}
+              disabled={isUpgrading}
+              className="inline-flex items-center gap-2 rounded bg-accent px-3 py-1.5 text-sm font-medium text-text-dark transition hover:bg-accent/90 disabled:opacity-50"
             >
-              Refresh Status
-            </Button>
-          </Box>
-        </CardContent>
-      </Card>
+              {isUpgrading && (
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-border-dark border-t-text-dark" />
+              )}
+              {isUpgrading ? 'Running Migrations...' : 'Run Migrations'}
+            </button>
+          </div>
+        )}
+
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={checkMigrationStatus}
+            disabled={migrationStatus.loading}
+            className="rounded border border-border px-3 py-1.5 text-sm text-text transition hover:bg-surface-muted disabled:opacity-50 dark:border-border-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+          >
+            Refresh Status
+          </button>
+        </div>
+      </div>
 
       {migrationStatus.migrations && migrationStatus.migrations.length > 0 && (
-        <Card variant="outlined">
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Recent Migrations
-            </Typography>
-            <List dense>
-              {migrationStatus.migrations.map((migration, index) => (
-                <ListItem key={index}>
-                  <ListItemText
-                    primary={
-                      <Box display="flex" alignItems="center">
-                        <Typography variant="body2" component="span" sx={{ fontFamily: 'monospace' }}>
-                          {migration.revision}
-                        </Typography>
-                        {migration.is_current && (
-                          <Chip 
-                            label="Current" 
-                            size="small" 
-                            color="primary" 
-                            sx={{ ml: 1 }} 
-                          />
-                        )}
-                      </Box>
-                    }
-                    secondary={migration.message}
-                  />
-                </ListItem>
-              ))}
-            </List>
-          </CardContent>
-        </Card>
+        <div className="mb-4 rounded border border-border bg-surface-subtle p-4 dark:border-border-dark dark:bg-surface-dark">
+          <h4 className="mb-3 text-sm font-semibold text-text dark:text-text-dark">Recent Migrations</h4>
+          <ul className="space-y-2">
+            {migrationStatus.migrations.map((migration, index) => (
+              <li key={index} className="flex items-start gap-2 text-xs">
+                <code className="shrink-0 rounded bg-surface-muted px-1.5 py-0.5 font-mono text-text/80 dark:bg-surface-dark dark:text-text-dark/80">
+                  {migration.revision}
+                </code>
+                {migration.is_current && (
+                  <span className="shrink-0 rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-medium text-accent">
+                    Current
+                  </span>
+                )}
+                <span className="text-text/70 dark:text-text-dark/70">{migration.message}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
-      
-      <Typography variant="body2" color="textSecondary" sx={{ mt: 3 }}>
-        Database migrations update your database schema to match the latest application version. 
+
+      <p className="text-xs text-text/60 dark:text-text-dark/60">
+        Database migrations update your database schema to match the latest application version.
         Always backup your database before running migrations in production.
-      </Typography>
+      </p>
     </div>
   );
 };
@@ -513,22 +407,18 @@ const SettingsModal = ({ open, onClose }) => {
   const [indexPaths, setIndexPaths] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [settings, setSettings] = useState({});
-  
-  // Load settings when the modal opens
+
   useEffect(() => {
     if (open) {
       loadSettings();
     }
   }, [open]);
-  
+
   const loadSettings = async () => {
     setIsLoading(true);
     try {
-      // Fetch paths from the backend
       const response = await axios.get('/api/settings/paths');
       setIndexPaths(response.data || []);
-
-      // fetch other settings
       const settingsResp = await axios.get('/api/settings');
       setSettings(settingsResp.data || {});
     } catch (error) {
@@ -537,11 +427,10 @@ const SettingsModal = ({ open, onClose }) => {
       setIsLoading(false);
     }
   };
-  
+
   const saveSettings = async () => {
     setIsLoading(true);
     try {
-      // Save paths to the backend
       await axios.post('/api/settings/paths', indexPaths);
       onClose();
     } catch (error) {
@@ -550,111 +439,116 @@ const SettingsModal = ({ open, onClose }) => {
       setIsLoading(false);
     }
   };
-  
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-  };
-  
+
   const handlePathsChange = (paths) => {
     setIndexPaths(paths);
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
-      <DialogTitle>Settings</DialogTitle>
-      <Tabs value={activeTab} onChange={handleTabChange} centered>
-        <Tab label="Music Paths" />
-        <Tab label="Jobs" />
-        <Tab label="Scheduled Tasks" />
-        <Tab label="Database" />
-        <Tab label="Last.fm" />
-        <Tab label="Plex" />
-        <Tab label="OpenAI" />
-        <Tab label="Redis" />
-        <Tab label="Spotify" />
-        <Tab label="YouTube Music" />
-        <Tab label="Logs" />
-      </Tabs>
-      
-      <DialogContent>
-        <TabPanel value={activeTab} index={0}>
-          <PathSelector 
-            paths={indexPaths} 
-            onChange={handlePathsChange} 
-            isLoading={isLoading} 
-          />
-        </TabPanel>
-        
-        <TabPanel value={activeTab} index={1}>
-          <JobsPanel />
-        </TabPanel>
-        
-        <TabPanel value={activeTab} index={2}>
-          <ScheduledTasksPanel />
-        </TabPanel>
-        
-        <TabPanel value={activeTab} index={3}>
-          <DatabaseMigrationsPanel />
-        </TabPanel>
-        
-        <TabPanel value={activeTab} index={4}>
-          <h3>Last.fm Settings</h3>
-          <strong>Last.fm API Configured:</strong>{settings.lastFmApiKeyConfigured ? ' Yes' : ' No'}
-        </TabPanel>
-        
-        <TabPanel value={activeTab} index={5}>
-          <h3>Plex Settings</h3>
-          <strong>Plex Configured:</strong>{settings.plexConfigured ? ' Yes' : ' No'}
-        </TabPanel>
-        
-        <TabPanel value={activeTab} index={6}>
-          <h3>OpenAI Settings</h3>
-          <strong>OpenAI API Configured:</strong>{settings.openAiApiKeyConfigured ? ' Yes' : ' No'}
-        </TabPanel>
+    <Modal open={open} onClose={onClose} title="Settings" size="lg">
+      {/* Tab bar — negative margins to break out of Modal's px-4 py-4 padding */}
+      <div className="-mx-4 -mt-4 border-b border-border bg-surface-subtle px-3 py-2 dark:border-border-dark dark:bg-surface-dark">
+        <div className="scrollbar-thin flex gap-1 overflow-x-auto pb-1">
+          {TABS.map((tab, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => setActiveTab(idx)}
+              className={`shrink-0 rounded-md border px-3 py-1.5 text-xs font-semibold transition ${
+                activeTab === idx
+                  ? 'border-accent bg-accent text-text-dark shadow-sm dark:border-accent dark:bg-accent dark:text-text-dark'
+                  : 'border-border bg-surface text-text/80 hover:bg-surface-muted hover:text-text dark:border-border-dark dark:bg-surface-dark dark:text-text-dark/80 dark:hover:bg-surface-dark-elevated dark:hover:text-text-dark'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+      </div>
 
-        <TabPanel value={activeTab} index={7}>
-          <h3>Redis Settings</h3>
-          <strong>Redis Configured:</strong>{settings.redisConfigured ? ' Yes' : ' No'}
-        </TabPanel>
-
-        <TabPanel value={activeTab} index={8}>
-          <h3>Spotify Settings</h3>
-          <Box mb={2}>
-            <Typography variant="body2">
-              <strong>Spotify API Configured:</strong>{settings.spotifyConfigured ? ' Yes' : ' No'}
-            </Typography>
-          </Box>
-          <SpotifyConnectionPanel />
-        </TabPanel>
-
-        <TabPanel value={activeTab} index={9}>
-          <h3>YouTube Music Settings</h3>
-          <Box mb={2}>
-            <Typography variant="body2">
-              <strong>YouTube Music API Configured:</strong>{settings.youtubeMusicConfigured ? ' Yes' : ' No'}
-            </Typography>
-          </Box>
-          <YouTubeMusicConnectionPanel />
-        </TabPanel>
-
-        <TabPanel value={activeTab} index={10}>
-          <LogsPanel />
-        </TabPanel>
-      </DialogContent>
-      
-      <DialogActions>
-        <Button onClick={onClose}>Close</Button>
-        {activeTab !== 1 && activeTab !== 2 && activeTab !== 3 && activeTab !== 10 && (
-          <Button 
-            onClick={saveSettings} 
-            variant="contained" 
-            disabled={isLoading}
-          >
-            {isLoading ? <CircularProgress size={20} /> : 'Save'}
-          </Button>
+      {/* Tab content */}
+      <div className="py-4">
+        {activeTab === 0 && (
+          <PathSelector paths={indexPaths} onChange={handlePathsChange} isLoading={isLoading} />
         )}
-      </DialogActions>
-    </Dialog>
+        {activeTab === 1 && <JobsPanel />}
+        {activeTab === 2 && <ScheduledTasksPanel />}
+        {activeTab === 3 && <DatabaseMigrationsPanel />}
+        {activeTab === 4 && (
+          <div className="space-y-2">
+            <h3 className="text-base font-semibold text-text dark:text-text-dark">Last.fm Settings</h3>
+            <p className="text-sm text-text/80 dark:text-text-dark/80">
+              <strong>Last.fm API Configured:</strong>{settings.lastFmApiKeyConfigured ? ' Yes' : ' No'}
+            </p>
+          </div>
+        )}
+        {activeTab === 5 && (
+          <div className="space-y-2">
+            <h3 className="text-base font-semibold text-text dark:text-text-dark">Plex Settings</h3>
+            <p className="text-sm text-text/80 dark:text-text-dark/80">
+              <strong>Plex Configured:</strong>{settings.plexConfigured ? ' Yes' : ' No'}
+            </p>
+          </div>
+        )}
+        {activeTab === 6 && (
+          <div className="space-y-2">
+            <h3 className="text-base font-semibold text-text dark:text-text-dark">OpenAI Settings</h3>
+            <p className="text-sm text-text/80 dark:text-text-dark/80">
+              <strong>OpenAI API Configured:</strong>{settings.openAiApiKeyConfigured ? ' Yes' : ' No'}
+            </p>
+          </div>
+        )}
+        {activeTab === 7 && (
+          <div className="space-y-2">
+            <h3 className="text-base font-semibold text-text dark:text-text-dark">Redis Settings</h3>
+            <p className="text-sm text-text/80 dark:text-text-dark/80">
+              <strong>Redis Configured:</strong>{settings.redisConfigured ? ' Yes' : ' No'}
+            </p>
+          </div>
+        )}
+        {activeTab === 8 && (
+          <div>
+            <p className="mb-4 text-sm text-text/80 dark:text-text-dark/80">
+              <strong>Spotify API Configured:</strong>{settings.spotifyConfigured ? ' Yes' : ' No'}
+            </p>
+            <SpotifyConnectionPanel />
+          </div>
+        )}
+        {activeTab === 9 && (
+          <div>
+            <p className="mb-4 text-sm text-text/80 dark:text-text-dark/80">
+              <strong>YouTube Music API Configured:</strong>{settings.youtubeMusicConfigured ? ' Yes' : ' No'}
+            </p>
+            <YouTubeMusicConnectionPanel />
+          </div>
+        )}
+        {activeTab === 10 && <LogsPanel />}
+      </div>
+
+      {/* Footer — negative margins to break out of Modal's padding */}
+      <div className="-mx-4 -mb-4 flex justify-end gap-2 border-t border-border px-4 py-3 dark:border-border-dark">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded border border-border bg-surface-subtle px-4 py-1.5 text-sm font-medium text-text transition hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-accent/30 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+        >
+          Close
+        </button>
+        {!NO_SAVE_TABS.has(activeTab) && (
+          <button
+            type="button"
+            onClick={saveSettings}
+            disabled={isLoading}
+            className="inline-flex items-center gap-2 rounded bg-accent px-4 py-1.5 text-sm font-semibold text-text-dark shadow-sm transition hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent/35 disabled:opacity-50"
+          >
+            {isLoading && (
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-border-dark border-t-text-dark" />
+            )}
+            Save
+          </button>
+        )}
+      </div>
+    </Modal>
   );
 };
 

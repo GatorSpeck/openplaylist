@@ -67,14 +67,14 @@ const SelectPlaylistModal = ({ isOpen, onClose, selectedEntries, setSnackbar }) 
                         placeholder="Search playlists..."
                         value={filter}
                         onChange={handleFilterChange}
-                        className="w-full rounded border border-black/15 bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/20 dark:bg-surface-dark dark:text-text-dark"
+                        className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
                     />
                 </div>
                 
                 {loading ? (
                     <div className="py-8 text-center text-sm text-text/80 dark:text-text-dark/80">Loading playlists...</div>
                 ) : (
-                    <div className="max-h-[350px] overflow-y-auto rounded border border-black/10 dark:border-white/20">
+                    <div className="max-h-[350px] overflow-y-auto rounded border border-border dark:border-border-dark">
                         {filteredPlaylists.length === 0 ? (
                             <div className="px-4 py-8 text-center text-sm text-text/70 dark:text-text-dark/70">
                                 No playlists found. Try another search or create a new playlist.
@@ -83,7 +83,7 @@ const SelectPlaylistModal = ({ isOpen, onClose, selectedEntries, setSnackbar }) 
                             filteredPlaylists.map(playlist => (
                                 <div 
                                     key={playlist.id} 
-                                    className="cursor-pointer border-b border-black/10 px-4 py-3 transition hover:bg-surface-subtle dark:border-white/15 dark:hover:bg-surface-dark-elevated"
+                                    className="cursor-pointer border-b border-border px-4 py-3 transition hover:bg-surface-subtle dark:border-border-dark dark:hover:bg-surface-dark-elevated"
                                     onClick={() => handlePlaylistSelect(playlist.id)}
                                 >
                                     <div className="text-sm font-medium text-text dark:text-text-dark">{playlist.name}</div>
@@ -97,7 +97,7 @@ const SelectPlaylistModal = ({ isOpen, onClose, selectedEntries, setSnackbar }) 
                     <button 
                         type="button" 
                         onClick={onClose} 
-                        className="rounded border border-black/15 bg-surface-subtle px-4 py-2 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+                        className="rounded border border-border bg-surface-subtle px-4 py-2 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
                     >
                         Cancel
                     </button>

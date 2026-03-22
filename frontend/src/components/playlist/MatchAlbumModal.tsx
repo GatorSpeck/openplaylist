@@ -61,7 +61,7 @@ const MatchAlbumModal = ({ isOpen, onClose, track, onMatchSelect, setSnackbar })
   return (
     <Modal open={isOpen} onClose={onClose} title="Match Album">
       <div>
-        <div className="mb-4 rounded border border-black/10 bg-surface-subtle p-3 dark:border-white/15 dark:bg-surface-dark">
+        <div className="mb-4 rounded border border-border bg-surface-subtle p-3 dark:border-border-dark dark:bg-surface-dark">
           <h4 className="mb-2 mt-0 text-sm font-semibold text-text dark:text-text-dark">Looking for album match for:</h4>
           <p className="mb-1 text-sm font-semibold text-text dark:text-text-dark">{track.getAlbum() || 'Unknown Album'}</p>
           <p className="m-0 text-xs text-text/75 dark:text-text-dark/75">by {track.getAlbumArtist() || 'Unknown Artist'}</p>
@@ -73,10 +73,10 @@ const MatchAlbumModal = ({ isOpen, onClose, track, onMatchSelect, setSnackbar })
             value={searchQuery} 
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search album by title and artist" 
-            className="min-w-[240px] flex-1 rounded border border-black/15 bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/20 dark:bg-surface-dark dark:text-text-dark"
+            className="min-w-[240px] flex-1 rounded border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
           />
           <button 
-            className="inline-flex items-center justify-center rounded bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-black/20 disabled:text-white/70 dark:disabled:bg-white/20" 
+            className="inline-flex items-center justify-center rounded bg-accent px-4 py-2 text-sm font-semibold text-text-dark transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-dark/70 dark:disabled:bg-surface-dark-elevated" 
             onClick={() => searchAlbums(false)} 
             disabled={loading}
           >
@@ -87,15 +87,15 @@ const MatchAlbumModal = ({ isOpen, onClose, track, onMatchSelect, setSnackbar })
         <div>
           <h4 className="mb-2 mt-0 text-sm font-semibold text-text dark:text-text-dark">Select the correct album match:</h4>
           {matches.length > 0 ? (
-            <div className="max-h-[48vh] space-y-2 overflow-y-auto rounded border border-black/10 p-2 dark:border-white/20">
+            <div className="max-h-[48vh] space-y-2 overflow-y-auto rounded border border-border p-2 dark:border-border-dark">
               {matches.map((album, index) => (
-                <div key={index} className="flex cursor-pointer gap-3 rounded border border-black/10 bg-surface-subtle p-2 transition hover:border-accent hover:bg-surface-muted dark:border-white/15 dark:bg-surface-dark dark:hover:bg-surface-dark-elevated" onClick={async () => {
+                <div key={index} className="flex cursor-pointer gap-3 rounded border border-border bg-surface-subtle p-2 transition hover:border-accent hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:hover:bg-surface-dark-elevated" onClick={async () => {
                   // Enhance the album with detailed release date info if it has an mbid
                   // not worth doing this now, since the Last.FM route doesn't actually return the release date....
                   // const enhancedAlbums = await lastFMRepository.enhanceAlbumsWithDetailedInfo([album]);
                   onMatchSelect(album);
                 }}>
-                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded border border-black/10 dark:border-white/15">
+                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded border border-border dark:border-border-dark">
                     {album.getArtUrl() ? (
                       <img className="h-full w-full object-cover" src={album.getArtUrl()} alt={album.getAlbum()} />
                     ) : (
@@ -113,7 +113,7 @@ const MatchAlbumModal = ({ isOpen, onClose, track, onMatchSelect, setSnackbar })
               ))}
             </div>
           ) : (
-            <p className="rounded border border-black/10 bg-surface-subtle px-3 py-2 text-sm text-text/75 dark:border-white/15 dark:bg-surface-dark dark:text-text-dark/75">No matches found. Try adjusting your search query.</p>
+            <p className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm text-text/75 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark/75">No matches found. Try adjusting your search query.</p>
           )}
         </div>
       </div>

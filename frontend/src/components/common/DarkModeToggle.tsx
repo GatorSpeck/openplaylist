@@ -9,7 +9,7 @@ export default function DarkModeToggle() {
     <button
       type="button"
       onClick={toggleMode}
-      className="rounded-md border border-black/15 bg-surface-subtle px-3 py-2 text-xs font-semibold text-text shadow-sm transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark-elevated dark:text-text-dark dark:hover:bg-surface-dark"
+      className="rounded-md border border-border bg-surface-subtle px-3 py-2 text-xs font-semibold text-text shadow-sm transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark-elevated dark:text-text-dark dark:hover:bg-surface-dark"
       aria-label="Toggle dark mode"
       title="Toggle dark mode"
     >

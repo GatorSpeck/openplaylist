@@ -257,7 +257,7 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
             id="service" 
             value={currentTarget.service}
             onChange={(e) => handleInputChange('service', e.target.value)}
-            className="w-full rounded border border-black/15 bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/20 dark:bg-surface-dark dark:text-text-dark"
+            className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
           >
             <option value="plex">Plex</option>
             <option value="spotify">Spotify</option>
@@ -276,7 +276,7 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
               value={currentTarget.config[field.name] || ''}
               onChange={(e) => handleInputChange(field.name, e.target.value)}
               placeholder={field.placeholder}
-              className="w-full rounded border border-black/15 bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/20 dark:bg-surface-dark dark:text-text-dark"
+              className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
             />
           </div>
         ))}
@@ -376,25 +376,25 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
     return (
       <div className="flex gap-2">
         <Tooltip title={`${target.sendEntryAdds ? 'Adding' : 'Not adding'} tracks to remote`}>
-          <span className={`inline-flex h-6 w-6 items-center justify-center rounded text-xs font-semibold ${target.sendEntryAdds ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-black/5 text-text/50 dark:bg-white/10 dark:text-text-dark/50'}`}>
+          <span className={`inline-flex h-6 w-6 items-center justify-center rounded text-xs font-semibold ${target.sendEntryAdds ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-surface-muted text-text/50 dark:bg-surface-dark-elevated dark:text-text-dark/50'}`}>
             ↑+
           </span>
         </Tooltip>
         
         <Tooltip title={`${target.sendEntryRemovals ? 'Removing' : 'Not removing'} tracks from remote`}>
-          <span className={`inline-flex h-6 w-6 items-center justify-center rounded text-xs font-semibold ${target.sendEntryRemovals ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-black/5 text-text/50 dark:bg-white/10 dark:text-text-dark/50'}`}>
+          <span className={`inline-flex h-6 w-6 items-center justify-center rounded text-xs font-semibold ${target.sendEntryRemovals ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-surface-muted text-text/50 dark:bg-surface-dark-elevated dark:text-text-dark/50'}`}>
             ↑−
           </span>
         </Tooltip>
         
         <Tooltip title={`${target.receiveEntryAdds ? 'Receiving' : 'Not receiving'} new tracks from remote`}>
-          <span className={`inline-flex h-6 w-6 items-center justify-center rounded text-xs font-semibold ${target.receiveEntryAdds ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-black/5 text-text/50 dark:bg-white/10 dark:text-text-dark/50'}`}>
+          <span className={`inline-flex h-6 w-6 items-center justify-center rounded text-xs font-semibold ${target.receiveEntryAdds ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-surface-muted text-text/50 dark:bg-surface-dark-elevated dark:text-text-dark/50'}`}>
             ↓+
           </span>
         </Tooltip>
         
         <Tooltip title={`${target.receiveEntryRemovals ? 'Removing' : 'Not removing'} local tracks when removed from remote`}>
-          <span className={`inline-flex h-6 w-6 items-center justify-center rounded text-xs font-semibold ${target.receiveEntryRemovals ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-black/5 text-text/50 dark:bg-white/10 dark:text-text-dark/50'}`}>
+          <span className={`inline-flex h-6 w-6 items-center justify-center rounded text-xs font-semibold ${target.receiveEntryRemovals ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-surface-muted text-text/50 dark:bg-surface-dark-elevated dark:text-text-dark/50'}`}>
             ↓−
           </span>
         </Tooltip>
@@ -414,21 +414,21 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
           <h2 className="m-0 text-xl font-semibold text-text dark:text-text-dark">Playlist Sync Targets</h2>
           <div className="flex flex-wrap items-center gap-2">
             <button 
-              className="rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-black/20 disabled:text-white/70 dark:disabled:bg-white/20" 
+              className="rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-text-dark transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-dark/70 dark:disabled:bg-surface-dark-elevated" 
               onClick={() => handleSync(false)}
               disabled={syncing || syncTargets.length === 0 || !syncTargets.some(t => t.enabled)}
             >
               {syncing ? 'Syncing...' : 'Sync Now'}
             </button>
             <button 
-              className="rounded bg-orange-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-black/20 disabled:text-white/70 dark:disabled:bg-white/20" 
+              className="rounded bg-orange-600 px-4 py-2 text-sm font-bold text-text-dark transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-dark/70 dark:disabled:bg-surface-dark-elevated" 
               onClick={() => handleSync(true)}
               disabled={syncing || syncTargets.length === 0 || !syncTargets.some(t => t.enabled)}
               title="Force Push: Remove all items from remote playlists and replace with local items"
             >
               {syncing ? 'Syncing...' : 'Force Push'}
             </button>
-            <button className="inline-flex items-center gap-1 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700" onClick={handleAddTarget}>
+            <button className="inline-flex items-center gap-1 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-text-dark transition hover:bg-emerald-700" onClick={handleAddTarget}>
               <BiPlus /> Add Sync Target
             </button>
           </div>
@@ -444,13 +444,13 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
         {loading ? (
           <div className="py-6 text-center text-sm text-text/70 dark:text-text-dark/70">Loading sync configuration...</div>
         ) : syncTargets.length === 0 ? (
-          <div className="rounded border border-black/10 bg-surface-subtle p-8 text-center text-sm text-text/75 dark:border-white/15 dark:bg-surface-dark dark:text-text-dark/75">
+          <div className="rounded border border-border bg-surface-subtle p-8 text-center text-sm text-text/75 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark/75">
             <p className="m-0">No sync targets configured. Add a target to sync your playlists with external services.</p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
             {syncTargets.map(target => (
-              <div key={target.id} className={`flex flex-wrap items-center gap-3 rounded border p-4 ${target.enabled ? 'border-black/10 bg-surface dark:border-white/15 dark:bg-surface-dark-elevated' : 'border-black/10 bg-surface-subtle opacity-75 dark:border-white/15 dark:bg-surface-dark'}`}>
+              <div key={target.id} className={`flex flex-wrap items-center gap-3 rounded border p-4 ${target.enabled ? 'border-border bg-surface dark:border-border-dark dark:bg-surface-dark-elevated' : 'border-border bg-surface-subtle opacity-75 dark:border-border-dark dark:bg-surface-dark'}`}>
                 <div className="text-2xl">
                   {serviceConfigs[target.service].icon}
                 </div>
@@ -472,7 +472,7 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
                       className="h-4 w-4"
                     />
                   </label>
-                  <button className="rounded bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-sky-700" onClick={() => handleEditTarget(target)}>
+                  <button className="rounded bg-sky-600 px-3 py-1.5 text-xs font-semibold text-text-dark transition hover:bg-sky-700" onClick={() => handleEditTarget(target)}>
                     Edit
                   </button>
                   <button className="inline-flex items-center rounded border border-red-500 px-2 py-1.5 text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-900/30" onClick={() => handleDeleteTarget(target.id!)}>
@@ -494,9 +494,9 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
             {renderTargetForm()}
             
             <div className="mt-6 flex justify-end gap-2">
-              <button className="rounded border border-black/15 bg-surface-subtle px-4 py-2 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated" onClick={() => setIsAddModalOpen(false)}>Cancel</button>
+              <button className="rounded border border-border bg-surface-subtle px-4 py-2 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated" onClick={() => setIsAddModalOpen(false)}>Cancel</button>
               <button 
-                className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700" 
+                className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-text-dark transition hover:bg-emerald-700" 
                 onClick={handleSaveTarget}
               >
                 Add Target
@@ -515,9 +515,9 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
             {renderTargetForm()}
             
             <div className="mt-6 flex justify-end gap-2">
-              <button className="rounded border border-black/15 bg-surface-subtle px-4 py-2 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated" onClick={() => setIsEditModalOpen(false)}>Cancel</button>
+              <button className="rounded border border-border bg-surface-subtle px-4 py-2 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated" onClick={() => setIsEditModalOpen(false)}>Cancel</button>
               <button 
-                className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700" 
+                className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-text-dark transition hover:bg-emerald-700" 
                 onClick={handleSaveTarget}
               >
                 Save Changes

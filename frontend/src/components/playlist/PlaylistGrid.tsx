@@ -82,7 +82,7 @@ const Row = memo(({ data, index, style }) => {
           maxHeight: 50,
           gridTemplateColumns: gridTemplate,
         }}
-        className={`playlist-grid-row loading-row grid !h-[50px] !min-h-[50px] !max-h-[50px] items-center overflow-hidden border-b border-black/10 px-1 text-sm !text-text ${index % 2 === 0 ? '!bg-surface dark:!bg-surface-dark-elevated' : '!bg-surface-subtle dark:!bg-surface-dark'} dark:!text-text-dark dark:border-white/15`}
+        className={`playlist-grid-row loading-row grid !h-[50px] !min-h-[50px] !max-h-[50px] items-center overflow-hidden border-b border-border px-1 text-sm !text-text ${index % 2 === 0 ? '!bg-surface dark:!bg-surface-dark-elevated' : '!bg-surface-subtle dark:!bg-surface-dark'} dark:!text-text-dark dark:border-border-dark`}
       >
         <div className="grid-cell px-2 py-1">{selectedEntries.includes(index) ? "✔" : index + 1}</div>
         {visibleColumns.map((column, columnIndex) => (
@@ -1081,7 +1081,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const historyControls = (
     <div className="history-controls">
       <button 
-        className="rounded border border-black/15 bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/20 dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
+        className="rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
         onClick={undo} 
         disabled={historyIndex <= 0}
         title="Undo"
@@ -1089,7 +1089,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         <FaUndo />
       </button>
       <button 
-        className="rounded border border-black/15 bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/20 dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
+        className="rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
         onClick={redo} 
         disabled={historyIndex >= history.length - 1}
         title="Redo"
@@ -1402,7 +1402,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   // Update the render to include the show hidden checkbox and updated batch actions
   return (
     <div className="main-playlist-view flex flex-col gap-3">
-      <div className="playlist-header flex items-center gap-3 rounded border border-black/10 bg-surface-subtle px-3 py-2 dark:border-white/20 dark:bg-surface-dark-elevated">
+      <div className="playlist-header flex items-center gap-3 rounded border border-border bg-surface-subtle px-3 py-2 dark:border-border-dark dark:bg-surface-dark-elevated">
         <AlbumArtGrid
           artList={
             albumArtList ? albumArtList.map((album) => album.image_url) : []
@@ -1410,18 +1410,18 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         />
         <h2 className="playlist-name m-0 text-lg font-semibold">{name}</h2>
       </div>
-      <div className="playlist-controls rounded border border-black/10 bg-surface px-3 py-2 dark:border-white/20 dark:bg-surface-dark-elevated">
+      <div className="playlist-controls rounded border border-border bg-surface px-3 py-2 dark:border-border-dark dark:bg-surface-dark-elevated">
         <div className="playlist-controls-top flex flex-wrap items-center gap-2">
           {historyEnabled && historyControls}
           <button
-            className="playlist-options rounded border border-black/15 bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
+            className="playlist-options rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
             onClick={() => setPlaylistModalVisible(true)}
           >
             ...
           </button>
           
           <button
-            className="column-config-btn rounded border border-black/15 bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
+            className="column-config-btn rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
             onClick={() => {
               console.log('Column config button clicked');
               console.log('Current columnConfigOpen state:', columnConfigOpen);
@@ -1434,7 +1434,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           </button>
 
           <button
-            className={`random-button rounded border border-black/15 px-2 py-1 text-sm !text-text transition dark:border-white/20 dark:!text-text-dark ${isRandomOrder ? "active bg-accent/10 text-accent dark:bg-accent/20" : "bg-surface-subtle hover:bg-surface-muted dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"}`}
+            className={`random-button rounded border border-border px-2 py-1 text-sm !text-text transition dark:border-border-dark dark:!text-text-dark ${isRandomOrder ? "active bg-accent/10 text-accent dark:bg-accent/20" : "bg-surface-subtle hover:bg-surface-muted dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"}`}
             onClick={() => {
               if (isRandomOrder) {
                 // Return to original order
@@ -1460,7 +1460,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           </button>
 
           <button
-            className="refresh-button rounded border border-black/15 bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
+            className="refresh-button rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
             onClick={() => {
               window.location.reload();
             }}
@@ -1470,7 +1470,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           </button>
 
           <button
-            className="scroll-button rounded border border-black/15 bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/20 dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
+            className="scroll-button rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
             onClick={() => {
               if (listRef.current) {
                 listRef.current.scrollToItem(0, 'start');
@@ -1483,7 +1483,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           </button>
 
           <button
-            className="scroll-button rounded border border-black/15 bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/20 dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
+            className="scroll-button rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
             onClick={() => {
               if (listRef.current && totalCount > 0) {
                 listRef.current.scrollToItem(totalCount - 1, 'end');
@@ -1504,12 +1504,12 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             onChange={(e) => {
               setFilter(e.target.value);
             }}
-            className="filter-input min-w-[220px] flex-1 rounded border border-black/15 bg-surface px-3 py-1.5 text-sm dark:border-white/20 dark:bg-surface-dark"
+            className="filter-input min-w-[220px] flex-1 rounded border border-border bg-surface px-3 py-1.5 text-sm dark:border-border-dark dark:bg-surface-dark"
           />
 
           {filter && (
             <button
-              className="clear-filter rounded border border-black/15 bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
+              className="clear-filter rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
               onClick={() => {
                 setFilter("");
               }}
@@ -1557,7 +1557,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
       </div>
 
-      <div className={`playlist-container ${isAtBottom ? 'at-bottom' : ''} overflow-hidden rounded border border-black/10 bg-surface dark:border-white/20 dark:bg-surface-dark-elevated`} ref={gridRef}>
+      <div className={`playlist-container ${isAtBottom ? 'at-bottom' : ''} overflow-hidden rounded border border-border bg-surface dark:border-border-dark dark:bg-surface-dark-elevated`} ref={gridRef}>
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="playlist-grid-header-row" style={{ gridTemplateColumns: getGridTemplate() }}>
             <div className="grid-cell px-2 py-2 text-sm font-semibold" style={{ overflow: 'visible' }}>
@@ -1965,9 +1965,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           zIndex: 10000
         }} onClick={() => setColumnConfigOpen(false)}>
           <div 
-            className="column-config-modal"
+            className="column-config-modal rounded border border-border bg-surface text-text dark:border-border-dark dark:bg-surface-dark-elevated dark:text-text-dark"
             style={{
-              background: 'white',
               borderRadius: '8px',
               padding: '0',
               maxWidth: '500px',
@@ -1978,7 +1977,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ padding: '20px', borderBottom: '1px solid #eee' }}>
+            <div className="border-b border-border p-5 dark:border-border-dark">
               <h3 style={{ margin: '0', fontSize: '18px' }}>Configure Columns</h3>
             </div>
             <div className="column-config-content">

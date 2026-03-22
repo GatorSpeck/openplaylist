@@ -75,7 +75,7 @@ const DuplicateSelectionModal: React.FC<DuplicateSelectionModalProps> = ({
             title="Select Tracks to Add"
         >
             <div className="flex max-h-[65vh] flex-col">
-                <div className="shrink-0 border-b border-black/10 pb-4 dark:border-white/15">
+                <div className="shrink-0 border-b border-border pb-4 dark:border-border-dark">
                     <p className="m-0 text-sm text-text dark:text-text-dark">
                         {duplicateCount > 0 && (
                             <span className="mb-2 block font-semibold text-amber-700 dark:text-amber-300">
@@ -90,14 +90,14 @@ const DuplicateSelectionModal: React.FC<DuplicateSelectionModalProps> = ({
                         <button 
                             type="button" 
                             onClick={handleSelectAll}
-                            className="rounded border border-black/15 bg-surface-subtle px-3 py-1.5 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+                            className="rounded border border-border bg-surface-subtle px-3 py-1.5 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
                         >
                             Select All ({tracks.length})
                         </button>
                         <button 
                             type="button" 
                             onClick={handleDeselectAll}
-                            className="rounded border border-black/15 bg-surface-subtle px-3 py-1.5 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+                            className="rounded border border-border bg-surface-subtle px-3 py-1.5 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
                         >
                             Deselect All
                         </button>
@@ -112,7 +112,7 @@ const DuplicateSelectionModal: React.FC<DuplicateSelectionModalProps> = ({
                         return (
                             <div
                                 key={track.id}
-                                className={`flex cursor-pointer items-center gap-3 border-b px-1 py-3 transition ${duplicate ? 'border-l-4 border-l-amber-500 bg-amber-50 dark:bg-amber-900/20' : ''} ${isSelected ? 'bg-sky-100 dark:bg-sky-900/30' : 'border-black/10 dark:border-white/10'} hover:bg-black/[0.03] dark:hover:bg-white/[0.06]`}
+                                className={`flex cursor-pointer items-center gap-3 border-b px-1 py-3 transition ${duplicate ? 'border-l-4 border-l-amber-500 bg-amber-50 dark:bg-amber-900/20' : ''} ${isSelected ? 'bg-sky-100 dark:bg-sky-900/30' : 'border-border dark:border-border-dark'} hover:bg-surface-subtle dark:hover:bg-surface-dark-elevated`}
                                 onClick={() => toggleTrackSelection(track.id)}
                             >
                                 <div className="shrink-0">
@@ -128,7 +128,7 @@ const DuplicateSelectionModal: React.FC<DuplicateSelectionModalProps> = ({
                                 <div className="min-w-0 flex-1">
                                     <div className="mb-1 flex items-center gap-2 text-sm font-medium text-text dark:text-text-dark">
                                         {track.getTitle()}
-                                        {duplicate && <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white">Duplicate</span>}
+                                        {duplicate && <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] uppercase tracking-wide text-text-dark">Duplicate</span>}
                                     </div>
                                     <div className="truncate text-xs text-text/70 dark:text-text-dark/70">
                                         {track.getArtist()} {track.getAlbum() && `- ${track.getAlbum()}`}
@@ -139,7 +139,7 @@ const DuplicateSelectionModal: React.FC<DuplicateSelectionModalProps> = ({
                     })}
                 </div>
 
-                <div className="mt-3 flex shrink-0 flex-col gap-3 border-t border-black/10 pt-4 sm:flex-row sm:items-center sm:justify-between dark:border-white/15">
+                <div className="mt-3 flex shrink-0 flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between dark:border-border-dark">
                     <div className="text-sm font-medium text-text/75 dark:text-text-dark/75">
                         {selectedCount} of {tracks.length} tracks selected
                     </div>
@@ -148,14 +148,14 @@ const DuplicateSelectionModal: React.FC<DuplicateSelectionModalProps> = ({
                         <button
                             type="button"
                             onClick={handleCancel}
-                            className="rounded border border-black/15 bg-surface-subtle px-4 py-2 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-white/20 dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+                            className="rounded border border-border bg-surface-subtle px-4 py-2 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
                         >
                             Cancel
                         </button>
                         <button
                             type="button"
                             onClick={handleConfirm}
-                            className="rounded bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-black/20 disabled:text-white/70 dark:disabled:bg-white/20"
+                            className="rounded bg-accent px-4 py-2 text-sm font-semibold text-text-dark transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-dark/70 dark:disabled:bg-surface-dark-elevated"
                             disabled={selectedCount === 0}
                         >
                             Add Selected Tracks ({selectedCount})

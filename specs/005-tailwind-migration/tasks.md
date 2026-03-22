@@ -83,16 +83,16 @@ description: "Task list for Tailwind CSS Migration"
 - [x] T026 [P] [US1] Migrate `frontend/src/components/playlist/SelectPlaylistModal.tsx` to Tailwind; add dark variants; remove `frontend/src/styles/SelectPlaylistModal.css` import
 - [x] T027 [P] [US1] Migrate `frontend/src/components/playlist/SyncConfig.tsx` to Tailwind; add dark variants; remove `frontend/src/components/playlist/SyncConfig.css` import
 - [x] T028 [P] [US1] Migrate `frontend/src/components/playlist/SyncLogModal.tsx` to Tailwind; add dark variants; remove `frontend/src/components/playlist/SyncLogModal.css` import
-- [ ] T029 [P] [US1] Migrate `frontend/src/components/playlist/PlaylistAutoSyncDialog.tsx` to Tailwind with dark variants
+- [x] T029 [P] [US1] Migrate `frontend/src/components/playlist/PlaylistAutoSyncDialog.tsx` to Tailwind with dark variants
 
 ### G6 — Nav Modals
 
-- [ ] T030 [P] [US1] Migrate `frontend/src/components/nav/SettingsModal.tsx` to Tailwind with dark variants
-- [ ] T031 [P] [US1] Migrate `frontend/src/components/nav/ImportPlaylistModal.tsx` to Tailwind with dark variants
-- [ ] T032 [P] [US1] Migrate `frontend/src/components/nav/LogsPanel.tsx` to Tailwind with dark variants
-- [ ] T033 [P] [US1] Migrate `frontend/src/components/nav/ScheduledTasksPanel.tsx` to Tailwind with dark variants
-- [ ] T034 [P] [US1] Migrate `frontend/src/components/nav/PathSelector.tsx` to Tailwind with dark variants
-- [ ] T035 [P] [US1] Migrate `frontend/src/components/nav/RenameDialog.tsx` to Tailwind with dark variants
+- [x] T030 [P] [US1] Migrate `frontend/src/components/nav/SettingsModal.tsx` to Tailwind with dark variants
+- [x] T031 [P] [US1] Migrate `frontend/src/components/nav/ImportPlaylistModal.tsx` to Tailwind with dark variants
+- [x] T032 [P] [US1] Migrate `frontend/src/components/nav/LogsPanel.tsx` to Tailwind with dark variants
+- [x] T033 [P] [US1] Migrate `frontend/src/components/nav/ScheduledTasksPanel.tsx` to Tailwind with dark variants
+- [x] T034 [P] [US1] Migrate `frontend/src/components/nav/PathSelector.tsx` to Tailwind with dark variants
+- [x] T035 [P] [US1] Migrate `frontend/src/components/nav/RenameDialog.tsx` to Tailwind with dark variants
 
 ### G7 — Search
 
