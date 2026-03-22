@@ -136,7 +136,7 @@ describe('PlaylistEntryRow', () => {
     
     render(<PlaylistEntryRow entry={entry} {...defaultProps} isDragging={true} />);
     
-    const row = document.querySelector('.playlist-entry-row.dragging');
+    const row = document.querySelector('.playlist-entry-row.shadow-sm');
     expect(row).toBeInTheDocument();
   });
   
@@ -146,7 +146,7 @@ describe('PlaylistEntryRow', () => {
     
     render(<PlaylistEntryRow entry={entry} {...defaultProps} />);
     
-    const img = document.querySelector('.album-art img');
+    const img = screen.getByAltText('Album Art');
     expect(img).toBeInTheDocument();
     expect(img).toHaveAttribute('src', 'https://example.com/album.jpg');
     expect(img).toHaveAttribute('alt', 'Album Art');
@@ -161,7 +161,7 @@ describe('PlaylistEntryRow', () => {
     render(<PlaylistEntryRow entry={entry} {...defaultProps} />);
     
     await waitFor(() => {
-      const img = document.querySelector('.album-art img');
+      const img = screen.getByAltText('Album Art');
       expect(img).toBeInTheDocument();
       expect(img).toHaveAttribute('src', 'https://lastfm.com/album.jpg');
     });
