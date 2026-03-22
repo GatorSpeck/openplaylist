@@ -29,8 +29,6 @@ html.dark {
 
 .search-grid-header-row {
   display: grid;
-  padding: 8px;
-  
   border-bottom: 1px solid var(--op-border);
   background: var(--op-surface);
   color: var(--op-text);
@@ -47,16 +45,31 @@ html.dark {
 
 .search-grid-row {
   display: grid;
-  padding: 8px;
-  border-bottom: 1px solid var(--op-border);
   background: var(--op-surface-subtle);
   color: var(--op-text);
+  min-height: 50px;
+  align-items: center;
+  overflow: hidden;
+  border-bottom: 1px solid var(--op-border);
 }
 
 .grid-cell {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  border-right: 1px solid var(--op-border);
+  padding: 2px 8px;
+  display: flex;
+  align-items: center;
+}
+
+.grid-cell:last-child {
+  border-right: none;
+}
+
+.grid-cell img {
+  max-height: 100%;
+  object-fit: contain;
 }
 
 .clickable {

@@ -177,9 +177,14 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const getGridTemplate = () => {
     const baseColumns = ['50px']; // Fixed width for checkbox column
     
-    visibleColumns.forEach(col => {
+    visibleColumns.forEach((col, index) => {
       const width = columnWidths[col] || defaultColumnWidths[col];
-      baseColumns.push(`${width}px`);
+      // Make the last visible column flexible to fill remaining space
+      if (index === visibleColumns.length - 1) {
+        baseColumns.push('1fr');
+      } else {
+        baseColumns.push(`${width}px`);
+      }
     });
     
     baseColumns.push('40px'); // Fixed width for settings button
@@ -1160,7 +1165,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                         ref={ref}
                         height={height}
                         itemCount={searchResults.length}
-                        itemSize={80}
+                        itemSize={50}
                         width="100%" 
                         onItemsRendered={onItemsRendered}
                         style={{ overflowX: 'hidden' }}

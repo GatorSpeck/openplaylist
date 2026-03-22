@@ -289,9 +289,14 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const getGridTemplate = () => {
     const baseColumns = ['80px']; // Fixed width for checkbox/art column
     
-    visibleColumns.forEach(col => {
+    visibleColumns.forEach((col, index) => {
       const width = columnWidths[col] || defaultColumnWidths[col];
-      baseColumns.push(`${width}px`);
+      // Make the last visible column flexible to fill remaining space
+      if (index === visibleColumns.length - 1) {
+        baseColumns.push('1fr');
+      } else {
+        baseColumns.push(`${width}px`);
+      }
     });
     
     return baseColumns.join(' ');
