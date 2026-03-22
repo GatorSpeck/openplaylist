@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
 import playlistRepository from '../../repositories/PlaylistRepository';
-import '../../styles/SelectPlaylistModal.css'; // You may need to create this CSS file
 
 const SelectPlaylistModal = ({ isOpen, onClose, selectedEntries, setSnackbar }) => {
     const [playlists, setPlaylists] = useState([]);
@@ -61,44 +60,44 @@ const SelectPlaylistModal = ({ isOpen, onClose, selectedEntries, setSnackbar }) 
 
     return (
         <Modal open={isOpen} onClose={onClose} title="Add to playlist...">
-            <div className="playlist-select-container">
-                <div className="playlist-search">
+            <div className="flex max-h-[500px] flex-col">
+                <div className="mb-4">
                     <input
                         type="text"
                         placeholder="Search playlists..."
                         value={filter}
                         onChange={handleFilterChange}
-                        className="playlist-filter-input"
+                        className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
                     />
                 </div>
                 
                 {loading ? (
-                    <div className="loading-spinner">Loading playlists...</div>
+                    <div className="py-8 text-center text-sm text-text/80 dark:text-text-dark/80">Loading playlists...</div>
                 ) : (
-                    <div className="playlist-list">
+                    <div className="max-h-[350px] overflow-y-auto rounded border border-border dark:border-border-dark">
                         {filteredPlaylists.length === 0 ? (
-                            <div className="no-playlists">
+                            <div className="px-4 py-8 text-center text-sm text-text/70 dark:text-text-dark/70">
                                 No playlists found. Try another search or create a new playlist.
                             </div>
                         ) : (
                             filteredPlaylists.map(playlist => (
                                 <div 
                                     key={playlist.id} 
-                                    className="playlist-item"
+                                    className="cursor-pointer border-b border-border px-4 py-3 transition hover:bg-surface-subtle dark:border-border-dark dark:hover:bg-surface-dark-elevated"
                                     onClick={() => handlePlaylistSelect(playlist.id)}
                                 >
-                                    <div className="playlist-name">{playlist.name}</div>
+                                    <div className="text-sm font-medium text-text dark:text-text-dark">{playlist.name}</div>
                                 </div>
                             ))
                         )}
                     </div>
                 )}
                 
-                <div className="modal-footer">
+                <div className="mt-4 flex justify-end">
                     <button 
                         type="button" 
                         onClick={onClose} 
-                        className="cancel-button"
+                        className="rounded border border-border bg-surface-subtle px-4 py-2 text-sm font-medium text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
                     >
                         Cancel
                     </button>

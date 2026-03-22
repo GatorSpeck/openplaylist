@@ -1,27 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  List, 
-  ListItem, 
-  ListItemText, 
-  IconButton, 
-  Button, 
-  TextField,
-  CircularProgress,
-  Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Typography,
-  Breadcrumbs,
-  Link,
-  Paper
-} from '@mui/material';
-import DeleteIcon from '@mui/icons-material/Delete';
-import AddIcon from '@mui/icons-material/Add';
-import FolderIcon from '@mui/icons-material/Folder';
-import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import NavigateNextIcon from '@mui/icons-material/NavigateNext';
+import Modal from '../common/Modal';
 import axios from 'axios';
 
 const PathSelector = ({ paths, onChange, isLoading }) => {
@@ -32,25 +10,21 @@ const PathSelector = ({ paths, onChange, isLoading }) => {
   const [directories, setDirectories] = useState([]);
   const [browseLoading, setBrowseLoading] = useState(false);
   const [pathHistory, setPathHistory] = useState([]);
-  
-  // Fetch directories when the browse modal opens or current path changes
+
   useEffect(() => {
     if (browseDirOpen) {
       fetchDirectories(currentBrowsePath);
     }
   }, [browseDirOpen, currentBrowsePath]);
-  
+
   const fetchDirectories = async (path) => {
     setBrowseLoading(true);
     try {
       const response = await axios.get('/api/browse/directories', {
-        params: { current_path: path }
+        params: { current_path: path },
       });
-      
       setDirectories(response.data.directories || []);
       setCurrentBrowsePath(response.data.current_path || '');
-      
-      // Add current path to history if it's new
       if (path && !pathHistory.includes(path)) {
         setPathHistory([...pathHistory, path]);
       }
@@ -66,230 +40,218 @@ const PathSelector = ({ paths, onChange, isLoading }) => {
       setPathError('Path cannot be empty');
       return;
     }
-    
-    // Check if path already exists in the list
     if (paths.includes(newPath.trim())) {
       setPathError('Path already exists');
       return;
     }
-    
-    // Add the new path
-    const updatedPaths = [...paths, newPath.trim()];
-    onChange(updatedPaths);
+    onChange([...paths, newPath.trim()]);
     setNewPath('');
     setPathError('');
   };
 
   const handleRemovePath = (indexToRemove) => {
-    const updatedPaths = paths.filter((_, index) => index !== indexToRemove);
-    onChange(updatedPaths);
+    onChange(paths.filter((_, index) => index !== indexToRemove));
   };
 
-  const handleBrowse = async () => {
+  const handleBrowse = () => {
     setBrowseDirOpen(true);
     setCurrentBrowsePath('');
     setPathHistory([]);
   };
-  
+
   const handleDirectoryClick = (dirPath) => {
     setCurrentBrowsePath(dirPath);
   };
-  
+
   const handleParentDirectory = () => {
     if (!currentBrowsePath) return;
-    
     const parts = currentBrowsePath.split('/');
-    parts.pop(); // Remove the last part
-    const parentPath = parts.join('/');
-    
-    // Handle root directory case
-    setCurrentBrowsePath(parentPath || '/');
+    parts.pop();
+    setCurrentBrowsePath(parts.join('/') || '/');
   };
-  
+
   const handleSelectPath = () => {
     setNewPath(currentBrowsePath);
     setBrowseDirOpen(false);
   };
-  
-  const handleBreadcrumbClick = (path, index) => {
-    // Navigate to the selected breadcrumb
-    setCurrentBrowsePath(path);
-    
-    // Update history by truncating at the clicked index
-    setPathHistory(pathHistory.slice(0, index + 1));
-  };
-  
-  // Generate breadcrumbs from the current path
-  const renderBreadcrumbs = () => {
-    if (!currentBrowsePath) return null;
-    
-    const parts = currentBrowsePath.split('/').filter(part => part);
-    const breadcrumbs = [];
-    
-    // Add root
-    breadcrumbs.push(
-      <Link 
-        key="root" 
-        color="inherit" 
-        onClick={() => handleDirectoryClick('/')}
-        sx={{ cursor: 'pointer' }}
-      >
-        /
-      </Link>
-    );
-    
-    // Add each path segment
-    let currentPath = '';
-    parts.forEach((part, index) => {
-      currentPath = `${currentPath}/${part}`;
-      breadcrumbs.push(
-        <Link 
-          key={index} 
-          color="inherit" 
-          onClick={() => handleDirectoryClick(currentPath)}
-          sx={{ cursor: 'pointer' }}
-        >
-          {part}
-        </Link>
-      );
+
+  // Build breadcrumb segments from current path
+  const breadcrumbSegments = () => {
+    if (!currentBrowsePath) return [];
+    const parts = currentBrowsePath.split('/').filter(Boolean);
+    const segments = [{ label: '/', path: '/' }];
+    let built = '';
+    parts.forEach((part) => {
+      built = `${built}/${part}`;
+      segments.push({ label: part, path: built });
     });
-    
-    return (
-      <Breadcrumbs 
-        separator={<NavigateNextIcon fontSize="small" />} 
-        aria-label="breadcrumb"
-        sx={{ mb: 2 }}
-      >
-        {breadcrumbs}
-      </Breadcrumbs>
-    );
+    return segments;
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-accent dark:border-border-dark dark:border-t-accent" />
+      </div>
+    );
+  }
 
   return (
     <div>
-      <h3>Music Library Paths</h3>
-      <p>Select directories to be scanned for music files</p>
-      
-      {isLoading ? (
-        <CircularProgress />
-      ) : (
-        <>
-          <List>
-            {paths.length === 0 && (
-              <ListItem>
-                <ListItemText primary="No paths configured. Add a path below." />
-              </ListItem>
-            )}
-            
-            {paths.map((path, index) => (
-              <ListItem key={index} secondaryAction={
-                <IconButton edge="end" aria-label="delete" onClick={() => handleRemovePath(index)}>
-                  <DeleteIcon />
-                </IconButton>
-              }>
-                <ListItemText primary={path} />
-              </ListItem>
-            ))}
-          </List>
-          
-          <div style={{ display: 'flex', marginTop: '16px', gap: '8px' }}>
-            <TextField
-              fullWidth
-              variant="outlined"
-              label="Add directory path"
-              value={newPath}
-              onChange={(e) => setNewPath(e.target.value)}
-              error={!!pathError}
-              helperText={pathError}
-            />
-            <Tooltip title="Browse directories">
-              <Button 
-                variant="contained" 
-                onClick={handleBrowse}
-              >
-                Browse
-              </Button>
-            </Tooltip>
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={handleAddPath}
-            >
-              Add
-            </Button>
+      <h3 className="mb-1 text-base font-semibold text-text dark:text-text-dark">Music Library Paths</h3>
+      <p className="mb-4 text-sm text-text/60 dark:text-text-dark/60">
+        Select directories to be scanned for music files
+      </p>
+
+      {/* Path list */}
+      <div className="mb-4 overflow-hidden rounded border border-border dark:border-border-dark">
+        {paths.length === 0 ? (
+          <div className="px-3 py-2 text-sm text-text/50 dark:text-text-dark/50">
+            No paths configured. Add a path below.
           </div>
-          
-          {/* Directory Browser Dialog */}
-          <Dialog 
-            open={browseDirOpen} 
-            onClose={() => setBrowseDirOpen(false)}
-            fullWidth
-            maxWidth="md"
-          >
-            <DialogTitle>Browse Directories</DialogTitle>
-            <DialogContent>
-              {browseLoading ? (
-                <div style={{ display: 'flex', justifyContent: 'center', padding: '24px' }}>
-                  <CircularProgress />
+        ) : (
+          paths.map((path, index) => (
+            <div
+              key={index}
+              className="flex items-center justify-between border-b border-border/50 px-3 py-2 last:border-b-0 dark:border-border-dark/50"
+            >
+              <span className="font-mono text-sm text-text dark:text-text-dark">{path}</span>
+              <button
+                type="button"
+                aria-label="Remove path"
+                onClick={() => handleRemovePath(index)}
+                className="ml-2 shrink-0 rounded px-2 py-0.5 text-xs text-red-600/70 transition hover:bg-red-50 hover:text-red-700 dark:text-red-400/70 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+              >
+                Remove
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Add path row */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newPath}
+          onChange={(e) => { setNewPath(e.target.value); setPathError(''); }}
+          onKeyDown={(e) => e.key === 'Enter' && handleAddPath()}
+          placeholder="Add directory path"
+          className="min-w-0 flex-1 rounded border border-border bg-transparent px-3 py-2 text-sm text-text placeholder:text-text/50 focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:text-text-dark dark:placeholder:text-text-dark/50"
+        />
+        <button
+          type="button"
+          title="Browse directories"
+          onClick={handleBrowse}
+          className="shrink-0 rounded border border-border px-3 py-2 text-sm text-text transition hover:bg-surface-muted dark:border-border-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+        >
+          Browse
+        </button>
+        <button
+          type="button"
+          onClick={handleAddPath}
+          className="shrink-0 rounded bg-accent px-3 py-2 text-sm font-medium text-text-dark transition hover:bg-accent/90"
+        >
+          + Add
+        </button>
+      </div>
+      {pathError && (
+        <div className="mt-1.5 text-xs text-red-600 dark:text-red-400">{pathError}</div>
+      )}
+
+      {/* Directory browser dialog */}
+      <Modal
+        open={browseDirOpen}
+        onClose={() => setBrowseDirOpen(false)}
+        title="Browse Directories"
+        size="lg"
+      >
+        {browseLoading ? (
+          <div className="flex items-center justify-center p-8">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-accent dark:border-border-dark dark:border-t-accent" />
+          </div>
+        ) : (
+          <div>
+            {/* Breadcrumbs */}
+            {currentBrowsePath && (
+              <div className="mb-3 flex flex-wrap items-center gap-0.5 text-sm">
+                {breadcrumbSegments().map((seg, i, arr) => (
+                  <React.Fragment key={seg.path}>
+                    <button
+                      type="button"
+                      onClick={() => handleDirectoryClick(seg.path)}
+                      className="rounded px-1 py-0.5 text-accent underline-offset-2 hover:underline"
+                    >
+                      {seg.label}
+                    </button>
+                    {i < arr.length - 1 && (
+                      <span className="text-text/40 dark:text-text-dark/40">/</span>
+                    )}
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
+
+            {/* Current path display */}
+            <div className="mb-3 rounded border border-border bg-surface-subtle px-3 py-2 text-sm text-text/80 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark/80">
+              <strong>Current Path:</strong> {currentBrowsePath || '/'}
+            </div>
+
+            {/* Parent directory button */}
+            <button
+              type="button"
+              onClick={handleParentDirectory}
+              disabled={currentBrowsePath === '/'}
+              className="mb-3 rounded border border-border px-3 py-1.5 text-sm text-text transition hover:bg-surface-muted disabled:opacity-40 dark:border-border-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+            >
+              ↑ Parent Directory
+            </button>
+
+            {/* Directory list */}
+            <div className="max-h-[50vh] overflow-y-auto rounded border border-border dark:border-border-dark">
+              {directories.length === 0 ? (
+                <div className="px-3 py-3 text-sm text-text/50 dark:text-text-dark/50">
+                  No directories found in this location
                 </div>
               ) : (
-                <>
-                  {renderBreadcrumbs()}
-                  
-                  <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-                    <Typography variant="subtitle2">Current Path: {currentBrowsePath || '/'}</Typography>
-                  </Paper>
-                  
-                  <Button
-                    startIcon={<ArrowUpwardIcon />}
-                    onClick={handleParentDirectory}
-                    sx={{ mb: 2 }}
-                    disabled={currentBrowsePath === '/'}
+                directories.map((dir, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => handleDirectoryClick(dir.path)}
+                    className="flex w-full items-center gap-2 border-b border-border/50 px-3 py-2 text-left last:border-b-0 hover:bg-surface-muted dark:border-border-dark/50 dark:hover:bg-surface-dark-elevated"
                   >
-                    Parent Directory
-                  </Button>
-                  
-                  <List sx={{ maxHeight: '50vh', overflow: 'auto', border: '1px solid #e0e0e0', borderRadius: '4px' }}>
-                    {directories.length === 0 ? (
-                      <ListItem>
-                        <ListItemText primary="No directories found in this location" />
-                      </ListItem>
-                    ) : (
-                      directories.map((dir, index) => (
-                        <ListItem 
-                          button 
-                          key={index} 
-                          onClick={() => handleDirectoryClick(dir.path)}
-                          sx={{
-                            '&:hover': {
-                              backgroundColor: '#f5f5f5',
-                            }
-                          }}
-                        >
-                          <FolderIcon sx={{ mr: 2, color: '#FFC107' }} />
-                          <ListItemText primary={dir.name} secondary={dir.path} />
-                        </ListItem>
-                      ))
-                    )}
-                  </List>
-                </>
+                    <span className="shrink-0 text-amber-500">📁</span>
+                    <div>
+                      <div className="text-sm font-medium text-text dark:text-text-dark">{dir.name}</div>
+                      <div className="text-xs text-text/50 dark:text-text-dark/50">{dir.path}</div>
+                    </div>
+                  </button>
+                ))
               )}
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setBrowseDirOpen(false)}>Cancel</Button>
-              <Button 
-                onClick={handleSelectPath} 
-                variant="contained" 
-                color="primary"
+            </div>
+
+            {/* Footer buttons */}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBrowseDirOpen(false)}
+                className="rounded border border-border px-4 py-1.5 text-sm text-text transition hover:bg-surface-muted dark:border-border-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSelectPath}
                 disabled={!currentBrowsePath}
+                className="rounded bg-accent px-4 py-1.5 text-sm font-medium text-text-dark transition hover:bg-accent/90 disabled:opacity-50"
               >
                 Select This Directory
-              </Button>
-            </DialogActions>
-          </Dialog>
-        </>
-      )}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import libraryRepository from '../../repositories/LibraryRepository';
-import '../../styles/AnniversaryTimeline.css';
 
 interface Anniversary {
   id: number;
@@ -273,23 +272,26 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
 
   if (loading) {
     return (
-      <div className="anniversary-timeline loading">
-        <div className="timeline-header">
-          <h3>Album Anniversaries</h3>
+      <div className="w-full overflow-hidden rounded-lg border border-border bg-surface p-4 dark:border-border-dark dark:bg-surface-dark-elevated">
+        <div className="mb-4 flex items-center justify-between border-b-2 border-accent pb-3">
+          <h3 className="m-0 text-lg font-semibold">Album Anniversaries</h3>
         </div>
-        <div className="loading-message">Loading anniversaries...</div>
+        <div className="p-8 text-center text-sm opacity-80">Loading anniversaries...</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="anniversary-timeline error">
-        <div className="timeline-header">
-          <h3>Album Anniversaries</h3>
+      <div className="w-full overflow-hidden rounded-lg border border-border bg-surface p-4 dark:border-border-dark dark:bg-surface-dark-elevated">
+        <div className="mb-4 flex items-center justify-between border-b-2 border-accent pb-3">
+          <h3 className="m-0 text-lg font-semibold">Album Anniversaries</h3>
         </div>
-        <div className="error-message">{error}</div>
-        <button onClick={loadInitialData} className="retry-button">
+        <div className="p-8 text-center text-sm text-red-600">{error}</div>
+        <button
+          onClick={loadInitialData}
+          className="mx-auto mt-2 block rounded bg-red-600 px-4 py-2 text-sm font-medium text-text-dark transition hover:bg-red-700"
+        >
           Retry
         </button>
       </div>
@@ -298,11 +300,11 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
 
   if (anniversaries.length === 0) {
     return (
-      <div className="anniversary-timeline empty">
-        <div className="timeline-header">
-          <h3>Album Anniversaries</h3>
+      <div className="w-full overflow-hidden rounded-lg border border-border bg-surface p-4 dark:border-border-dark dark:bg-surface-dark-elevated">
+        <div className="mb-4 flex items-center justify-between border-b-2 border-accent pb-3">
+          <h3 className="m-0 text-lg font-semibold">Album Anniversaries</h3>
         </div>
-        <div className="empty-message">
+        <div className="p-8 text-center text-sm opacity-80">
           No anniversaries found in the current date range.
         </div>
       </div>
@@ -312,39 +314,59 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
   const groupedAnniversaries = groupAnniversariesByDate();
 
   const anniversaryCards = Object.entries(groupedAnniversaries).map(([date, dayAnniversaries]) => {
+    const today = isToday(date);
+    const past = isPast(date);
+
     return (
-    <div key={date} className={`timeline-day ${isToday(date) ? 'today' : ''} ${isPast(date) ? 'past' : ''}`}>
-      <div className="day-header">
-        <div className="day-date">
-          <span className="day-short">{formatDate(date)}</span>
-          <span className="day-full">{formatFullDate(date)}</span>
+    <div
+      key={date}
+      className={`timeline-day relative min-w-[200px] flex-shrink-0 border-t-4 pt-4 sm:min-w-[240px] md:min-w-[280px] ${today ? 'today border-accent' : 'border-border dark:border-border-dark'} ${past ? 'past opacity-70' : ''}`}
+    >
+      <div
+        className={`day-header relative mb-3 min-h-[76px] rounded-md border px-2 py-2 text-center ${today ? 'border-accent/40 bg-accent/10 dark:border-accent/60 dark:bg-accent/20' : 'border-border bg-surface-subtle dark:border-border-dark dark:bg-surface-dark'}`}
+      >
+        <div className="day-date flex flex-col items-center gap-1.5">
+          <span className="day-short rounded-full bg-surface-muted px-3 py-1 text-sm font-semibold tracking-wide text-text dark:bg-surface-dark dark:text-text-dark sm:text-base">
+            {formatDate(date)}
+          </span>
+          <span className="day-full rounded-md bg-surface-subtle px-2.5 py-1 text-xs font-medium opacity-85 dark:bg-surface-dark sm:text-sm">{formatFullDate(date)}</span>
         </div>
-        {isToday(date) && <span className="today-badge">Today</span>}
+        {today && (
+          <span className="today-badge pointer-events-none absolute right-2 top-2 inline-flex rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-text-dark shadow-sm">
+            Today
+          </span>
+        )}
       </div>
 
-      <div className="day-anniversaries">
+      <div className="day-anniversaries flex flex-col gap-2">
         {dayAnniversaries.map(anniversary => (
           <div
             key={`${anniversary.id}-${date}`}
-            className="anniversary-item"
+            className="anniversary-item flex min-h-[100px] cursor-pointer flex-col rounded-md border border-border bg-surface-subtle p-3 transition hover:-translate-y-0.5 hover:border-accent hover:bg-surface-muted hover:shadow-sm dark:border-border-dark dark:bg-surface-dark dark:hover:bg-surface-dark-elevated md:min-h-[120px]"
             onClick={() => handleAlbumClick(anniversary)}
           >
-            <div className="album-info">
-              <div className="album-title">{anniversary.album}</div>
-              <div className="album-artist">{anniversary.artist}</div>
-              <div className="anniversary-info">
-                <span className={`years-badge ${getAnniversaryBadgeColor(anniversary.years_since_release)}`}>
-                  {anniversary.years_since_release} year{anniversary.years_since_release !== 1 ? 's' : ''}
-                </span>
-                <span className={`original-date`}>
+            <div className="album-info flex flex-1 flex-col">
+              <div className="album-title mb-1 rounded-md bg-surface-muted px-2.5 py-1.5 text-sm font-semibold leading-tight text-text dark:bg-surface-dark dark:text-text-dark">{anniversary.album}</div>
+              <div className="album-artist mb-2 inline-flex w-fit rounded-full bg-surface-subtle px-2.5 py-1 text-xs font-medium leading-tight text-text/85 dark:bg-surface-dark dark:text-text-dark/90">{anniversary.artist}</div>
+              <div className="anniversary-info mt-auto flex flex-col gap-1 border-t border-border pt-2 dark:border-border-dark">
+                {(() => {
+                  const badgeMeta = getAnniversaryBadgeMeta(anniversary.years_since_release);
+                  return (
+                    <span className={`years-badge ${badgeMeta.className}`} title={badgeMeta.title}>
+                      <span aria-hidden="true" className="mr-1">{badgeMeta.marker}</span>
+                      {anniversary.years_since_release} year{anniversary.years_since_release !== 1 ? 's' : ''}
+                    </span>
+                  );
+                })()}
+                <span className="original-date inline-flex w-fit rounded-md bg-surface-subtle px-2 py-1 text-[11px] font-medium text-text/70 dark:bg-surface-dark dark:text-text-dark/75">
                   Released {formatFullDate(anniversary.original_release_date)}
                 </span>
               </div>
             </div>
 
             {anniversary.art_url && (
-              <div className="album-art">
-                <img src={anniversary.art_url} alt={`${anniversary.album} cover`} />
+              <div className="album-art mx-auto mt-2 h-10 w-10 flex-shrink-0 self-center overflow-hidden rounded">
+                <img className="h-full w-full object-cover" src={anniversary.art_url} alt={`${anniversary.album} cover`} />
               </div>
             )}
           </div>
@@ -354,43 +376,46 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
   )});
 
   return (
-    <div className="anniversary-timeline">
-      <div className="timeline-header">
-        <h3>Album Anniversaries</h3>
-        <div className="timeline-controls">
-          <button onClick={scrollToToday} className="today-button">
+    <div className="w-full max-w-full overflow-hidden rounded-lg border border-border bg-surface p-4 dark:border-border-dark dark:bg-surface-dark-elevated">
+      <div className="mb-4 flex items-center justify-between border-b-2 border-accent pb-3">
+        <h3 className="m-0 text-lg font-semibold">Album Anniversaries</h3>
+        <div className="timeline-controls flex gap-2">
+          <button
+            onClick={scrollToToday}
+            className="rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-text-dark transition hover:bg-emerald-700"
+          >
             Today
           </button>
         </div>
       </div>
 
-      <div className="timeline-wrapper">
+      <div className="timeline-wrapper flex w-full items-center">
         <button 
-          className="timeline-arrow left-arrow"
+          className="timeline-arrow left-arrow mr-2 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-text-dark shadow-sm transition hover:scale-105 hover:bg-accent-hover disabled:opacity-50 disabled:hover:scale-100 sm:mr-3 sm:h-9 sm:w-9 sm:text-base md:h-10 md:w-10 md:text-lg"
           onClick={() => scrollTimeline('left')}
           disabled={loadingMore}
         >
           ←
         </button>
 
-        <div className="timeline-content" ref={scrollContainerRef}>
+        <div className="timeline-content flex flex-1 gap-3 overflow-x-auto overflow-y-hidden py-4 sm:gap-4 md:gap-6" ref={scrollContainerRef}>
           {loadingMore && (
-            <div className="loading-indicator left">
-              <div className="spinner">⟳</div>
+            <div className="loading-indicator left order-first flex h-full min-w-20 flex-shrink-0 items-center justify-center">
+              <div className="spinner animate-spin text-2xl text-accent">⟳</div>
             </div>
           )}
           
           {anniversaryCards}
 
           {loadingMore && (
-            <div className="loading-indicator right">
-              <div className="spinner">⟳</div>
+            <div className="loading-indicator right flex h-full min-w-20 flex-shrink-0 items-center justify-center">
+              <div className="spinner animate-spin text-2xl text-accent">⟳</div>
             </div>
           )}
         </div>
 
         <button 
-          className="timeline-arrow right-arrow"
+          className="timeline-arrow right-arrow ml-2 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-text-dark shadow-sm transition hover:scale-105 hover:bg-accent-hover disabled:opacity-50 disabled:hover:scale-100 sm:ml-3 sm:h-9 sm:w-9 sm:text-base md:h-10 md:w-10 md:text-lg"
           onClick={() => scrollTimeline('right')}
           disabled={loadingMore}
         >
@@ -401,15 +426,31 @@ const AnniversaryTimeline: React.FC<AnniversaryTimelineProps> = ({
   );
 };
 
-export function getAnniversaryBadgeColor(years: number): string {
+export function getAnniversaryBadgeMeta(years: number): { className: string; marker: string; title: string } {
   if (years <= 0) {
-    return 'anniversary-new'; // Green for new releases
-  } else if (years % 10 === 0) {
-    return 'anniversary-decade'; // Gold for decade milestones
+    return {
+      className: 'inline-flex w-fit items-center rounded-full bg-emerald-500 px-2.5 py-1 text-[11px] font-semibold text-text-dark ring-1 ring-emerald-300/70 shadow-sm',
+      marker: '●',
+      title: 'New release anniversary',
+    };
+  } else if (years % 25 === 0 || years % 10 === 0) {
+    return {
+      className: 'inline-flex w-fit items-center rounded-full bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 px-2.5 py-1 text-[11px] font-semibold text-amber-950 ring-1 ring-amber-200/90 shadow-sm',
+      marker: '🥇',
+      title: 'Gold milestone anniversary',
+    };
   } else if (years % 5 === 0) {
-    return 'anniversary-half-decade'; // Silver for half-decade milestones
+    return {
+      className: 'inline-flex w-fit items-center rounded-full bg-gradient-to-r from-slate-200 via-slate-300 to-slate-400 px-2.5 py-1 text-[11px] font-semibold text-slate-900 ring-1 ring-slate-200/80 shadow-sm',
+      marker: '🥈',
+      title: 'Silver milestone anniversary',
+    };
   } else {
-    return 'anniversary-regular'; // Bronze/orange for regular anniversaries
+    return {
+      className: 'inline-flex w-fit items-center rounded-full bg-gradient-to-r from-amber-700 via-orange-600 to-amber-800 px-2.5 py-1 text-[11px] font-semibold text-amber-50 ring-1 ring-amber-500/50 shadow-sm',
+      marker: '🥉',
+      title: 'Bronze anniversary',
+    };
   }
 }
 

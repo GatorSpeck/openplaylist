@@ -1,19 +1,26 @@
-import '../../styles/AlbumArtGrid.css';
-
 export const AlbumArtGrid = ({artList}) => {
-    let gridClass = "grid1x1";
-    if (artList.length > 1) {
-        gridClass = "grid2x2";
-    }
-    else if (artList.length > 4) {
-        gridClass = "grid3x3";
-    }
+        const hasMultiple = artList.length > 1;
+
+        const gridStyle = {
+            width: '36px',
+            height: '36px',
+            display: 'grid',
+            gridTemplateColumns: hasMultiple ? 'repeat(2, minmax(0, 1fr))' : '1fr',
+            gridTemplateRows: hasMultiple ? 'repeat(2, minmax(0, 1fr))' : '1fr',
+            overflow: 'hidden',
+            borderRadius: '4px',
+            flexShrink: 0,
+        } as const;
 
     return (
-        <div className={gridClass}>
+                <div style={gridStyle}>
             {artList.slice(0, 4).map((art, index) => (
-                <div key={index} className="album-art" style={{ borderRadius: 0 }}>
-                    <img src={art} alt="Album Art" />
+                                <div key={index} style={{ overflow: 'hidden' }}>
+                                        <img
+                                            src={art}
+                                            alt="Album Art"
+                                            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                        />
                 </div>
             ))}
         </div>

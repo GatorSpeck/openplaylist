@@ -13,6 +13,7 @@ import libraryRepository from '../../repositories/LibraryRepository';
 import ContextMenu from '../common/ContextMenu';
 import SimilarTracksPopup from '../common/SimilarTracksPopup';
 import TrackDetailsModal from '../common/TrackDetailsModal';
+import Modal from '../common/Modal';
 import { FixedSizeList as List } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
@@ -55,7 +56,9 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [similarTracks, setSimilarTracks] = useState<PlaylistEntry[]>([]);
   const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [batchActionsModalVisible, setBatchActionsModalVisible] = useState(false);
   const panelRef = useRef(null);
+  const toggleButtonRef = useRef<HTMLButtonElement | null>(null);
   const [libraryStats, setLibraryStats] = useState({
     visible: false,
     trackCount: 0,
@@ -177,9 +180,14 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const getGridTemplate = () => {
     const baseColumns = ['50px']; // Fixed width for checkbox column
     
-    visibleColumns.forEach(col => {
+    visibleColumns.forEach((col, index) => {
       const width = columnWidths[col] || defaultColumnWidths[col];
-      baseColumns.push(`${width}px`);
+      // Make the last visible column flexible to fill remaining space
+      if (index === visibleColumns.length - 1) {
+        baseColumns.push('1fr');
+      } else {
+        baseColumns.push(`${width}px`);
+      }
     });
     
     baseColumns.push('40px'); // Fixed width for settings button
@@ -295,6 +303,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const clearSelectedSongs = () => {
     setSelectedSearchResults([]);
     setAllSearchResultsSelected(false);
+    setBatchActionsModalVisible(false);
   };
 
   const toggleAllSongs = () => {
@@ -574,15 +583,18 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
 
   useEffect(() => {
     const handleClickOutside = (event) => {
+      if (toggleButtonRef.current && toggleButtonRef.current.contains(event.target)) {
+        return;
+      }
+
       if (panelRef.current && !panelRef.current.contains(event.target)) {
-        setIsPanelOpen(false);
-        onPanelClose();
+        closePanelAndClearSelection();
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isPanelOpen, selectedSearchResults.length]);
 
   useEffect(() => {
     const handleClickOutside = () => {
@@ -788,6 +800,21 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     setSearchResults([]);
   };
 
+  const closePanelAndClearSelection = () => {
+    clearSelectedSongs();
+    setIsPanelOpen(false);
+    onPanelClose();
+  };
+
+  const handleTogglePanel = () => {
+    if (isPanelOpen) {
+      closePanelAndClearSelection();
+      return;
+    }
+
+    setIsPanelOpen(true);
+  };
+
   // Create a new function to directly add manual entries
   const addManualEntry = (title: string, artist: string, album: string) => {
     const artistToUse = artist ? artist : 'Unknown Artist';
@@ -812,11 +839,43 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     });
   }
 
+  const SearchBatchActionsModal = ({ selectedCount, onAdd, onClear, visible, onClose }) => {
+    return (
+      <Modal
+        open={visible}
+        onClose={onClose}
+        title={`Batch Actions (${selectedCount} selected)`}
+      >
+        <div className="search-batch-actions-modal-content">
+          <button
+            className="search-batch-action-button add-button"
+            onClick={() => {
+              onAdd();
+              onClose();
+            }}
+          >
+            Add {selectedCount} Selected to Playlist
+          </button>
+          <button
+            className="search-batch-action-button clear-button"
+            onClick={() => {
+              onClear();
+              onClose();
+            }}
+          >
+            Clear Selection
+          </button>
+        </div>
+      </Modal>
+    );
+  };
+
   return (
     <>
       <button 
+        ref={toggleButtonRef}
         className="search-panel-toggle"
-        onClick={() => setIsPanelOpen(!isPanelOpen)}
+        onClick={handleTogglePanel}
       >
         {isPanelOpen ? '✕' : '+ Add Songs'}
       </button>
@@ -836,7 +895,6 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
         
         <div className="search-panel-header">
           <h2>Add Songs</h2>
-          <button onClick={() => setIsPanelOpen(false)}>✕</button>
         </div>
 
         <div className="search-container">
@@ -966,8 +1024,8 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                 Add Requested Entry
               </button>
               <button onClick={() => {
-                setFilters({ title: '', artist: '', album: '' });
                 clearSearchResults();
+                clearSelectedSongs();
               }}>
                 Clear
               </button>
@@ -975,43 +1033,16 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           </div>
         </div>
 
-        <div 
-          style={{ 
-            minHeight: '40px', 
-            display: selectedSearchResults.length > 0 ? 'block' : 'none',
-            backgroundColor: '#f0f0f0',
-            padding: '10px',
-            border: '1px solid #ccc',
-            margin: '10px 0',
-            zIndex: 9999,
-            position: 'relative'
-          }}
-        >
-          <button 
-            onClick={() => addSongs(selectedSearchResults)}
-            style={{ marginRight: '10px', padding: '8px 16px', backgroundColor: 'lightblue' }}
-          >
-            Add {selectedSearchResults.length} Selected to Playlist
-          </button>
-          <button 
-            onClick={() => clearSelectedSongs()}
-            style={{ padding: '8px 16px', backgroundColor: 'lightcoral' }}
-          >
-            Clear Selection
-          </button>
-        </div>
-
-        <div className="search-grid-container" style={{
+        <div className="search-grid-container border border-border dark:border-border-dark rounded" style={{
           overflowX: 'auto',
           overflowY: 'hidden',
           maxHeight: '600px',
-          border: '1px solid #ddd',
-          borderRadius: '4px'
+          position: 'relative'
         }}>
           <div style={{
             minWidth: 'fit-content'
           }}>
-            <div className="search-grid-header-row" style={{
+            <div className="search-grid-header-row bg-surface text-text dark:bg-surface-dark dark:text-text-dark" style={{
               gridTemplateColumns: getGridTemplate(),
               position: 'sticky',
               top: 0,
@@ -1055,12 +1086,12 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                             e.stopPropagation(); // Prevent sort when clicking settings
                             setColumnConfigOpen(true);
                           }}
+                          className="text-text-muted dark:text-text-dark/60 hover:text-text dark:hover:text-text-dark"
                           style={{
                             background: 'none',
                             border: 'none',
                             cursor: 'pointer',
                             fontSize: '14px',
-                            color: '#666',
                             marginLeft: '8px'
                           }}
                           title="Configure columns"
@@ -1131,7 +1162,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                           top: '25%',
                           bottom: '25%',
                           width: '2px',
-                          backgroundColor: '#ccc',
+                          backgroundColor: 'var(--op-border)',
                           borderRadius: '1px',
                           transition: 'background-color 0.2s'
                         }}></div>
@@ -1165,7 +1196,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                         ref={ref}
                         height={height}
                         itemCount={searchResults.length}
-                        itemSize={80}
+                        itemSize={50}
                         width="100%" 
                         onItemsRendered={onItemsRendered}
                         style={{ overflowX: 'hidden' }}
@@ -1178,7 +1209,26 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
               </AutoSizer>
             </div>
           </div>
+
+          {selectedSearchResults.length > 0 && (
+            <button
+              className="search-floating-batch-button"
+              onClick={() => setBatchActionsModalVisible(true)}
+              title={`${selectedSearchResults.length} items selected - Click for batch actions`}
+            >
+              <span className="batch-count">{selectedSearchResults.length}</span>
+              <span className="batch-icon">⚡</span>
+            </button>
+          )}
         </div>
+
+        <SearchBatchActionsModal
+          selectedCount={selectedSearchResults.length}
+          onAdd={() => addSongs(selectedSearchResults)}
+          onClear={clearSelectedSongs}
+          visible={batchActionsModalVisible}
+          onClose={() => setBatchActionsModalVisible(false)}
+        />
 
         {showLastFMSearch && (
           <LastFMSearch
@@ -1232,22 +1282,19 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
 
         {/* Column Configuration Modal */}
         {columnConfigOpen && (
-          <div className="modal-overlay" onClick={() => setColumnConfigOpen(false)}>
+          <div className="fixed inset-0 z-[1200] flex items-center justify-center overflow-y-auto bg-text/40 px-4 py-6 dark:bg-text-dark/25" onClick={() => setColumnConfigOpen(false)}>
             <div 
-              className="modal-content"
+              className="w-full max-w-[500px] max-h-[calc(100vh-3rem)] overflow-y-auto rounded border border-border bg-surface text-text shadow-lg dark:border-border-dark dark:bg-surface-dark-elevated dark:text-text-dark"
               style={{
-                maxWidth: '500px',
                 width: '90vw',
-                maxHeight: '80vh',
-                overflow: 'auto',
                 boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ padding: '20px', borderBottom: '1px solid #eee' }}>
+              <div className="border-b border-border p-5 dark:border-border-dark">
                 <h3 style={{ margin: '0', fontSize: '18px' }}>Configure Columns</h3>
               </div>
-              <div className="column-config-content" style={{ padding: '20px' }}>
+              <div className="column-config-content p-5">
                 <p>Select which columns to display:</p>
                 <div className="column-checkboxes">
                   {visibleColumns.map((columnKey, index) => {
@@ -1257,7 +1304,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                     return (
                       <label 
                         key={column.key} 
-                        className="column-checkbox-item draggable-column"
+                        className="column-checkbox-item draggable-column border border-border dark:border-border-dark rounded"
                         draggable
                         onDragStart={(e) => {
                           e.dataTransfer.setData('text/plain', index.toString());
@@ -1287,8 +1334,6 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                           alignItems: 'center',
                           marginBottom: '10px',
                           padding: '8px',
-                          border: '1px solid #eee',
-                          borderRadius: '4px',
                           cursor: 'grab'
                         }}
                       >
@@ -1306,7 +1351,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                         />
                         <div>
                           <div style={{ fontWeight: 'bold' }}>{column.label}</div>
-                          <div style={{ fontSize: '12px', color: '#666' }}>{column.description}</div>
+                          <div className="text-xs text-text-muted dark:text-text-dark/60">{column.description}</div>
                         </div>
                       </label>
                     );
@@ -1318,15 +1363,12 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                     .map(column => (
                       <label 
                         key={column.key} 
-                        className="column-checkbox-item"
+                        className="column-checkbox-item border border-border dark:border-border-dark rounded opacity-60"
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           marginBottom: '10px',
-                          padding: '8px',
-                          border: '1px solid #eee',
-                          borderRadius: '4px',
-                          opacity: 0.6
+                          padding: '8px'
                         }}
                       >
                         <input
@@ -1341,30 +1383,24 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                         />
                         <div>
                           <div style={{ fontWeight: 'bold' }}>{column.label}</div>
-                          <div style={{ fontSize: '12px', color: '#666' }}>{column.description}</div>
+                          <div className="text-xs text-text-muted dark:text-text-dark/60">{column.description}</div>
                         </div>
                       </label>
                     ))
                   }
                 </div>
-                <div style={{ 
+                <div className="flex gap-2.5 justify-end mt-5 border-t border-border dark:border-border-dark pt-4" style={{ 
                   display: 'flex', 
                   gap: '10px', 
-                  justifyContent: 'flex-end',
-                  marginTop: '20px',
-                  borderTop: '1px solid #eee',
-                  paddingTop: '15px'
+                  justifyContent: 'flex-end'
                 }}>
                   <button 
                     onClick={() => {
                       updateColumnVisibility(defaultColumns);
                       setColumnWidths(defaultColumnWidths);
                     }}
+                    className="px-4 py-2 rounded bg-surface-subtle dark:bg-surface-dark border border-border dark:border-border-dark text-text dark:text-text-dark transition hover:bg-surface-muted dark:hover:bg-surface-dark-elevated"
                     style={{
-                      padding: '8px 16px',
-                      backgroundColor: '#f0f0f0',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
                       cursor: 'pointer'
                     }}
                   >
@@ -1372,14 +1408,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                   </button>
                   <button 
                     onClick={() => setColumnConfigOpen(false)}
-                    style={{
-                      padding: '8px 16px',
-                      backgroundColor: '#4CAF50',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer'
-                    }}
+                    className="rounded bg-accent px-4 py-2 text-sm font-medium text-text-dark transition hover:bg-accent-hover"
                   >
                     Done
                   </button>

@@ -26,14 +26,14 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@v6
       with:
-        node-version: '18'
+        node-version: '20'
         cache: 'npm'
         cache-dependency-path: frontend/package-lock.json
 
     - name: Install dependencies
       run: |
         cd frontend
-        npm ci
+        npm ci --include=optional
 
     - name: Run frontend tests
       run: |

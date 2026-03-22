@@ -1,19 +1,37 @@
+:root {
+  --op-surface: #ffffff;
+  --op-surface-subtle: #f5f5f5;
+  --op-surface-muted: #e5e7eb;
+  --op-text: #213547;
+  --op-text-muted: rgba(33, 53, 71, 0.7);
+  --op-border: rgba(0, 0, 0, 0.14);
+  --op-on-accent: rgba(255, 255, 255, 0.9);
+}
+
+html.dark {
+  --op-surface: #242424;
+  --op-surface-subtle: #1f1f1f;
+  --op-surface-muted: #374151;
+  --op-text: rgba(255, 255, 255, 0.87);
+  --op-text-muted: rgba(255, 255, 255, 0.7);
+  --op-border: rgba(255, 255, 255, 0.2);
+  --op-on-accent: rgba(255, 255, 255, 0.95);
+}
+
 .search-results-container {
   max-height: 66vh;
   display: flex;
   flex-direction: column;
-  border: 1px solid #ddd;
+  border: 1px solid var(--op-border);
   border-radius: 4px;
   overflow: hidden;
 }
 
 .search-grid-header-row {
   display: grid;
-  padding: 8px;
-  
-  border-bottom: 1px solid #ddd;
-  background: white;
-  color: #333;
+  border-bottom: 1px solid var(--op-border);
+  background: var(--op-surface);
+  color: var(--op-text);
   position: sticky;
   top: 0;
   z-index: 2;
@@ -27,16 +45,31 @@
 
 .search-grid-row {
   display: grid;
-  padding: 8px;
-  border-bottom: 1px solid #eee;
-  background: #333;
-  color: white;
+  background: var(--op-surface-subtle);
+  color: var(--op-text);
+  min-height: 50px;
+  align-items: center;
+  overflow: hidden;
+  border-bottom: 1px solid var(--op-border);
 }
 
 .grid-cell {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  border-right: 1px solid var(--op-border);
+  padding: 2px 8px;
+  display: flex;
+  align-items: center;
+}
+
+.grid-cell:last-child {
+  border-right: none;
+}
+
+.grid-cell img {
+  max-height: 100%;
+  object-fit: contain;
 }
 
 .clickable {
@@ -47,11 +80,11 @@
   position: fixed;
   right: 20px;
   top: 20px;
-  z-index: 100;
+  z-index: 1102;
   padding: 8px 16px;
   border-radius: 4px;
   background: #4CAF50;
-  color: white;
+  color: var(--op-on-accent);
   border: none;
   cursor: pointer;
 }
@@ -59,11 +92,11 @@
 .search-results-panel {
   position: fixed;
   top: 0;
-  right: calc(-1 * var(--panel-width, 400px));
+  right: calc(-1 * var(--panel-width, 400px) - 8px);
   width: var(--panel-width, 400px);
   height: 100vh;
-  background: white;
-  color: black;
+  background: var(--op-surface);
+  color: var(--op-text);
   box-shadow: -2px 0 5px rgba(0,0,0,0.1);
   transition: right 0.3s ease-in-out;
   z-index: 1000;
@@ -80,7 +113,7 @@
   top: 0;
   width: 4px;
   height: 100%;
-  background: #ddd;
+  background: var(--op-border);
   cursor: ew-resize;
   z-index: 1001;
   transition: background 0.2s;
@@ -105,13 +138,13 @@
 }
 
 .modal-content {
-  background: white;
+  background: var(--op-surface);
   border-radius: 8px;
-  color: black;
+  color: var(--op-text);
 }
 
 .column-config-content {
-  color: black;
+  color: var(--op-text);
 }
 
 .column-checkboxes {
@@ -125,7 +158,7 @@
 }
 
 .column-checkbox-item:hover {
-  background-color: #f5f5f5;
+  background-color: var(--op-surface-muted);
 }
 
 /* Resizable headers and drag handles */
@@ -152,7 +185,7 @@
 
 .drag-handle {
   user-select: none;
-  color: #999;
+  color: var(--op-text-muted);
 }
 
 .search-panel-header {
@@ -160,7 +193,8 @@
   justify-content: space-between;
   align-items: center;
   padding: 16px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--op-border);
+  color: var(--op-text);
 }
 
 .search-panel-header button {
@@ -168,6 +202,7 @@
   border: none;
   font-size: 20px;
   cursor: pointer;
+  color: var(--op-text);
 }
 
 .search-container {
@@ -182,24 +217,24 @@
 .search-mode-btn {
   flex: 1;
   padding: 8px;
-  background-color: #f5f5f5;
-  border: 1px solid #ddd;
+  background-color: var(--op-surface-subtle);
+  border: 1px solid var(--op-border);
   cursor: pointer;
-  color: black;
+  color: var(--op-text);
 }
 
 .search-mode-btn.active {
   background-color: #4CAF50;
-  color: white;
+  color: var(--op-on-accent);
   border-color: #4CAF50;
 }
 
 .advanced-search {
-  color: black;
-  background-color: #f9f9f9;
+  color: var(--op-text);
+  background-color: var(--op-surface-subtle);
   padding: 15px;
   border-radius: 4px;
-  border: 1px solid #eee;
+  border: 1px solid var(--op-border);
 }
 
 .advanced-search .form-group {
@@ -215,6 +250,10 @@
 .advanced-search input {
   width: 100%;
   padding: 8px;
+  background-color: var(--op-surface);
+  color: var(--op-text);
+  border: 1px solid var(--op-border);
+  border-radius: 4px;
 }
 
 .advanced-search-actions {
@@ -227,17 +266,17 @@
 
 .advanced-search-actions button {
   padding: 6px 12px;
-  background-color: #f0f0f0;
-  color: black;
-  border: 1px solid #ddd;
+  background-color: var(--op-surface-muted);
+  color: var(--op-text);
+  border: 1px solid var(--op-border);
   border-radius: 4px;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .advanced-search-actions button:hover {
-  background-color: #e0e0e0;
-  color: black;
+  background-color: var(--op-surface-muted);
+  color: var(--op-text);
 }
 
 .basic-search {
@@ -249,6 +288,10 @@
 .basic-search input {
   width: 100%;
   padding: 8px;
+  background-color: var(--op-surface);
+  color: var(--op-text);
+  border: 1px solid var(--op-border);
+  border-radius: 4px;
 }
 
 .basic-search-actions {
@@ -259,16 +302,16 @@
 
 .basic-search-actions button {
   padding: 6px 12px;
-  background-color: #f0f0f0;
-  border: 1px solid #ddd;
+  background-color: var(--op-surface-muted);
+  border: 1px solid var(--op-border);
   border-radius: 4px;
   cursor: pointer;
   white-space: nowrap;
-  color: black;
+  color: var(--op-text);
 }
 
 .basic-search-actions button:hover {
-  background-color: #e0e0e0;
+  background-color: var(--op-surface-muted);
 }
 
 .artist-input-container {
@@ -281,8 +324,8 @@
   width: 100%;
   max-height: 300px;
   overflow-y: auto;
-  background-color: white;
-  border: 1px solid #ddd;
+  background-color: var(--op-surface);
+  border: 1px solid var(--op-border);
   border-radius: 0 0 4px 4px;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
   z-index: 1000;
@@ -293,14 +336,15 @@
 .artist-option {
   padding: 8px 12px;
   cursor: pointer;
+  color: var(--op-text);
 }
 
 .artist-option:hover {
-  background-color: #f5f5f5;
+  background-color: var(--op-surface-muted);
 }
 
 .artist-option.no-results {
-  color: #999;
+  color: var(--op-text-muted);
   font-style: italic;
   cursor: default;
 }
@@ -317,8 +361,8 @@
   right: 0;
   max-height: 200px;
   overflow-y: auto;
-  background: white;
-  border: 1px solid #ccc;
+  background: var(--op-surface);
+  border: 1px solid var(--op-border);
   z-index: 10;
   box-shadow: 0 2px 5px rgba(0,0,0,0.2);
 }
@@ -326,13 +370,90 @@
 .album-option {
   padding: 8px 12px;
   cursor: pointer;
+  color: var(--op-text);
 }
 
 .album-option:hover {
-  background-color: #f0f0f0;
+  background-color: var(--op-surface-muted);
 }
 
 .album-option.no-results {
   font-style: italic;
-  color: #999;
+  color: var(--op-text-muted);
+}
+
+.search-floating-batch-button {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1101;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: none;
+  background: #2196f3;
+  color: white;
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.search-floating-batch-button:hover {
+  background: #1976d2;
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(33, 150, 243, 0.5);
+}
+
+.search-floating-batch-button .batch-count {
+  font-size: 14px;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.search-floating-batch-button .batch-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.search-batch-actions-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.search-batch-action-button {
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  color: var(--op-on-accent);
+  cursor: pointer;
+  transition: filter 0.2s ease;
+}
+
+.search-batch-action-button:hover {
+  filter: brightness(0.95);
+}
+
+.search-batch-action-button.add-button {
+  background: #2080ff;
+}
+
+.search-batch-action-button.clear-button {
+  background: #dc2626;
+}
+
+html.dark .search-batch-action-button.add-button {
+  background: #4a9eff;
+}
+
+html.dark .search-batch-action-button.clear-button {
+  background: #ef4444;
 }

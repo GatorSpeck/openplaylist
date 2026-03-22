@@ -167,8 +167,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
     onContextMenu(e);
   };
 
-  // Add styling for hidden entries
-  const hiddenClass = entry.isHidden() ? 'hidden-entry' : '';
+  const hiddenClass = entry.isHidden() ? 'opacity-60 bg-surface-subtle dark:bg-surface-dark' : '';
 
   const artist = entry.isHidden() ? (
     <s>{entry.getArtist()}</s>
@@ -302,21 +301,45 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
   return (
     <div
       ref={ref}
-      className={`playlist-entry-row ${className} ${hiddenClass} ${isDragging ? 'dragging' : ''}`}
+      className={`playlist-entry-row grid !h-[50px] !min-h-[50px] !max-h-[50px] overflow-hidden items-center border-b border-border !text-text dark:border-border-dark dark:!text-text-dark ${className || ''} ${hiddenClass} ${isDragging ? 'shadow-sm' : ''}`}
       style={style}
       onContextMenu={onContextMenu}
       {...props}
     >
       {/* Apply dragHandleProps only to the first grid cell */}
       <div 
-        className="grid-cell" {...dragHandleProps}
+        className="grid-cell flex items-center justify-center !p-1" {...dragHandleProps}
         onClick={onToggle}
       >
         {isChecked ? (
                 <span>✔</span>
         ) : (imageUrl ? (
-            <div className="album-art">
-                <img src={imageUrl} alt="Album Art" />
+            <div
+              className="overflow-hidden rounded"
+              style={{
+                width: '38px',
+                height: '38px',
+                minWidth: '38px',
+                minHeight: '38px',
+                maxWidth: '38px',
+                maxHeight: '38px',
+                lineHeight: 0,
+              }}
+            >
+                <img
+                  src={imageUrl}
+                  alt="Album Art"
+                  style={{
+                    width: '38px',
+                    height: '38px',
+                    minWidth: '38px',
+                    minHeight: '38px',
+                    maxWidth: '38px',
+                    maxHeight: '38px',
+                    objectFit: 'cover',
+                    display: 'block',
+                  }}
+                />
             </div>
         ) : (
             <div>
@@ -330,9 +353,9 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
         switch (column) {
           case 'artistAlbum':
             return (
-              <div key={`${column}-${index}`} className="grid-cell artist-cell">
-                <div className="track-info">
-                  <div className="artist scrolling-text">
+              <div key={`${column}-${index}`} className="grid-cell artist-cell px-2 py-1">
+                <div className="track-info min-w-0">
+                  <div className="artist scrolling-text overflow-hidden text-sm font-medium">
                     <div 
                       ref={artistRef}
                       className={`scrolling ${shouldScrollArtist ? 'should-scroll' : ''}`}
@@ -340,7 +363,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
                       <span>{artist}</span>
                     </div>
                   </div>
-                  <div className="album scrolling-text">
+                  <div className="album scrolling-text overflow-hidden text-xs opacity-80">
                     <div 
                       ref={albumRef}
                       className={`scrolling ${shouldScrollAlbum ? 'should-scroll' : ''}`}
@@ -353,7 +376,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
             );
           case 'artist':
             return (
-              <div key={`${column}-${index}`} className="grid-cell scrolling-text">
+              <div key={`${column}-${index}`} className="grid-cell scrolling-text overflow-hidden px-2 py-1 text-sm">
                 <div 
                   ref={artistRef}
                   className={`scrolling ${shouldScrollArtist ? 'should-scroll' : ''}`}
@@ -364,7 +387,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
             );
           case 'album':
             return (
-              <div key={`${column}-${index}`} className="grid-cell scrolling-text">
+              <div key={`${column}-${index}`} className="grid-cell scrolling-text overflow-hidden px-2 py-1 text-sm opacity-90">
                 <div 
                   ref={albumRef}
                   className={`scrolling ${shouldScrollAlbum ? 'should-scroll' : ''}`}
@@ -375,7 +398,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
             );
           case 'title':
             return (
-              <div key={`${column}-${index}`} className="grid-cell scrolling-text">
+              <div key={`${column}-${index}`} className="grid-cell scrolling-text relative overflow-hidden px-2 py-1 pr-8 text-sm">
                 <div 
                   ref={scrollingRef}
                   className={`scrolling ${shouldScroll ? 'should-scroll' : ''}`}
@@ -383,7 +406,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
                   <span>{contentsHidden}</span>
                 </div>
                 {isMobile && (<button 
-                  className="mobile-menu-button"
+                  className="mobile-menu-button absolute right-1 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-base text-text/70 hover:bg-surface-muted dark:text-text-dark/70 dark:hover:bg-surface-dark-elevated"
                   onClick={handleMenuClick}
                   aria-label="More options"
                 >
@@ -393,7 +416,7 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
             );
           case 'notes':
             return (
-              <div key={`${column}-${index}`} className="grid-cell notes-cell" onClick={!isEditingNotes ? handleNotesClick : undefined}>
+              <div key={`${column}-${index}`} className="grid-cell notes-cell px-2 py-1 text-xs italic" onClick={!isEditingNotes ? handleNotesClick : undefined}>
                 {isEditingNotes ? (
                   <input
                     ref={notesInputRef}
@@ -402,12 +425,12 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
                     onChange={(e) => setNotesValue(e.target.value)}
                     onKeyDown={handleNotesKeyDown}
                     onBlur={handleNotesBlur}
-                    className="notes-input"
+                    className="notes-input w-full rounded border border-accent/60 bg-surface px-1.5 py-1 text-xs text-text outline-none ring-1 ring-accent/20 dark:bg-surface-dark dark:text-text-dark"
                     placeholder="Add notes..."
                   />
                 ) : (
                   <span 
-                    className="notes-display"
+                    className="notes-display block min-h-4 rounded px-1 hover:bg-surface-muted dark:hover:bg-surface-dark-elevated"
                   >
                     {entry.getNotes()}
                   </span>

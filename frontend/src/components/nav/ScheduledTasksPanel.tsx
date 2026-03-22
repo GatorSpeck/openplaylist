@@ -1,48 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  Button,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Chip,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Switch,
-  FormControlLabel,
-  Alert,
-  CircularProgress,
-  Grid,
-  Card,
-  CardContent,
-  Tooltip,
-  Checkbox,
-  ListItemText,
-  OutlinedInput,
-} from '@mui/material';
-import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  PlayArrow as RunIcon,
-  Schedule as ScheduleIcon,
-  CheckCircle as CheckIcon,
-  Error as ErrorIcon,
-  MoreTime as PendingIcon,
-} from '@mui/icons-material';
+import Modal from '../common/Modal';
 import axios from 'axios';
 
 const CRON_PRESETS = {
@@ -60,31 +17,21 @@ const TASK_TYPE_LABELS = {
   playlist_sync: 'Playlist Sync',
 };
 
-const TaskStatusChip = ({ status, lastError }) => {
-  const getStatusProps = (status) => {
-    switch (status) {
-      case 'success':
-        return { color: 'success', icon: <CheckIcon /> };
-      case 'failed':
-        return { color: 'error', icon: <ErrorIcon /> };
-      case 'running':
-        return { color: 'warning', icon: <PendingIcon /> };
-      default:
-        return { color: 'default', icon: <ScheduleIcon /> };
-    }
-  };
+const STATUS_CLASSES = {
+  success: 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700/50 dark:bg-emerald-900/30 dark:text-emerald-300',
+  failed: 'border-red-300 bg-red-50 text-red-700 dark:border-red-700/50 dark:bg-red-900/30 dark:text-red-300',
+  running: 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700/50 dark:bg-amber-900/30 dark:text-amber-300',
+};
 
-  const props = getStatusProps(status);
-  
+const TaskStatusBadge = ({ status, lastError }) => {
+  const classes = STATUS_CLASSES[status] ?? 'border-border bg-surface-subtle text-text/60 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark/60';
   return (
-    <Tooltip title={lastError || 'No errors'}>
-      <Chip
-        {...props}
-        label={status || 'Pending'}
-        size="small"
-        icon={props.icon}
-      />
-    </Tooltip>
+    <span
+      title={lastError || undefined}
+      className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${classes}`}
+    >
+      {status || 'Pending'}
+    </span>
   );
 };
 
@@ -111,40 +58,28 @@ const TaskFormDialog = ({ open, onClose, onSave, task = null, isEditing = false 
         enabled: task.enabled !== undefined ? task.enabled : true,
         config: task.config || {},
       });
-      // Check if it's a custom cron expression
       const isPreset = Object.keys(CRON_PRESETS).includes(task.cron_expression || '');
       if (!isPreset) {
         setCustomCron(task.cron_expression || '');
       }
-      // Set selected playlists if this is a playlist sync task
       if (task.task_type === 'playlist_sync' && task.config?.playlist_ids) {
         setSelectedPlaylists(task.config.playlist_ids);
       } else {
         setSelectedPlaylists([]);
       }
     } else {
-      setFormData({
-        name: '',
-        task_type: 'library_scan',
-        cron_expression: '0 2 * * *',
-        enabled: true,
-        config: {},
-      });
+      setFormData({ name: '', task_type: 'library_scan', cron_expression: '0 2 * * *', enabled: true, config: {} });
       setCustomCron('');
       setSelectedPlaylists([]);
     }
   }, [isEditing, task, open]);
 
   useEffect(() => {
-    if (open) {
-      loadPlaylists();
-    }
+    if (open) loadPlaylists();
   }, [open]);
 
   useEffect(() => {
-    if (formData.cron_expression) {
-      validateCronExpression(formData.cron_expression);
-    }
+    if (formData.cron_expression) validateCronExpression(formData.cron_expression);
   }, [formData.cron_expression]);
 
   const loadPlaylists = async () => {
@@ -158,33 +93,27 @@ const TaskFormDialog = ({ open, onClose, onSave, task = null, isEditing = false 
   };
 
   const validateCronExpression = async (expression) => {
-    if (!expression || expression.trim() === '') {
+    if (!expression?.trim()) {
       setCronValidation({ valid: false, error: 'Cron expression is required', next_runs: [] });
       return;
     }
-
     setIsValidating(true);
     try {
-      // Use POST to avoid URL encoding issues
-      const response = await axios.post('/api/scheduled-tasks/validate-cron', {
-        cron_expression: expression
-      });
+      const response = await axios.post('/api/scheduled-tasks/validate-cron', { cron_expression: expression });
       setCronValidation(response.data);
     } catch (error) {
       console.error('Cron validation error:', error);
-      setCronValidation({ 
-        valid: false, 
-        error: error.response?.data?.detail || error.response?.data?.error || 'Failed to validate cron expression', 
-        next_runs: [] 
+      setCronValidation({
+        valid: false,
+        error: error.response?.data?.detail || error.response?.data?.error || 'Failed to validate cron expression',
+        next_runs: [],
       });
     } finally {
       setIsValidating(false);
     }
   };
 
-  const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
+  const handleChange = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
 
   const handleCronChange = (value) => {
     setCustomCron(value);
@@ -196,189 +125,193 @@ const TaskFormDialog = ({ open, onClose, onSave, task = null, isEditing = false 
     handleChange('cron_expression', preset);
   };
 
+  const togglePlaylist = (id) => {
+    setSelectedPlaylists(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
   const handleSubmit = () => {
-    if (!cronValidation.valid) {
-      return;
-    }
-    
-    // Prepare the config based on task type
+    if (!cronValidation.valid) return;
     let config = { ...formData.config };
     if (formData.task_type === 'playlist_sync' && selectedPlaylists.length > 0) {
       config.playlist_ids = selectedPlaylists;
     }
-    
-    onSave({
-      ...formData,
-      config
-    });
+    onSave({ ...formData, config });
   };
 
+  const inputClass = 'w-full rounded border border-border bg-transparent px-3 py-2 text-sm text-text placeholder:text-text/50 focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:text-text-dark dark:placeholder:text-text-dark/50';
+  const selectClass = 'w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:bg-surface-dark dark:text-text-dark';
+  const labelClass = 'text-sm font-medium text-text dark:text-text-dark';
+
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>{isEditing ? 'Edit Task' : 'Create Scheduled Task'}</DialogTitle>
-      <DialogContent>
-        <Box sx={{ pt: 1 }}>
-          <Grid container spacing={2}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Task Name"
-                value={formData.name}
-                onChange={(e) => handleChange('name', e.target.value)}
-                required
+    <Modal open={open} onClose={onClose} title={isEditing ? 'Edit Task' : 'Create Scheduled Task'} size="lg">
+      <div className="space-y-4">
+        {/* Task Name */}
+        <div className="flex flex-col gap-1">
+          <label className={labelClass}>Task Name *</label>
+          <input
+            type="text"
+            value={formData.name}
+            onChange={(e) => handleChange('name', e.target.value)}
+            placeholder="Enter task name"
+            className={inputClass}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {/* Task Type */}
+          <div className="flex flex-col gap-1">
+            <label className={labelClass}>Task Type</label>
+            <select
+              value={formData.task_type}
+              onChange={(e) => handleChange('task_type', e.target.value)}
+              className={selectClass}
+            >
+              <option value="library_scan">Library Scan</option>
+              <option value="playlist_sync">Playlist Sync</option>
+            </select>
+          </div>
+
+          {/* Enabled toggle */}
+          <div className="flex items-end pb-2">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-text dark:text-text-dark">
+              <input
+                type="checkbox"
+                checked={formData.enabled}
+                onChange={(e) => handleChange('enabled', e.target.checked)}
+                className="rounded accent-accent"
               />
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Task Type</InputLabel>
-                <Select
-                  value={formData.task_type}
-                  label="Task Type"
-                  onChange={(e) => handleChange('task_type', e.target.value)}
-                >
-                  <MenuItem value="library_scan">Library Scan</MenuItem>
-                  <MenuItem value="playlist_sync">Playlist Sync</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
+              Enabled
+            </label>
+          </div>
+        </div>
 
-            {formData.task_type === 'playlist_sync' && (
-              <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Playlists to Sync</InputLabel>
-                  <Select
-                    multiple
-                    value={selectedPlaylists}
-                    onChange={(e) => setSelectedPlaylists(e.target.value)}
-                    input={<OutlinedInput label="Playlists to Sync" />}
-                    renderValue={(selected) => {
-                      if (selected.length === 0) return 'All playlists with auto-sync enabled';
-                      const names = selected.map(id => {
-                        const playlist = playlists.find(p => p.id === id);
-                        return playlist ? playlist.name : `ID ${id}`;
-                      });
-                      return names.join(', ');
-                    }}
-                  >
-                    <MenuItem value="">
-                      <em>All playlists with auto-sync enabled</em>
-                    </MenuItem>
-                    {playlists.map((playlist) => (
-                      <MenuItem key={playlist.id} value={playlist.id}>
-                        <Checkbox checked={selectedPlaylists.indexOf(playlist.id) > -1} />
-                        <ListItemText primary={playlist.name} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                  <Typography variant="caption" color="textSecondary" sx={{ mt: 1 }}>
-                    {selectedPlaylists.length === 0 
-                      ? 'Will sync all playlists that have auto-sync enabled in their settings'
-                      : `Will sync ${selectedPlaylists.length} selected playlist(s)`
-                    }
-                  </Typography>
-                </FormControl>
-              </Grid>
-            )}
-
-            <Grid item xs={12} sm={6}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={formData.enabled}
-                    onChange={(e) => handleChange('enabled', e.target.checked)}
-                  />
-                }
-                label="Enabled"
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <Typography variant="h6" gutterBottom>
-                Schedule (Cron Expression)
-              </Typography>
-              
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="textSecondary" gutterBottom>
-                  Choose a preset or enter a custom cron expression:
-                </Typography>
-                
-                <Grid container spacing={1} sx={{ mb: 2 }}>
-                  {Object.entries(CRON_PRESETS).map(([cron, label]) => (
-                    <Grid item xs={12} sm={6} md={4} key={cron}>
-                      <Button
-                        fullWidth
-                        variant={formData.cron_expression === cron ? "contained" : "outlined"}
-                        size="small"
-                        onClick={() => handlePresetChange(cron)}
-                      >
-                        {label}
-                      </Button>
-                    </Grid>
-                  ))}
-                </Grid>
-
-                <TextField
-                  fullWidth
-                  label="Custom Cron Expression"
-                  placeholder="e.g., 0 */4 * * * (every 4 hours)"
-                  value={customCron}
-                  onChange={(e) => handleCronChange(e.target.value)}
-                  helperText="Format: minute hour day month day_of_week (times are in server timezone)"
+        {/* Playlist selector for playlist_sync */}
+        {formData.task_type === 'playlist_sync' && (
+          <div className="flex flex-col gap-1">
+            <label className={labelClass}>Playlists to Sync</label>
+            <div className="max-h-40 overflow-y-auto rounded border border-border dark:border-border-dark">
+              <label className="flex cursor-pointer items-center gap-2 border-b border-border px-3 py-2 hover:bg-surface-muted dark:border-border-dark dark:hover:bg-surface-dark-elevated">
+                <input
+                  type="checkbox"
+                  checked={selectedPlaylists.length === 0}
+                  onChange={() => setSelectedPlaylists([])}
+                  className="accent-accent"
                 />
-              </Box>
+                <span className="text-sm italic text-text/70 dark:text-text-dark/70">All playlists with auto-sync enabled</span>
+              </label>
+              {playlists.map(playlist => (
+                <label key={playlist.id} className="flex cursor-pointer items-center gap-2 border-b border-border/50 px-3 py-2 last:border-b-0 hover:bg-surface-muted dark:border-border-dark/50 dark:hover:bg-surface-dark-elevated">
+                  <input
+                    type="checkbox"
+                    checked={selectedPlaylists.includes(playlist.id)}
+                    onChange={() => togglePlaylist(playlist.id)}
+                    className="accent-accent"
+                  />
+                  <span className="text-sm text-text dark:text-text-dark">{playlist.name}</span>
+                </label>
+              ))}
+            </div>
+            <span className="text-xs text-text/60 dark:text-text-dark/60">
+              {selectedPlaylists.length === 0
+                ? 'Will sync all playlists that have auto-sync enabled in their settings'
+                : `Will sync ${selectedPlaylists.length} selected playlist(s)`}
+            </span>
+          </div>
+        )}
 
-              {isValidating ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <CircularProgress size={16} />
-                  <Typography variant="body2">Validating...</Typography>
-                </Box>
-              ) : (
-                <Box>
-                  {!cronValidation.valid ? (
-                    <Alert severity="error" sx={{ mb: 1 }}>
-                      {cronValidation.error}
-                    </Alert>
-                  ) : (
-                    <Alert severity="success" sx={{ mb: 1 }}>
-                      Valid cron expression
-                    </Alert>
+        {/* Cron Schedule */}
+        <div className="flex flex-col gap-2">
+          <label className={`${labelClass} text-base`}>Schedule (Cron Expression)</label>
+          <p className="text-xs text-text/60 dark:text-text-dark/60">Choose a preset or enter a custom cron expression:</p>
+
+          {/* Preset grid */}
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
+            {Object.entries(CRON_PRESETS).map(([cron, label]) => (
+              <button
+                key={cron}
+                type="button"
+                onClick={() => handlePresetChange(cron)}
+                className={`rounded border px-2 py-1.5 text-xs font-medium transition ${
+                  formData.cron_expression === cron
+                    ? 'border-accent bg-accent text-text-dark'
+                    : 'border-border text-text hover:bg-surface-muted dark:border-border-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Custom cron */}
+          <input
+            type="text"
+            value={customCron}
+            onChange={(e) => handleCronChange(e.target.value)}
+            placeholder="e.g., 0 */4 * * * (every 4 hours)"
+            className={inputClass}
+          />
+          <span className="text-xs text-text/60 dark:text-text-dark/60">
+            Format: minute hour day month day_of_week (times are in server timezone)
+          </span>
+        </div>
+
+        {/* Validation result */}
+        {isValidating ? (
+          <div className="flex items-center gap-2 text-sm text-text/70 dark:text-text-dark/70">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-accent dark:border-border-dark dark:border-t-accent" />
+            Validating...
+          </div>
+        ) : (
+          <div>
+            {!cronValidation.valid ? (
+              <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-700/50 dark:bg-red-900/30 dark:text-red-300">
+                {cronValidation.error}
+              </div>
+            ) : (
+              <div className="rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-700/50 dark:bg-emerald-900/30 dark:text-emerald-300">
+                Valid cron expression
+              </div>
+            )}
+            {cronValidation.next_runs && cronValidation.next_runs.length > 0 && (
+              <div className="mt-2 rounded border border-border bg-surface-subtle p-3 dark:border-border-dark dark:bg-surface-dark">
+                <p className="mb-1.5 text-xs font-medium text-text dark:text-text-dark">
+                  Next 5 run times:
+                  {cronValidation.timezone && (
+                    <span className="ml-1 font-normal text-text/60 dark:text-text-dark/60">({cronValidation.timezone})</span>
                   )}
-                  
-                  {cronValidation.next_runs && cronValidation.next_runs.length > 0 && (
-                    <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
-                      <Typography variant="body2" fontWeight="medium" gutterBottom>
-                        Next 5 run times:
-                        {cronValidation.timezone && (
-                          <Typography component="span" variant="caption" color="textSecondary">
-                            {' '}({cronValidation.timezone})
-                          </Typography>
-                        )}
-                      </Typography>
-                      {cronValidation.next_runs.map((time, index) => (
-                        <Typography key={index} variant="body2" color="textSecondary">
-                          {new Date(time).toLocaleString()}
-                        </Typography>
-                      ))}
-                    </Paper>
-                  )}
-                </Box>
-              )}
-            </Grid>
-          </Grid>
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button 
-          onClick={handleSubmit} 
-          variant="contained"
-          disabled={!cronValidation.valid || !formData.name.trim() || isValidating}
-        >
-          {isEditing ? 'Update' : 'Create'}
-        </Button>
-      </DialogActions>
-    </Dialog>
+                </p>
+                {cronValidation.next_runs.map((time, index) => (
+                  <div key={index} className="text-xs text-text/70 dark:text-text-dark/70">
+                    {new Date(time).toLocaleString()}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Footer buttons */}
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded border border-border px-4 py-1.5 text-sm text-text transition hover:bg-surface-muted dark:border-border-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!cronValidation.valid || !formData.name.trim() || isValidating}
+            className="rounded bg-accent px-4 py-1.5 text-sm font-medium text-text-dark transition hover:bg-accent/90 disabled:opacity-50"
+          >
+            {isEditing ? 'Update' : 'Create'}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 };
 
@@ -426,10 +359,7 @@ const ScheduledTasksPanel = () => {
   };
 
   const handleDeleteTask = async (taskId) => {
-    if (!window.confirm('Are you sure you want to delete this task?')) {
-      return;
-    }
-    
+    if (!window.confirm('Are you sure you want to delete this task?')) return;
     try {
       await axios.delete(`/api/scheduled-tasks/${taskId}`);
       loadTasks();
@@ -438,161 +368,135 @@ const ScheduledTasksPanel = () => {
     }
   };
 
-  const formatNextRun = (nextRunAt) => {
-    if (!nextRunAt) return 'Not scheduled';
-    const date = new Date(nextRunAt);
-    return date.toLocaleString();
-  };
-
-  const formatLastRun = (lastRunAt) => {
-    if (!lastRunAt) return 'Never';
-    const date = new Date(lastRunAt);
-    return date.toLocaleString();
-  };
+  const formatDateTime = (dt) => dt ? new Date(dt).toLocaleString() : null;
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" p={3}>
-        <CircularProgress />
-      </Box>
+      <div className="flex items-center justify-center p-8">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-accent dark:border-border-dark dark:border-t-accent" />
+      </div>
     );
   }
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h6">Scheduled Tasks</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
+    <div>
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-base font-semibold text-text dark:text-text-dark">Scheduled Tasks</h3>
+        <button
+          type="button"
           onClick={() => setFormOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 text-sm font-medium text-text-dark transition hover:bg-accent/90"
         >
-          Add Task
-        </Button>
-      </Box>
+          + Add Task
+        </button>
+      </div>
 
-      <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+      <p className="mb-4 text-xs text-text/60 dark:text-text-dark/60">
         Schedule background tasks like library scanning and playlist synchronization using cron expressions.
-      </Typography>
+      </p>
 
       {tasks.length === 0 ? (
-        <Paper sx={{ p: 3, textAlign: 'center' }}>
-          <Typography variant="body1" color="textSecondary">
-            No scheduled tasks configured
-          </Typography>
-          <Button
-            variant="outlined"
-            startIcon={<AddIcon />}
+        <div className="rounded border border-border bg-surface-subtle p-6 text-center dark:border-border-dark dark:bg-surface-dark">
+          <p className="mb-3 text-sm text-text/70 dark:text-text-dark/70">No scheduled tasks configured</p>
+          <button
+            type="button"
             onClick={() => setFormOpen(true)}
-            sx={{ mt: 2 }}
+            className="rounded border border-border px-4 py-1.5 text-sm text-text transition hover:bg-surface-muted dark:border-border-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
           >
-            Create First Task
-          </Button>
-        </Paper>
+            + Create First Task
+          </button>
+        </div>
       ) : (
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Schedule</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Last Run</TableCell>
-                <TableCell>Next Run</TableCell>
-                <TableCell>Runs</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {tasks.map((task) => (
-                <TableRow key={task.id}>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="body2" fontWeight="medium">
-                        {task.name}
-                      </Typography>
+        <div className="overflow-x-auto rounded border border-border dark:border-border-dark">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-subtle text-xs font-medium text-text/70 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark/70">
+                <th className="px-3 py-2 text-left">Name</th>
+                <th className="px-3 py-2 text-left">Type</th>
+                <th className="px-3 py-2 text-left">Schedule</th>
+                <th className="px-3 py-2 text-left">Status</th>
+                <th className="px-3 py-2 text-left">Last Run</th>
+                <th className="px-3 py-2 text-left">Next Run</th>
+                <th className="px-3 py-2 text-left">Runs</th>
+                <th className="px-3 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.map((task, i) => (
+                <tr
+                  key={task.id}
+                  className={`border-b border-border/50 last:border-b-0 dark:border-border-dark/50 ${i % 2 === 1 ? 'bg-row-alt dark:bg-surface-dark' : ''}`}
+                >
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-text dark:text-text-dark">{task.name}</span>
                       {!task.enabled && (
-                        <Chip label="Disabled" size="small" color="default" />
+                        <span className="rounded border border-border px-1 py-0.5 text-xs text-text/50 dark:border-border-dark dark:text-text-dark/50">Disabled</span>
                       )}
-                    </Box>
-                    {task.task_type === 'playlist_sync' && task.config?.playlist_ids && task.config.playlist_ids.length > 0 && (
-                      <Typography variant="caption" color="textSecondary" display="block">
+                    </div>
+                    {task.task_type === 'playlist_sync' && task.config?.playlist_ids?.length > 0 && (
+                      <div className="text-xs text-text/50 dark:text-text-dark/50">
                         Syncing {task.config.playlist_ids.length} specific playlist(s)
-                      </Typography>
+                      </div>
                     )}
-                  </TableCell>
-                  <TableCell>{TASK_TYPE_LABELS[task.task_type] || task.task_type}</TableCell>
-                  <TableCell>
-                    <Typography variant="body2" fontFamily="monospace">
-                      {task.cron_expression}
-                    </Typography>
-                    <Typography variant="caption" color="textSecondary">
+                  </td>
+                  <td className="px-3 py-2 text-text/80 dark:text-text-dark/80">
+                    {TASK_TYPE_LABELS[task.task_type] || task.task_type}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="font-mono text-xs text-text dark:text-text-dark">{task.cron_expression}</div>
+                    <div className="text-xs text-text/50 dark:text-text-dark/50">
                       {CRON_PRESETS[task.cron_expression] || 'Custom schedule'}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <TaskStatusChip 
-                      status={task.last_run_status} 
-                      lastError={task.last_error_message}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">
-                      {formatLastRun(task.last_run_at)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">
-                      {formatNextRun(task.next_run_at)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">
-                      {task.successful_runs}/{task.total_runs}
-                    </Typography>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <TaskStatusBadge status={task.last_run_status} lastError={task.last_error_message} />
+                  </td>
+                  <td className="px-3 py-2 text-xs text-text/70 dark:text-text-dark/70">
+                    {formatDateTime(task.last_run_at) ?? 'Never'}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-text/70 dark:text-text-dark/70">
+                    {formatDateTime(task.next_run_at) ?? 'Not scheduled'}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-text/70 dark:text-text-dark/70">
+                    <div>{task.successful_runs}/{task.total_runs}</div>
                     {task.failed_runs > 0 && (
-                      <Typography variant="caption" color="error">
-                        ({task.failed_runs} failed)
-                      </Typography>
+                      <div className="text-red-600 dark:text-red-400">({task.failed_runs} failed)</div>
                     )}
-                  </TableCell>
-                  <TableCell align="right">
-                    <IconButton
-                      size="small"
-                      onClick={() => {
-                        setEditingTask(task);
-                        setFormOpen(true);
-                      }}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <button
+                      type="button"
+                      title="Edit task"
+                      onClick={() => { setEditingTask(task); setFormOpen(true); }}
+                      className="mr-1 rounded px-2 py-1 text-xs text-text/60 transition hover:bg-surface-muted hover:text-text dark:text-text-dark/60 dark:hover:bg-surface-dark-elevated dark:hover:text-text-dark"
                     >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="error"
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      title="Delete task"
                       onClick={() => handleDeleteTask(task.id)}
+                      className="rounded px-2 py-1 text-xs text-red-600/70 transition hover:bg-red-50 hover:text-red-700 dark:text-red-400/70 dark:hover:bg-red-900/20 dark:hover:text-red-400"
                     >
-                      <DeleteIcon />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
+                      Delete
+                    </button>
+                  </td>
+                </tr>
               ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+            </tbody>
+          </table>
+        </div>
       )}
 
       <TaskFormDialog
         open={formOpen}
-        onClose={() => {
-          setFormOpen(false);
-          setEditingTask(null);
-        }}
+        onClose={() => { setFormOpen(false); setEditingTask(null); }}
         onSave={editingTask ? handleEditTask : handleCreateTask}
         task={editingTask}
         isEditing={!!editingTask}
       />
-    </Box>
+    </div>
   );
 };
 

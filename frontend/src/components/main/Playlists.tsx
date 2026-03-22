@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import '../../styles/Playlists.css';
 import Snackbar from '../Snackbar';
 import PlaylistGrid from '../playlist/PlaylistGrid';
 import PlaylistSidebar from '../nav/PlaylistSidebar';
@@ -112,15 +111,18 @@ const Playlists = () => {
   // Show loading/error state while waiting for backend
   if (!backendReady) {
     return (
-      <div className="playlists-container">
-        <div className="backend-loading">
-          <h2>Connecting to server...</h2>
-          <p>{connectionError || `Checking backend health (attempt ${healthCheckAttempts + 1})`}</p>
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <div className="w-full max-w-xl rounded-lg border border-border bg-surface p-8 text-center shadow-sm dark:border-border-dark dark:bg-surface-dark-elevated">
+          <h2 className="mb-2 text-xl font-semibold">Connecting to server...</h2>
+          <p className="text-sm opacity-80">{connectionError || `Checking backend health (attempt ${healthCheckAttempts + 1})`}</p>
           {healthCheckAttempts >= 10 && (
-            <button onClick={() => {
-              setHealthCheckAttempts(0);
-              setConnectionError(null);
-            }}>
+            <button
+              className="mt-4 rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+              onClick={() => {
+                setHealthCheckAttempts(0);
+                setConnectionError(null);
+              }}
+            >
               Retry Connection
             </button>
           )}
@@ -250,7 +252,7 @@ const Playlists = () => {
   const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistID);
  
   return (
-    <div className="playlists-container">
+    <div className="flex min-h-screen bg-surface text-text dark:bg-surface-dark dark:text-text-dark">
       <PlaylistSidebar
         isOpen={sidebarOpen}
         onClose={setSidebarOpen}
@@ -265,16 +267,16 @@ const Playlists = () => {
         reorderPinnedPlaylist={reorderPinnedPlaylist}
       />
       
-      <div className="editor-panel">
+      <div className="flex-1 px-4 pb-4 pt-20">
         {selectedPlaylist ? (
           <PlaylistGrid
             playlistID={selectedPlaylistID}
           />
         ) : (
-          <div className="landing-page">
-            <div className="landing-header">
-              <h1>Welcome to Your Music Library</h1>
-              <p>Select a playlist from the sidebar to get started, or check out upcoming album anniversaries below.</p>
+          <div className="mx-auto flex max-w-6xl flex-col gap-6">
+            <div className="rounded-lg border border-border bg-surface-subtle p-6 dark:border-border-dark dark:bg-surface-dark-elevated">
+              <h1 className="mb-2 text-3xl font-bold">Welcome to Your Music Library</h1>
+              <p className="text-sm opacity-85">Select a playlist from the sidebar to get started, or check out upcoming album anniversaries below.</p>
             </div>
             <AnniversaryTimeline 
               daysAhead={7}
@@ -285,36 +287,62 @@ const Playlists = () => {
         )}
       </div>
       {newPlaylistModalVisible && (
-        <div className="modal">
-          <div className="modal-content">
-            <h3>Create New Playlist</h3>
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-surface-muted0 px-4">
+          <div className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-lg dark:border-border-dark dark:bg-surface-dark-elevated">
+            <h3 className="mb-4 text-lg font-semibold">Create New Playlist</h3>
             <input
               type="text"
               value={newPlaylistNameModal}
               onChange={(e) => setNewPlaylistNameModal(e.target.value)}
               placeholder="New Playlist Name"
+              className="mb-4 w-full rounded border border-border bg-surface px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-dark"
             />
-            <button onClick={handleCreateNewPlaylist}>Create</button>
-            <button onClick={() => setNewPlaylistModalVisible(false)}>Cancel</button>
+            <div className="flex justify-end gap-2">
+              <button
+                className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+                onClick={handleCreateNewPlaylist}
+              >
+                Create
+              </button>
+              <button
+                className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+                onClick={() => setNewPlaylistModalVisible(false)}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
       {cloneModalVisible && (
-        <div className="modal">
-          <div className="modal-content">
-            <h3>Clone Playlist</h3>
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-surface-muted0 px-4">
+          <div className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-lg dark:border-border-dark dark:bg-surface-dark-elevated">
+            <h3 className="mb-4 text-lg font-semibold">Clone Playlist</h3>
             <input
               type="text"
               value={clonePlaylistName}
               onChange={(e) => setClonePlaylistName(e.target.value)}
               placeholder="New Playlist Name"
+              className="mb-4 w-full rounded border border-border bg-surface px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-dark"
             />
-            <button onClick={handleClonePlaylist}>Clone</button>
-            <button onClick={() => {
-              setCloneModalVisible(false);
-              setClonePlaylistName('');
-              setPlaylistToClone(null);
-            }}>Cancel</button>
+            <div className="flex justify-end gap-2">
+              <button
+                className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+                onClick={handleClonePlaylist}
+              >
+                Clone
+              </button>
+              <button
+                className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm font-medium transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"
+                onClick={() => {
+                  setCloneModalVisible(false);
+                  setClonePlaylistName('');
+                  setPlaylistToClone(null);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
