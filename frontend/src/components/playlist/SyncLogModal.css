@@ -65,6 +65,28 @@
   color: #333;
 }
 
+.sync-log-filter-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.sync-log-filter-btn {
+  border: 1px solid #d0d7de;
+  background: #fff;
+  color: #333;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.sync-log-filter-btn.active {
+  background: #007bff;
+  border-color: #007bff;
+  color: #fff;
+}
+
 .target-group {
   margin-bottom: 25px;
   border: 1px solid #e0e0e0;
@@ -158,6 +180,14 @@
   text-align: right;
 }
 
+.log-time {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  font-weight: normal;
+  color: #666;
+  text-transform: none;
+}
+
 .no-changes {
   text-align: center;
   padding: 40px 20px;
@@ -167,4 +197,51 @@
 .no-changes p {
   margin: 0;
   font-style: italic;
+}
+
+/* Global Errors Section */
+.sync-errors {
+  background-color: #ffeaa7;
+  border: 1px solid #fdcb6e;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.sync-errors h4 {
+  margin: 0 0 15px 0;
+  color: #e17055;
+  font-size: 1.1rem;
+}
+
+.error-item {
+  background-color: #fff;
+  border-left: 4px solid #e17055;
+  padding: 12px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+}
+
+.error-item:last-child {
+  margin-bottom: 0;
+}
+
+.error-service {
+  font-weight: 600;
+  color: #2d3436;
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.target-id {
+  color: #636e72;
+  font-weight: normal;
+  font-size: 0.9rem;
+}
+
+.error-message {
+  color: #e17055;
+  font-size: 0.95rem;
 }

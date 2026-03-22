@@ -20,8 +20,6 @@ const DuplicateSelectionModal: React.FC<DuplicateSelectionModalProps> = ({
 }) => {
     const [selectedTracks, setSelectedTracks] = useState<Set<number>>(new Set());
 
-    console.log('DuplicateSelectionModal render:', { isOpen, tracks: tracks.length, duplicates: duplicates.length });
-
     // Initialize selection state when modal opens
     useEffect(() => {
         if (isOpen && tracks.length > 0) {

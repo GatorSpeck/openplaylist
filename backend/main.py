@@ -1,6 +1,7 @@
 import os
 import pathlib
 import logging
+import subprocess
 from fastapi import FastAPI, Query, APIRouter, Request, Depends, BackgroundTasks
 import uvicorn
 from mutagen.easyid3 import EasyID3
@@ -14,6 +15,14 @@ import time
 from tqdm import tqdm
 from datetime import datetime
 from fastapi.exceptions import HTTPException, RequestValidationError
+from job_tracker import (
+    job_tracker, JobType, JobStatus, JobSubmission, JobResponse, 
+    JobUpdate, JobContext, as_job
+)
+from job_tracker import (
+    job_tracker, JobType, JobStatus, JobSubmission, JobResponse, 
+    JobUpdate, JobContext, as_job
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
@@ -37,6 +46,11 @@ from pydantic import BaseModel
 import sys
 from routes import router
 from routes.spotify_router import spotify_router
+from routes.scheduled_tasks import scheduled_tasks_router, playlist_sync_router
+from task_scheduler import task_scheduler
+
+# Create a router for job management
+job_router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 import asyncio
 from fastapi.responses import StreamingResponse
 from typing import AsyncGenerator
@@ -93,8 +107,10 @@ class TimingMiddleware(BaseHTTPMiddleware):
 
         do_logging = request.url.path not in ("/api/health", "/api/logs/recent", "/api/scan/progress")
 
+        logger = logging.getLogger("uvicorn")
+
         if do_logging:
-            logging.info(
+            logger.info(
                 f"{request.method} {request.url.path} "
                 f"params={params}"
             )
@@ -107,8 +123,12 @@ class TimingMiddleware(BaseHTTPMiddleware):
             raise e
         finally:
             duration = time.time() - start_time
+            logging_method = logger.info
+            if status_code != 200:
+                logging_method = logger.warn
+
             if do_logging:
-                logging.info(
+                logging_method(
                     f"{request.method} {request.url.path} "
                     f"params={params} "
                     f"status={status_code} "
@@ -119,12 +139,42 @@ class TimingMiddleware(BaseHTTPMiddleware):
 
 app = FastAPI()
 
+# Add event handlers for task scheduler
+@app.on_event("startup")
+async def startup_event():
+    """Initialize the database and task scheduler on application startup"""
+    try:
+        # Initialize database (this will create the database if it doesn't exist)
+        logging.info("Initializing database...")
+        Database()  # This triggers the database creation/connection logic
+        logging.info("Database initialization completed")
+        
+        # Create the database tables
+        Base.metadata.create_all(bind=Database.get_engine())
+        
+        # Initialize task scheduler
+        task_scheduler.start()
+        logging.info("Task scheduler initialized")
+    except Exception as e:
+        logging.error(f"Failed to initialize application: {e}")
+        raise
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Shutdown the task scheduler on application shutdown"""
+    try:
+        task_scheduler.shutdown()
+        logging.info("Task scheduler stopped")
+    except Exception as e:
+        logging.error(f"Error stopping task scheduler: {e}")
+
 app.add_middleware(TimingMiddleware)
 
 dotenv.load_dotenv(override=True)
 
-# read log level from environment variable
+# read log levels from environment variables
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+sqlalchemy_log_level = os.getenv("SQLALCHEMY_LOG_LEVEL", log_level).upper()
 
 # Set up logging
 logging.basicConfig(
@@ -132,6 +182,10 @@ logging.basicConfig(
     format='%(asctime)s.%(msecs)03d - %(levelname)s - %(name)s:%(filename)s:%(lineno)d - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+
+# Configure specific logger verbosity
+for logger in ("sqlalchemy", "sqlalchemy.engine", "sqlalchemy.engine.Engine", "sqlalchemy.pool",):
+    logging.getLogger(logger).setLevel(sqlalchemy_log_level)
 
 # Create global log handler instance
 log_handler = LogHandler()
@@ -149,9 +203,6 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
-
-# Create the database tables
-Base.metadata.create_all(bind=Database.get_engine())
 
 SUPPORTED_FILETYPES = (".mp3", ".flac", ".wav", ".ogg", ".m4a")
 
@@ -236,21 +287,37 @@ def extract_metadata(file_path, extractor) -> Optional[MusicFile]:
 # singleton
 scan_results = ScanResults()
 
-def scan_directory(directory: str, full=False):
+def scan_directory(directory: str, full=False, job_id: str = None):
+    """Scan the music directory for music files and save them to the database.
+
+    Args:
+        directory: The directory to scan for music files.
+        full: Whether to perform a full scan (rescan all files) or incremental scan (only new files).
+        job_id: Optional job ID for tracking progress.
+    """
     directory = pathlib.Path(directory)
     if not directory.exists():
         logging.error(f"Directory {directory} does not exist")
+        if job_id:
+            job_tracker.fail_job(job_id, f"Directory {directory} does not exist")
         return
     
     if scan_results.in_progress:
+        if job_id:
+            job_tracker.fail_job(job_id, "Scan already in progress")
         return
     
     scan_results.in_progress = True
     scan_results.files_missing = 0
     scan_results.files_updated = 0
+    
+    job_context = JobContext(job_id) if job_id else None
 
     logging.info(f"Scanning directory {directory}, full={full}")
     start_time = time.time()
+    
+    if job_context:
+        job_context.update_progress(0.0, f"Starting {'full' if full else 'incremental'} scan")
 
     # read directory paths from config file
     all_files = []
@@ -276,6 +343,11 @@ def scan_directory(directory: str, full=False):
         try:
             files_seen += 1
             scan_results.progress = round(files_seen / total_files * 100, 1)
+            
+            # Update job progress every 10 files or for the last file
+            if job_context and (files_seen % 10 == 0 or files_seen == len(all_files)):
+                progress = files_seen / total_files
+                job_context.update_progress(progress, f"Processing file {files_seen} of {len(all_files)}")
 
             if not full_path.lower().endswith(SUPPORTED_FILETYPES):
                 continue
@@ -420,6 +492,18 @@ def scan_directory(directory: str, full=False):
     db.close()
 
     scan_results.in_progress = False
+    
+    # Complete job tracking if job_id was provided
+    if job_context:
+        duration = time.time() - start_time
+        result_message = f"Scan completed in {duration:.2f} seconds. Added {scan_results.files_added} new files, updated {scan_results.files_updated} existing files."
+        job_context.update_progress(1.0, result_message)
+        job_tracker.complete_job(job_id, {
+            "added_count": scan_results.files_added,
+            "updated_count": scan_results.files_updated,
+            "duration_seconds": duration,
+            "total_files": len(all_files)
+        })
 
 @router.get("/logs/recent")
 def get_recent_logs(level: Optional[str] = None, since: Optional[float] = None):
@@ -469,6 +553,96 @@ def full_scan(background_tasks: BackgroundTasks):
 
     return HTTPException(status_code=202, detail="Scan started")
 
+# New job-tracked scan endpoints
+@app.post("/api/scan")
+def scan_with_job(background_tasks: BackgroundTasks):
+    """Scan the music directory for new files with job tracking."""
+    if scan_results.in_progress:
+        raise HTTPException(status_code=409, detail="Scan already in progress")
+    
+    # Create job
+    job_id = job_tracker.create_job(
+        JobType.LIBRARY_SCAN,
+        "Library Scan",
+        "Scanning music library for new files"
+    )
+    
+    # Start background task with job tracking
+    background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), False, job_id)
+    background_tasks.add_task(prune_music_files)
+    
+    return {"message": "Scan started", "job_id": job_id}
+
+@app.post("/api/full-scan")
+def full_scan_with_job(background_tasks: BackgroundTasks):
+    """Full rescan of the music directory with job tracking."""
+    if scan_results.in_progress:
+        raise HTTPException(status_code=409, detail="Scan already in progress")
+    
+    # Create job
+    job_id = job_tracker.create_job(
+        JobType.FULL_LIBRARY_SCAN,
+        "Full Library Scan", 
+        "Full rescan of the music library"
+    )
+    
+    # Start background task with job tracking
+    background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), True, job_id)
+    background_tasks.add_task(prune_music_files)
+    
+    return {"message": "Full scan started", "job_id": job_id}
+
+# Playlist sync with job tracking  
+@app.post("/api/playlists/{playlist_id}/sync")
+def sync_playlist_with_job(
+    playlist_id: int, 
+    background_tasks: BackgroundTasks,
+    force_push: bool = False
+):
+    """Sync a playlist with configured remote targets using job tracking"""
+    # Create job
+    job_id = job_tracker.create_job(
+        JobType.PLAYLIST_SYNC,
+        f"Playlist Sync - ID {playlist_id}",
+        f"Syncing playlist {playlist_id} with remote targets"
+    )
+    
+    # Start background sync task
+    background_tasks.add_task(sync_playlist_background, playlist_id, force_push, job_id)
+    
+    return {"message": "Playlist sync started", "job_id": job_id}
+
+def sync_playlist_background(playlist_id: int, force_push: bool, job_id: str):
+    """Background task for syncing playlist with job tracking"""
+    from dependencies import get_playlist_repository
+    from database import Database
+    
+    job_context = JobContext(job_id)
+    
+    try:
+        job_context.update_progress(0.0, "Starting playlist sync")
+        
+        # Get repository  
+        db = Database.get_session()
+        repo = get_playlist_repository(db)
+        
+        # Import sync function from routes
+        from routes.playlists import sync_playlist as _sync_playlist_impl
+        
+        job_context.update_progress(0.2, "Initializing sync targets")
+        
+        # Call the actual sync implementation
+        # Note: This is a simplified integration - the real sync function needs to be 
+        # modified to accept job_context for proper progress tracking
+        result = _sync_playlist_impl(playlist_id, force_push, repo)
+        
+        job_context.update_progress(1.0, "Playlist sync completed")
+        job_tracker.complete_job(job_id, result)
+        
+    except Exception as e:
+        logging.error(f"Playlist sync failed: {e}", exc_info=True)
+        job_tracker.fail_job(job_id, str(e))
+
 @router.get("/scan/progress", response_model=ScanResults)
 def scan_progress():
     return scan_results
@@ -516,10 +690,13 @@ def filter_music_files(
     genre: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
+    sort_by: Optional[str] = None,
+    sort_direction: Optional[str] = "asc",
     repo: MusicFileRepository = Depends(get_music_file_repository),
 ):
     return repo.filter(
-        title=title, artist=artist, album=album, genre=genre, offset=offset, limit=limit
+        title=title, artist=artist, album=album, genre=genre, 
+        offset=offset, limit=limit, sort_by=sort_by, sort_direction=sort_direction
     )
 
 
@@ -554,13 +731,18 @@ def find_local_files(tracks: List[MusicFile], repo: MusicFileRepository = Depend
     return repo.find_local_files(tracks)
 
 @router.get("/lastfm", response_model=List[MusicFile])
-def get_lastfm_track(title: str = Query(...), artist: str = Query(...)):
+def get_lastfm_track(
+    title: str = Query(...), 
+    artist: str = Query(...),
+    limit: int = Query(10, ge=1, le=50),
+    page: int = Query(1, ge=1)
+):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
     repo = last_fm_repository(api_key, requests_cache_session)
-    return repo.search_track(title=title, artist=artist)
+    return repo.search_track(title=title, artist=artist, limit=limit, page=page)
 
 # get similar tracks using last.fm API
 @router.get("/lastfm/similar", response_model=List[MusicFile])
@@ -591,13 +773,18 @@ def get_album_info(artist: str = Query(...), album: str = Query(...), mbid: str 
     return repo.get_album_info(artist=artist, album=album, mbid=mbid)
 
 @router.get("/lastfm/album/search", response_model=List[Album])
-def search_album(album: str = Query(...), artist: Optional[str] = Query(None), ):
+def search_album(
+    album: str = Query(...), 
+    artist: Optional[str] = Query(None),
+    limit: int = Query(10, ge=1, le=50),
+    page: int = Query(1, ge=1)
+):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Last.FM API key not configured")
 
     repo = last_fm_repository(api_key, requests_cache_session)
-    return repo.search_album(artist=artist, title=album)
+    return repo.search_album(artist=artist, title=album, limit=limit, page=page)
 
 # get similar tracks
 @router.get("/openai/similar")
@@ -675,6 +862,159 @@ def get_settings():
         "logLevel": log_level,
     }
 
+@router.get("/settings/migrations/status")
+def get_migration_status():
+    """Check current migration status and if any new migrations are available"""
+    try:
+        # Get current revision
+        current_result = subprocess.run(
+            ["alembic", "current"], 
+            cwd=os.path.dirname(__file__),
+            capture_output=True, 
+            text=True, 
+            check=True
+        )
+        current_revision = current_result.stdout.strip()
+        
+        # Get head revision
+        head_result = subprocess.run(
+            ["alembic", "heads"], 
+            cwd=os.path.dirname(__file__),
+            capture_output=True, 
+            text=True, 
+            check=True
+        )
+        head_revision = head_result.stdout.strip()
+        
+        # Parse revisions to compare
+        current_short = None
+        if current_revision:
+            # Extract revision ID from output like "ddf1a1f9c947 (head)"
+            current_parts = current_revision.split()
+            current_short = current_parts[0] if current_parts else None
+        
+        head_short = None
+        if head_revision:
+            head_parts = head_revision.split()
+            head_short = head_parts[0] if head_parts else None
+        
+        # Check if migration is needed
+        needs_upgrade = current_short != head_short or not current_short
+        
+        # Get migration history for additional info
+        history_result = subprocess.run(
+            ["alembic", "history", "--verbose"],
+            cwd=os.path.dirname(__file__), 
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        # Parse migration history
+        history_lines = history_result.stdout.strip().split('\n')
+        migrations = []
+        current_migration = {}
+        
+        for line in history_lines:
+            line = line.strip()
+            if line.startswith('Rev:'):
+                # Save previous migration if exists
+                if current_migration:
+                    migrations.append(current_migration)
+                    
+                # Start new migration
+                rev_part = line.replace('Rev:', '').strip()
+                revision_id = rev_part.split()[0] if rev_part else ""
+                current_migration = {
+                    "revision": revision_id,
+                    "is_current": revision_id == current_short,
+                    "message": "Migration"
+                }
+            elif line and not line.startswith('Parent:') and not line.startswith('Path:') and current_migration:
+                # This is likely the migration message
+                if not current_migration.get("message") or current_migration["message"] == "Migration":
+                    current_migration["message"] = line
+        
+        # Add the last migration
+        if current_migration:
+            migrations.append(current_migration)
+        
+        # Calculate pending migrations count  
+        pending_count = 0
+        if needs_upgrade:
+            # assume 1 migration (TODO)
+            pending_count = 1
+        
+        return {
+            "current_revision": current_revision or "No current revision",
+            "head_revision": head_revision or "No head revision",
+            "needs_upgrade": needs_upgrade,
+            "pending_count": pending_count,
+            "migrations": migrations[:10],  # Limit to recent 10
+            "status": "up_to_date" if not needs_upgrade else "pending_migrations"
+        }
+        
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Migration status check failed: {e.stderr}")
+        return {
+            "error": f"Failed to check migration status: {e.stderr}",
+            "current_revision": "Error",
+            "head_revision": "Error", 
+            "needs_upgrade": False,
+            "pending_count": 0,
+            "migrations": [],
+            "status": "error"
+        }
+    except Exception as e:
+        logging.error(f"Unexpected error checking migration status: {e}")
+        return {
+            "error": f"Unexpected error: {str(e)}",
+            "current_revision": "Error",
+            "head_revision": "Error",
+            "needs_upgrade": False, 
+            "pending_count": 0,
+            "migrations": [],
+            "status": "error"
+        }
+
+@router.post("/settings/migrations/upgrade")
+def run_migrations():
+    """Run pending database migrations"""
+    try:
+        # Run alembic upgrade head
+        result = subprocess.run(
+            ["alembic", "upgrade", "head"],
+            cwd=os.path.dirname(__file__),
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        logging.info("Database migrations completed successfully")
+        logging.info(f"Migration output: {result.stdout}")
+        
+        return {
+            "success": True,
+            "message": "Migrations completed successfully",
+            "output": result.stdout
+        }
+        
+    except subprocess.CalledProcessError as e:
+        error_msg = f"Migration failed: {e.stderr}"
+        logging.error(error_msg)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": error_msg,
+                "output": e.stdout,
+                "stderr": e.stderr
+            }
+        )
+    except Exception as e:
+        error_msg = f"Unexpected migration error: {str(e)}"
+        logging.error(error_msg)
+        raise HTTPException(status_code=500, detail={"error": error_msg})
+
 @router.post("/spotify/import")
 def import_spotify_playlist(
     params: SpotifyImportParams,
@@ -713,6 +1053,59 @@ def import_plex_playlist(
     playlist_repo.add_music_file(new_playlist.id, playlist.items)
     
     return new_playlist
+
+@router.get("/plex/search")
+def search_plex_tracks(
+    query: str = Query(..., description="Search query for Plex tracks"),
+    title: Optional[str] = Query(None, description="Track title"),
+    artist: Optional[str] = Query(None, description="Artist name"),
+    album: Optional[str] = Query(None, description="Album name"),
+    plex_repo: PlexRepository = Depends(get_plex_repository)
+):
+    """Search for tracks in Plex library"""
+    try:
+        if not plex_repo.is_authenticated():
+            raise HTTPException(status_code=401, detail="Plex authentication required")
+        
+        results = plex_repo.search_tracks(query, title, artist, album)
+        
+        # Convert dict results to TrackSearchResult objects
+        track_results = []
+        for result in results:
+            track_result = TrackSearchResult(**result)
+            track_results.append(track_result)
+        
+        return track_results
+        
+    except Exception as e:
+        logging.error(f"Error searching Plex: {e}")
+        raise HTTPException(status_code=500, detail=f"Error searching Plex: {str(e)}")
+
+@router.get("/youtube/search")
+def search_youtube_tracks(
+    query: str = Query(..., description="Search query for YouTube Music tracks"),
+    title: Optional[str] = Query(None, description="Track title"),
+    artist: Optional[str] = Query(None, description="Artist name"),
+    album: Optional[str] = Query(None, description="Album name")
+):
+    """Search for tracks in YouTube Music"""
+    db = Database.get_session()
+    try:
+        from repositories.youtube_repository import YouTubeMusicRepository
+
+        youtube_repo = YouTubeMusicRepository(session=db, config={})
+
+        if not youtube_repo.is_authenticated():
+            raise HTTPException(status_code=401, detail="YouTube Music authentication required")
+
+        return youtube_repo.search_tracks(query, title, artist, album)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error searching YouTube Music: {e}")
+        raise HTTPException(status_code=500, detail=f"Error searching YouTube Music: {str(e)}")
+    finally:
+        db.close()
 
 @router.post("/youtube/import")
 def import_youtube_playlist(
@@ -880,7 +1273,34 @@ def browse_directories(current_path: Optional[str] = Query(None)):
 
 @router.get("/health")
 def health_check():
-    return {"status": "ok"}
+    health_status = {
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat(),
+        "database": {}
+    }
+    
+    try:
+        # Check database connection
+        connected, message = Database.test_connection()
+        db_info = Database.get_database_info()
+        
+        health_status["database"] = {
+            "connected": connected,
+            "type": db_info.get("type"),
+            "message": message
+        }
+        
+        if not connected:
+            health_status["status"] = "degraded"
+            
+    except Exception as e:
+        health_status["database"] = {
+            "connected": False,
+            "error": str(e)
+        }
+        health_status["status"] = "error"
+    
+    return health_status
 
 @router.get("/music/anniversaries")
 def get_upcoming_anniversaries(
@@ -946,6 +1366,75 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 app.include_router(router, prefix="/api")
 app.include_router(spotify_router, prefix="/api")
+app.include_router(scheduled_tasks_router)
+app.include_router(playlist_sync_router)
+app.include_router(scheduled_tasks_router)
+app.include_router(playlist_sync_router)
+
+# Job Management API Endpoints
+@job_router.post("", response_model=JobResponse)
+def create_job(submission: JobSubmission):
+    """Create a new job"""
+    job_id = job_tracker.create_job(
+        submission.type,
+        submission.title or f"{submission.type.value} job",
+        submission.description or "",
+        submission.metadata
+    )
+    job = job_tracker.get_job(job_id)
+    return JobResponse.from_job(job)
+
+@job_router.get("", response_model=List[JobResponse])
+def list_jobs(
+    status: Optional[JobStatus] = Query(None, description="Filter by job status"),
+    type: Optional[JobType] = Query(None, description="Filter by job type"), 
+    limit: Optional[int] = Query(50, description="Maximum number of jobs to return")
+):
+    """List jobs with optional filtering"""
+    jobs = job_tracker.list_jobs(status_filter=status, type_filter=type, limit=limit)
+    return [JobResponse.from_job(job) for job in jobs]
+
+@job_router.get("/active", response_model=List[JobResponse])
+def get_active_jobs():
+    """Get all currently active (pending/running) jobs"""
+    jobs = job_tracker.get_active_jobs()
+    return [JobResponse.from_job(job) for job in jobs]
+
+@job_router.get("/{job_id}", response_model=JobResponse)
+def get_job(job_id: str):
+    """Get a specific job by ID"""
+    job = job_tracker.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return JobResponse.from_job(job)
+
+@job_router.patch("/{job_id}", response_model=JobResponse)
+def update_job(job_id: str, update: JobUpdate):
+    """Update a job's status, progress, or result"""
+    success = job_tracker.update_job(job_id, update)
+    if not success:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job = job_tracker.get_job(job_id)
+    return JobResponse.from_job(job)
+
+@job_router.delete("/{job_id}")
+def cancel_job(job_id: str):
+    """Cancel a job"""
+    success = job_tracker.cancel_job(job_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    return {"message": "Job cancelled successfully"}
+
+@job_router.post("/cleanup")
+def cleanup_jobs():
+    """Cleanup old completed jobs"""
+    job_tracker.cleanup_old_jobs()
+    return {"message": "Job cleanup completed"}
+
+# Include the job router
+app.include_router(job_router)
 
 host = os.getenv("HOST", "0.0.0.0")
 port = int(os.getenv("PORT", 3000))
@@ -957,4 +1446,4 @@ if __name__ == "__main__":
     if not pathlib.Path(music_path).exists():
         logging.warning(f"Music path {music_path} does not exist")
 
-    uvicorn.run("main:app", host=host, port=port, reload=True)
+    uvicorn.run("main:app", host=host, port=port, reload=True, access_log=False)

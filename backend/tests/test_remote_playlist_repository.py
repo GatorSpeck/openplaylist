@@ -376,6 +376,119 @@ class TestRemotePlaylistRepository(unittest.TestCase):
         self.assertIn("Artist 1 - Album 1 - Title 1", remote_songs)
         self.assertIn("Artist 3 - Album 3 - Title 3", remote_songs)
 
+    def test_guardrail_blocks_large_remote_driven_local_removals_by_default(self):
+        self.playlist.entries = [
+            self.create_playlist_entry("Artist 1", "Title 1", "Album 1"),
+            self.create_playlist_entry("Artist 2", "Title 2", "Album 2"),
+            self.create_playlist_entry("Artist 3", "Title 3", "Album 3"),
+            self.create_playlist_entry("Artist 4", "Title 4", "Album 4"),
+            self.create_playlist_entry("Artist 5", "Title 5", "Album 5"),
+            self.create_playlist_entry("Artist 6", "Title 6", "Album 6"),
+            self.create_playlist_entry("Artist 7", "Title 7", "Album 7"),
+            self.create_playlist_entry("Artist 8", "Title 8", "Album 8"),
+            self.create_playlist_entry("Artist 9", "Title 9", "Album 9"),
+            self.create_playlist_entry("Artist 10", "Title 10", "Album 10"),
+        ]
+
+        old_remote_items = [
+            PlaylistItem(artist=f"Artist {i}", title=f"Title {i}", album=f"Album {i}")
+            for i in range(1, 11)
+        ]
+        new_remote_items = [PlaylistItem(artist="Artist 1", title="Title 1", album="Album 1")]
+
+        old_remote_snapshot = PlaylistSnapshot(
+            name="Remote Playlist",
+            last_updated=datetime.datetime.now().astimezone() - datetime.timedelta(days=2),
+            items=old_remote_items,
+        )
+
+        self.repo.remote_playlists["Remote Playlist"] = new_remote_items.copy()
+        self.mock_get_current_snapshot.return_value = old_remote_snapshot
+
+        self.repo.sync_playlist(self.local_repo, self.playlist.id, self.sync_target)
+
+        self.local_repo.remove_music_file.assert_not_called()
+
+    def test_guardrail_can_be_overridden_for_bulk_remote_driven_local_removals(self):
+        self.playlist.entries = [
+            self.create_playlist_entry("Artist 1", "Title 1", "Album 1"),
+            self.create_playlist_entry("Artist 2", "Title 2", "Album 2"),
+            self.create_playlist_entry("Artist 3", "Title 3", "Album 3"),
+            self.create_playlist_entry("Artist 4", "Title 4", "Album 4"),
+            self.create_playlist_entry("Artist 5", "Title 5", "Album 5"),
+            self.create_playlist_entry("Artist 6", "Title 6", "Album 6"),
+            self.create_playlist_entry("Artist 7", "Title 7", "Album 7"),
+            self.create_playlist_entry("Artist 8", "Title 8", "Album 8"),
+            self.create_playlist_entry("Artist 9", "Title 9", "Album 9"),
+            self.create_playlist_entry("Artist 10", "Title 10", "Album 10"),
+        ]
+
+        old_remote_items = [
+            PlaylistItem(artist=f"Artist {i}", title=f"Title {i}", album=f"Album {i}")
+            for i in range(1, 11)
+        ]
+        new_remote_items = [PlaylistItem(artist="Artist 1", title="Title 1", album="Album 1")]
+
+        old_remote_snapshot = PlaylistSnapshot(
+            name="Remote Playlist",
+            last_updated=datetime.datetime.now().astimezone() - datetime.timedelta(days=2),
+            items=old_remote_items,
+        )
+
+        self.repo.remote_playlists["Remote Playlist"] = new_remote_items.copy()
+        self.mock_get_current_snapshot.return_value = old_remote_snapshot
+        self.sync_target.config["allow_bulk_receive_removals"] = True
+
+        self.repo.sync_playlist(self.local_repo, self.playlist.id, self.sync_target)
+
+        self.assertGreaterEqual(self.local_repo.remove_music_file.call_count, 1)
+
+    def test_guardrail_not_bypassed_by_string_false_override_value(self):
+        self.playlist.entries = [
+            self.create_playlist_entry("Artist 1", "Title 1", "Album 1"),
+            self.create_playlist_entry("Artist 2", "Title 2", "Album 2"),
+            self.create_playlist_entry("Artist 3", "Title 3", "Album 3"),
+            self.create_playlist_entry("Artist 4", "Title 4", "Album 4"),
+            self.create_playlist_entry("Artist 5", "Title 5", "Album 5"),
+            self.create_playlist_entry("Artist 6", "Title 6", "Album 6"),
+            self.create_playlist_entry("Artist 7", "Title 7", "Album 7"),
+            self.create_playlist_entry("Artist 8", "Title 8", "Album 8"),
+            self.create_playlist_entry("Artist 9", "Title 9", "Album 9"),
+            self.create_playlist_entry("Artist 10", "Title 10", "Album 10"),
+            self.create_playlist_entry("Artist 11", "Title 11", "Album 11"),
+            self.create_playlist_entry("Artist 12", "Title 12", "Album 12"),
+            self.create_playlist_entry("Artist 13", "Title 13", "Album 13"),
+            self.create_playlist_entry("Artist 14", "Title 14", "Album 14"),
+            self.create_playlist_entry("Artist 15", "Title 15", "Album 15"),
+            self.create_playlist_entry("Artist 16", "Title 16", "Album 16"),
+            self.create_playlist_entry("Artist 17", "Title 17", "Album 17"),
+            self.create_playlist_entry("Artist 18", "Title 18", "Album 18"),
+            self.create_playlist_entry("Artist 19", "Title 19", "Album 19"),
+            self.create_playlist_entry("Artist 20", "Title 20", "Album 20"),
+            self.create_playlist_entry("Artist 21", "Title 21", "Album 21"),
+            self.create_playlist_entry("Artist 22", "Title 22", "Album 22"),
+        ]
+
+        old_remote_items = [
+            PlaylistItem(artist=f"Artist {i}", title=f"Title {i}", album=f"Album {i}")
+            for i in range(1, 23)
+        ]
+        new_remote_items = []
+
+        old_remote_snapshot = PlaylistSnapshot(
+            name="Remote Playlist",
+            last_updated=datetime.datetime.now().astimezone() - datetime.timedelta(days=2),
+            items=old_remote_items,
+        )
+
+        self.repo.remote_playlists["Remote Playlist"] = new_remote_items.copy()
+        self.mock_get_current_snapshot.return_value = old_remote_snapshot
+        self.sync_target.config["allow_bulk_receive_removals"] = "false"
+
+        self.repo.sync_playlist(self.local_repo, self.playlist.id, self.sync_target)
+
+        self.local_repo.remove_music_file.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

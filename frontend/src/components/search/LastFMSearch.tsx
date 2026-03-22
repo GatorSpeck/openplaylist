@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import LastFMRepository from '../../repositories/LastFMRepository';
 import '../../styles/LastFMSearch.css';
 import PlaylistEntry from '../lib/PlaylistEntry';
@@ -14,7 +14,14 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
   const [searchResults, setSearchResults] = useState<PlaylistEntry[]>([]);
   const [selectedResults, setSelectedResults] = useState<PlaylistEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const resultsPerPage = 20;
+  
+  // Ref for scroll container
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Use effect to trigger search automatically if initialSearch has values
   useEffect(() => {
@@ -24,36 +31,109 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
     }
   }, []);
 
-  const handleSearch = async () => {
-    setIsLoading(true);
+  const handleSearch = async (resetResults = true) => {
+    if (resetResults) {
+      setIsLoading(true);
+      setCurrentPage(1);
+      setHasMore(true);
+      setSearchResults([]);
+    } else {
+      setIsLoadingMore(true);
+    }
+    
     setError(null);
-    setSelectedResults([]);
+    
+    if (resetResults) {
+      setSelectedResults([]);
+    }
     
     try {
+      const pageToLoad = resetResults ? 1 : currentPage;
       let results = [];
+      
       if (searchType === 'track') {
-        results = await LastFMRepository.searchTrack(searchParams.title, searchParams.artist);
+        results = await LastFMRepository.searchTrack(
+          searchParams.title, 
+          searchParams.artist, 
+          resultsPerPage, 
+          pageToLoad
+        );
       } else {
-        results = await LastFMRepository.searchAlbum(searchParams.album, searchParams.artist);
+        results = await LastFMRepository.searchAlbum(
+          searchParams.album, 
+          searchParams.artist, 
+          resultsPerPage, 
+          pageToLoad
+        );
       }
         
       if (!results || results.length === 0) {
-        setError('No results found');
-        setSearchResults([]);
+        if (resetResults) {
+          setError('No results found');
+          setSearchResults([]);
+        }
+        setHasMore(false);
         return;
       }
 
-      results = results.map((result: PlaylistEntry, idx) => {result.id = idx; return result;});
+      // Check if we got fewer results than requested (indicates no more results)
+      if (results.length < resultsPerPage) {
+        setHasMore(false);
+      }
 
-      setSearchResults(results);
+      const resultsWithIds = results.map((result: PlaylistEntry, idx) => {
+        const globalIdx = resetResults ? idx : searchResults.length + idx;
+        result.id = globalIdx; 
+        return result;
+      });
+
+      if (resetResults) {
+        setSearchResults(resultsWithIds);
+      } else {
+        setSearchResults(prev => [...prev, ...resultsWithIds]);
+      }
+      
+      if (!resetResults) {
+        setCurrentPage(prev => prev + 1);
+      }
     } catch (error) {
       setError(error.message);
       console.error('Error fetching Last.FM data:', error);
-      setSearchResults([]);
+      if (resetResults) {
+        setSearchResults([]);
+      }
     } finally {
-      setIsLoading(false);
+      if (resetResults) {
+        setIsLoading(false);
+      } else {
+        setIsLoadingMore(false);
+      }
     }
   };
+
+  // Load more results
+  const loadMore = useCallback(() => {
+    if (!isLoadingMore && hasMore && searchResults.length > 0) {
+      handleSearch(false);
+    }
+  }, [isLoadingMore, hasMore, searchResults.length, currentPage]);
+
+  // Scroll handler for infinite scroll
+  const handleScroll = useCallback((e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.target;
+    
+    // Load more when user is close to bottom (within 200px)
+    if (scrollHeight - scrollTop <= clientHeight + 200) {
+      loadMore();
+    }
+  }, [loadMore]);
+
+  // Trigger new search when search type changes
+  useEffect(() => {
+    if (searchResults.length > 0) {
+      handleSearch(true);
+    }
+  }, [searchType]);
 
   const toggleResultSelection = (result: PlaylistEntry) => {
     if (selectedResults.some(item => item.id === result.id)) {
@@ -127,8 +207,8 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
             value={searchParams.artist || ''}
             onChange={(e) => setSearchParams({...searchParams, artist: e.target.value})}
           />
-          <button onClick={handleSearch} disabled={isLoading}>
-            Search
+          <button onClick={() => handleSearch(true)} disabled={isLoading}>
+            {isLoading ? 'Searching...' : 'Search'}
           </button>
         </div>
 
@@ -146,11 +226,16 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
             </div>
             
             <div className="results-count">
-              Found {searchResults.length} {searchType === 'track' ? 'tracks' : 'albums'} • 
-              Selected: {selectedResults.length}
+              Found {searchResults.length} {searchType === 'track' ? 'tracks' : 'albums'}
+              {hasMore ? '+' : ''} • Selected: {selectedResults.length}
             </div>
             
-            <div className="results-list">
+            <div 
+              className="results-list"
+              ref={scrollContainerRef}
+              onScroll={handleScroll}
+              style={{ maxHeight: '400px', overflowY: 'auto' }}
+            >
               {searchResults.map((result: PlaylistEntry) => {
                 const isSelected = selectedResults.some(item => item.id === result.id);
                 return (
@@ -178,6 +263,18 @@ const LastFMSearch = ({ initialSearch = {}, onClose, onAddToPlaylist }) => {
                   </div>
                 );
               })}
+              
+              {isLoadingMore && (
+                <div className="loading-more">
+                  <div className="loading-spinner">Loading more results...</div>
+                </div>
+              )}
+              
+              {!hasMore && searchResults.length > 0 && (
+                <div className="no-more-results">
+                  <p>No more results available</p>
+                </div>
+              )}
             </div>
             
             <div className="results-actions">

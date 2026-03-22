@@ -17,6 +17,8 @@ import { FixedSizeList as List } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import PlaylistEntry from '../../lib/PlaylistEntry';
+import { setCookie, getCookie } from '../../lib/cookieUtils';
+import { formatDuration } from '../../lib/misc';
 
 const secondsToDaysHoursMins = (seconds: number) => {
   const days = Math.floor(seconds / (3600 * 24));
@@ -29,6 +31,7 @@ export interface SearchFilter {
   title: string;
   artist: string;
   album: string;
+  genre: string;
 }
 
 interface SearchResultsGridProps {
@@ -65,9 +68,14 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [openAILoading, setOpenAILoading] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(400); // Default width
+  const [isResizing, setIsResizing] = useState(false);
 
   // Keep this part but rename it from "advancedFilters" to just "filters"
-  const [filters, setFilters] = useState<SearchFilter>(filter);
+  const [filters, setFilters] = useState<SearchFilter>({
+    ...filter,
+    genre: filter.genre || ''
+  });
 
   // support artist pick-list
   const [artistList, setArtistList] = useState<string[]>([]);
@@ -78,6 +86,106 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const [albumList, setAlbumList] = useState<string[]>([]);
   const [showAlbumDropdown, setShowAlbumDropdown] = useState(false);
   const albumInputRef = useRef(null);
+
+  // Column configuration
+  type ColumnType = 'artist' | 'album' | 'albumArtist' | 'title' | 'genres' | 'year' | 'length' | 'trackNumber' | 'discNumber' | 'kind' | 'rating' | 'publisher';
+  
+  // Column configuration options
+  const availableColumns = [
+    { key: 'artist' as ColumnType, label: 'Artist', description: 'Artist name' },
+    { key: 'album' as ColumnType, label: 'Album', description: 'Album name' },
+    { key: 'albumArtist' as ColumnType, label: 'Album Artist', description: 'Album artist (if different from artist)' },
+    { key: 'title' as ColumnType, label: 'Title', description: 'Song/track title' },
+    { key: 'genres' as ColumnType, label: 'Genres', description: 'Music genres' },
+    { key: 'year' as ColumnType, label: 'Year', description: 'Release year' },
+    { key: 'length' as ColumnType, label: 'Length', description: 'Track duration' },
+    { key: 'trackNumber' as ColumnType, label: 'Track #', description: 'Track number' },
+    { key: 'discNumber' as ColumnType, label: 'Disc #', description: 'Disc number' },
+    { key: 'kind' as ColumnType, label: 'Format', description: 'File format (MP3, FLAC, etc.)' },
+    { key: 'rating' as ColumnType, label: 'Rating', description: 'Track rating' },
+    { key: 'publisher' as ColumnType, label: 'Label', description: 'Record label/publisher' }
+  ];
+  
+  const defaultColumns: ColumnType[] = ['artist', 'title'];
+  
+  const [visibleColumns, setVisibleColumns] = useState<ColumnType[]>(() => {
+    const saved = getCookie('search_results_columns');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.every(col => availableColumns.some(ac => ac.key === col))) {
+          return parsed;
+        }
+      } catch (e) {
+        console.warn('Failed to parse saved search columns:', e);
+      }
+    }
+    return defaultColumns;
+  });
+  const [columnConfigOpen, setColumnConfigOpen] = useState(false);
+  
+  // Sorting state
+  const [sortColumn, setSortColumn] = useState<ColumnType | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  
+  // Column widths state
+  const defaultColumnWidths = {
+    artist: 200,
+    album: 200,
+    albumArtist: 200,
+    title: 300,
+    genres: 150,
+    year: 80,
+    length: 100,
+    trackNumber: 80,
+    discNumber: 80,
+    kind: 80,
+    rating: 80,
+    publisher: 150
+  };
+  
+  const [columnWidths, setColumnWidths] = useState(() => {
+    const saved = getCookie('search_results_column_widths');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed === 'object' && parsed !== null) {
+          return { ...defaultColumnWidths, ...parsed };
+        }
+      } catch (e) {
+        console.warn('Failed to parse saved search column widths:', e);
+      }
+    }
+    return defaultColumnWidths;
+  });
+  
+  // Update column widths
+  const updateColumnWidth = (column: ColumnType, width: number) => {
+    const constrainedWidth = Math.max(80, Math.min(600, width)); // Min 80px, Max 600px
+    const newWidths = { ...columnWidths, [column]: constrainedWidth };
+    setColumnWidths(newWidths);
+    setCookie('search_results_column_widths', JSON.stringify(newWidths));
+  };
+  
+  // Update column visibility
+  const updateColumnVisibility = (columns: ColumnType[]) => {
+    setVisibleColumns(columns);
+    setCookie('search_results_columns', JSON.stringify(columns));
+  };
+  
+  // Generate CSS grid template based on visible columns and their widths
+  const getGridTemplate = () => {
+    const baseColumns = ['50px']; // Fixed width for checkbox column
+    
+    visibleColumns.forEach(col => {
+      const width = columnWidths[col] || defaultColumnWidths[col];
+      baseColumns.push(`${width}px`);
+    });
+    
+    baseColumns.push('40px'); // Fixed width for settings button
+    
+    return baseColumns.join(' ');
+  };
 
   const ITEMS_PER_PAGE = 50;
 
@@ -94,8 +202,11 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           title: filters.title || null,
           artist: filters.artist || null,
           album: filters.album || null,
+          genre: filters.genre || null,
           offset: (pageNum - 1) * ITEMS_PER_PAGE,
-          limit: ITEMS_PER_PAGE
+          limit: ITEMS_PER_PAGE,
+          sort_by: sortColumn,
+          sort_direction: sortDirection
         }
       });
       
@@ -244,6 +355,30 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     // Update local filters state when the filter prop changes from PlaylistGrid
     setFilters(filter);
   }, [filter]);
+
+  // Handle column sort
+  const handleColumnSort = (column: ColumnType) => {
+    let newDirection: 'asc' | 'desc' = 'asc';
+    
+    if (sortColumn === column) {
+      // If clicking the same column, toggle direction
+      newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    }
+    
+    setSortColumn(column);
+    setSortDirection(newDirection);
+    
+    // Reset to first page and refetch
+    setPage(1);
+    setSearchResults([]);
+  };
+
+  // Refetch when sort changes
+  useEffect(() => {
+    if (sortColumn) {
+      fetchSongs(1);
+    }
+  }, [sortColumn, sortDirection]);
 
   // Add this function to fetch artists
   const fetchArtistList = async () => {
@@ -413,22 +548,19 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const handleContextMenu = (e, track: PlaylistEntry) => {
     e.preventDefault();
 
-    // Get the parent container's position
-    const rect = e.currentTarget.getBoundingClientRect();
-    
-    // Calculate position relative to the clicked element
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // Use absolute positioning relative to the viewport
+    const x = e.clientX;
+    const y = e.clientY;
 
     const isAlbum = track.getEntryType() === 'requested_album' || track.getEntryType() === 'album';
 
     const options = [
       { label: 'Details', onClick: () => handleShowDetails(track) },
-      { label: 'Send to Search', onClick: () => setFilters({"title": track.getTitle(), "artist": track.getAlbumArtist(), "album": track.getAlbum()}) },
+      { label: 'Send to Search', onClick: () => setFilters({"title": track.getTitle(), "artist": track.getAlbumArtist(), "album": track.getAlbum(), "genre": ""}) },
       !isAlbum ? { label: 'Find Similar Tracks (Last.fm)', onClick: (e) => findSimilarTracks(e, track) } : null,
       !isAlbum ? { label: 'Find Similar Tracks (OpenAI)', onClick: (e) => findSimilarTracksWithOpenAI(e, track) } : null,
-      { label: 'Search for Album', onClick: () => setFilters({"title": "", "artist": track.getAlbumArtist(), "album": track.getAlbum()}) },
-      { label: 'Search for Artist', onClick: () => setFilters({"title": "", "artist": track.getAlbumArtist(), "album": ""}) }
+      { label: 'Search for Album', onClick: () => setFilters({"title": "", "artist": track.getAlbumArtist(), "album": track.getAlbum(), "genre": ""}) },
+      { label: 'Search for Artist', onClick: () => setFilters({"title": "", "artist": track.getAlbumArtist(), "album": "", "genre": ""}) }
     ];
 
     setContextMenu({
@@ -520,6 +652,42 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
     };
   }, []);
 
+  // Add resize functionality
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      
+      const newWidth = window.innerWidth - e.clientX;
+      // Constrain width between 300px and 90% of window width
+      const maxWidth = Math.floor(window.innerWidth * 0.9);
+      const constrainedWidth = Math.max(300, Math.min(maxWidth, newWidth));
+      setPanelWidth(constrainedWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
+
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
   const Row = memo(({ index, style }) => {
     const song = searchResults[index];
     if (!song) return null;
@@ -546,70 +714,77 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
         type="checkbox"
         checked={isSelected}
         readOnly
+        onClick={() => toggleSongSelection(song)}
+        style={{ cursor: 'pointer' }}
       />
     ) : (
-      <img style={{height: 40}} src={image} alt=""/>
+      <img 
+        style={{height: 40, cursor: 'pointer'}} 
+        src={image} 
+        alt=""
+        onClick={() => toggleSongSelection(song)}
+      />
     );
+
+    const renderColumn = (column: ColumnType) => {
+      switch (column) {
+        case 'artist':
+          return <div>{song.getArtist()}</div>;
+        case 'album':
+          return <div><i>{song.getAlbum()}</i></div>;
+        case 'albumArtist':
+          return <div>{song.getAlbumArtist() || song.getArtist()}</div>;
+        case 'title':
+          return (
+            <div>
+              {song.missing ? <s>{song.getTitle()}</s> : song.getTitle()}
+            </div>
+          );
+        case 'genres':
+          return <div>{song.getGenres ? song.getGenres().join(', ') : ''}</div>;
+        case 'year':
+          return <div>{song.details?.year || ''}</div>;
+        case 'length':
+          return <div>{song.details?.length ? formatDuration(song.details.length) : ''}</div>;
+        case 'trackNumber':
+          return <div>{song.details?.track_number || ''}</div>;
+        case 'discNumber':
+          return <div>{song.details?.disc_number || ''}</div>;
+        case 'kind':
+          return <div>{song.details?.kind || ''}</div>;
+        case 'rating':
+          return <div>{song.details?.rating ? `${song.details.rating}/100` : ''}</div>;
+        case 'publisher':
+          return <div>{song.details?.publisher || ''}</div>;
+        default:
+          return null;
+      }
+    };
 
     return (
       <div style={style}>
         <div 
           className="search-grid-row"
-          onClick={() => toggleSongSelection(song)}
+          style={{
+            gridTemplateColumns: getGridTemplate()
+          }}
+          onContextMenu={(e) => handleContextMenu(e, song)}
         >
           <div className="grid-cell">
             {artwork}
           </div>
-          <div className="grid-cell">
-            <div>{song.getArtist()}</div>
-            <div><i>{song.getAlbum()}</i></div>
-          </div>
-          <div 
-            className="grid-cell clickable" 
-            onContextMenu={(e) => handleContextMenu(e, song)}
-          >
-            {song.missing ? <s>{song.getTitle()}</s> : song.getTitle()}
-          </div>
+          {visibleColumns.map((column, index) => (
+            <div key={`${column}-${index}`} className="grid-cell">
+              {renderColumn(column)}
+            </div>
+          ))}
         </div>
       </div>
     );
   });
 
-  const renderSearchResults = () => (
-    <div style={{ height: '600px' }}> {/* Adjust height as needed */}
-      <AutoSizer>
-        {({ height, width }) => (
-          <InfiniteLoader
-            isItemLoaded={index => index < searchResults.length}
-            itemCount={hasMore ? searchResults.length + 1 : searchResults.length}
-            loadMoreItems={(startIndex, stopIndex) => {
-              if (!isLoading && hasMore) {
-                console.log(`Loading more items from ${startIndex} to ${stopIndex}`);
-                return fetchSongs(page + 1);
-              }
-              return Promise.resolve();
-            }}
-          >
-            {({ onItemsRendered, ref }) => (
-              <List
-                ref={ref}
-                height={height}
-                itemCount={searchResults.length}
-                itemSize={80} // Adjust based on your row height
-                width={width}
-                onItemsRendered={onItemsRendered}
-              >
-                {Row}
-              </List>
-            )}
-          </InfiniteLoader>
-        )}
-      </AutoSizer>
-    </div>
-  );
-
   const clearSearchResults = () => {
-    setFilters({ title: '', artist: '', album: '' });
+    setFilters({ title: '', artist: '', album: '', genre: '' });
     setSearchResults([]);
   };
 
@@ -649,7 +824,16 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
       <div 
         ref={panelRef}
         className={`search-results-panel ${isPanelOpen ? 'open' : ''}`}
+        style={{
+          '--panel-width': `${panelWidth}px`
+        } as React.CSSProperties}
       >
+        {/* Resize handle */}
+        <div 
+          className="resize-handle-bar"
+          onMouseDown={handleResizeStart}
+        />
+        
         <div className="search-panel-header">
           <h2>Add Songs</h2>
           <button onClick={() => setIsPanelOpen(false)}>✕</button>
@@ -743,6 +927,21 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                 )}
               </div>
             </div>
+            
+            <div className="form-group">
+              <label>Genre:</label>
+              <div className="album-input-container">
+                <input 
+                  type="text" 
+                  value={filters.genre}
+                  onChange={(e) => {
+                    setFilters({...filters, genre: e.target.value});
+                  }}
+                  placeholder="Genre (e.g., rock, pop, jazz)" 
+                />
+              </div>
+            </div>
+            
             <div className="advanced-search-actions">
               {isLoading && (
                 <div className="loading-indicator">
@@ -802,19 +1001,184 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           </button>
         </div>
 
-        <div className="search-grid-header-row">
-          <div className="grid-cell">
-            <input
-              type="checkbox"
-              checked={allSearchResultsSelected}
-              onChange={toggleAllSongs}
-            />
-          </div>
-          <div className="grid-cell">Artist/Album</div>
-          <div className="grid-cell">Title</div>
-        </div>
+        <div className="search-grid-container" style={{
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          maxHeight: '600px',
+          border: '1px solid #ddd',
+          borderRadius: '4px'
+        }}>
+          <div style={{
+            minWidth: 'fit-content'
+          }}>
+            <div className="search-grid-header-row" style={{
+              gridTemplateColumns: getGridTemplate(),
+              position: 'sticky',
+              top: 0,
+              zIndex: 10
+            }}>
+              <div className="grid-cell">
+                <input
+                  type="checkbox"
+                  checked={allSearchResultsSelected}
+                  onChange={toggleAllSongs}
+                />
+              </div>
+              {visibleColumns.map((column, index) => {
+                const columnInfo = availableColumns.find(col => col.key === column);
+                const isLastColumn = index === visibleColumns.length - 1;
+                const prevColumn = index > 0 ? visibleColumns[index - 1] : null;
+                
+                return (
+                  <div key={column} className="grid-cell resizable-header" style={{ position: 'relative' }}>
+                    <div 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => handleColumnSort(column)}
+                      title={`Sort by ${columnInfo?.label}`}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <span>{columnInfo?.label}</span>
+                        {sortColumn === column && (
+                          <span style={{ marginLeft: '4px', fontSize: '12px' }}>
+                            {sortDirection === 'asc' ? '↑' : '↓'}
+                          </span>
+                        )}
+                      </div>
+                      {isLastColumn && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent sort when clicking settings
+                            setColumnConfigOpen(true);
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            color: '#666',
+                            marginLeft: '8px'
+                          }}
+                          title="Configure columns"
+                        >
+                          ⚙️
+                        </button>
+                      )}
+                    </div>
+                    {prevColumn && (
+                      <div 
+                        className="resize-handle-bar"
+                        style={{
+                          position: 'absolute',
+                          right: '0px',
+                          top: '0',
+                          bottom: '0',
+                          width: '6px',
+                          cursor: 'col-resize',
+                          backgroundColor: 'transparent',
+                          zIndex: 100,
+                          marginRight: '-3px'
+                        }}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const startX = e.clientX;
+                          const leftColumn = prevColumn;
+                          const rightColumn = column;
+                          const startLeftWidth = columnWidths[leftColumn] || defaultColumnWidths[leftColumn];
+                          const startRightWidth = columnWidths[rightColumn] || defaultColumnWidths[rightColumn];
+                          
+                          console.log(`Resizing between ${leftColumn} (${startLeftWidth}px) and ${rightColumn} (${startRightWidth}px)`);
+                          
+                          const handleMouseMove = (moveEvent: MouseEvent) => {
+                            const diff = moveEvent.clientX - startX;
+                            const newLeftWidth = Math.max(80, startLeftWidth + diff);
+                            const newRightWidth = Math.max(80, startRightWidth - diff);
+                            
+                            // Only update if both columns can maintain minimum width
+                            if (newLeftWidth >= 80 && newRightWidth >= 80) {
+                              const newWidths = {
+                                ...columnWidths,
+                                [leftColumn]: newLeftWidth,
+                                [rightColumn]: newRightWidth
+                              };
+                              setColumnWidths(newWidths);
+                            }
+                          };
+                          
+                          const handleMouseUp = () => {
+                            document.removeEventListener('mousemove', handleMouseMove);
+                            document.removeEventListener('mouseup', handleMouseUp);
+                            document.body.style.cursor = '';
+                            document.body.style.userSelect = '';
+                            console.log(`Finished resizing. New widths: ${leftColumn}=${columnWidths[leftColumn]}px, ${rightColumn}=${columnWidths[rightColumn]}px`);
+                          };
+                          
+                          document.body.style.cursor = 'col-resize';
+                          document.body.style.userSelect = 'none';
+                          document.addEventListener('mousemove', handleMouseMove);
+                          document.addEventListener('mouseup', handleMouseUp);
+                        }}
+                      >
+                        {/* Visual resize indicator */}
+                        <div style={{
+                          position: 'absolute',
+                          right: '2px',
+                          top: '25%',
+                          bottom: '25%',
+                          width: '2px',
+                          backgroundColor: '#ccc',
+                          borderRadius: '1px',
+                          transition: 'background-color 0.2s'
+                        }}></div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
 
-        {renderSearchResults()}
+            <div style={{ 
+              height: '540px',
+              overflowY: 'auto',
+              overflowX: 'hidden'
+            }}>
+              <AutoSizer disableWidth>
+                {({ height }) => (
+                  <InfiniteLoader
+                    isItemLoaded={index => index < searchResults.length}
+                    itemCount={hasMore ? searchResults.length + 1 : searchResults.length}
+                    loadMoreItems={(startIndex, stopIndex) => {
+                      if (!isLoading && hasMore) {
+                        console.log(`Loading more items from ${startIndex} to ${stopIndex}`);
+                        return fetchSongs(page + 1);
+                      }
+                      return Promise.resolve();
+                    }}
+                  >
+                    {({ onItemsRendered, ref }) => (
+                      <List
+                        ref={ref}
+                        height={height}
+                        itemCount={searchResults.length}
+                        itemSize={80}
+                        width="100%" 
+                        onItemsRendered={onItemsRendered}
+                        style={{ overflowX: 'hidden' }}
+                      >
+                        {Row}
+                      </List>
+                    )}
+                  </InfiniteLoader>
+                )}
+              </AutoSizer>
+            </div>
+          </div>
+        </div>
 
         {showLastFMSearch && (
           <LastFMSearch
@@ -863,6 +1227,165 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           <div className="scan-overlay">
             <div className="scan-spinner"></div>
             <h2>Scanning...</h2>
+          </div>
+        )}
+
+        {/* Column Configuration Modal */}
+        {columnConfigOpen && (
+          <div className="modal-overlay" onClick={() => setColumnConfigOpen(false)}>
+            <div 
+              className="modal-content"
+              style={{
+                maxWidth: '500px',
+                width: '90vw',
+                maxHeight: '80vh',
+                overflow: 'auto',
+                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ padding: '20px', borderBottom: '1px solid #eee' }}>
+                <h3 style={{ margin: '0', fontSize: '18px' }}>Configure Columns</h3>
+              </div>
+              <div className="column-config-content" style={{ padding: '20px' }}>
+                <p>Select which columns to display:</p>
+                <div className="column-checkboxes">
+                  {visibleColumns.map((columnKey, index) => {
+                    const column = availableColumns.find(col => col.key === columnKey);
+                    if (!column) return null;
+                    
+                    return (
+                      <label 
+                        key={column.key} 
+                        className="column-checkbox-item draggable-column"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', index.toString());
+                          e.currentTarget.style.opacity = '0.5';
+                        }}
+                        onDragEnd={(e) => {
+                          e.currentTarget.style.opacity = '1';
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                          const dropIndex = index;
+                          
+                          if (dragIndex !== dropIndex) {
+                            const newColumns = [...visibleColumns];
+                            const draggedColumn = newColumns[dragIndex];
+                            newColumns.splice(dragIndex, 1);
+                            newColumns.splice(dropIndex, 0, draggedColumn);
+                            updateColumnVisibility(newColumns);
+                          }
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          marginBottom: '10px',
+                          padding: '8px',
+                          border: '1px solid #eee',
+                          borderRadius: '4px',
+                          cursor: 'grab'
+                        }}
+                      >
+                        <span className="drag-handle" style={{ cursor: 'grab', marginRight: '8px' }}>⋮⋮</span>
+                        <input
+                          type="checkbox"
+                          checked={true}
+                          onChange={(e) => {
+                            if (!e.target.checked && visibleColumns.length > 1) {
+                              updateColumnVisibility(visibleColumns.filter(col => col !== column.key));
+                            }
+                          }}
+                          disabled={visibleColumns.length === 1}
+                          style={{ marginRight: '10px' }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 'bold' }}>{column.label}</div>
+                          <div style={{ fontSize: '12px', color: '#666' }}>{column.description}</div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                  
+                  {/* Hidden columns that can be added */}
+                  {availableColumns
+                    .filter(column => !visibleColumns.includes(column.key))
+                    .map(column => (
+                      <label 
+                        key={column.key} 
+                        className="column-checkbox-item"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          marginBottom: '10px',
+                          padding: '8px',
+                          border: '1px solid #eee',
+                          borderRadius: '4px',
+                          opacity: 0.6
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={false}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              updateColumnVisibility([...visibleColumns, column.key]);
+                            }
+                          }}
+                          style={{ marginRight: '10px' }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 'bold' }}>{column.label}</div>
+                          <div style={{ fontSize: '12px', color: '#666' }}>{column.description}</div>
+                        </div>
+                      </label>
+                    ))
+                  }
+                </div>
+                <div style={{ 
+                  display: 'flex', 
+                  gap: '10px', 
+                  justifyContent: 'flex-end',
+                  marginTop: '20px',
+                  borderTop: '1px solid #eee',
+                  paddingTop: '15px'
+                }}>
+                  <button 
+                    onClick={() => {
+                      updateColumnVisibility(defaultColumns);
+                      setColumnWidths(defaultColumnWidths);
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#f0f0f0',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Reset to Default
+                  </button>
+                  <button 
+                    onClick={() => setColumnConfigOpen(false)}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#4CAF50',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

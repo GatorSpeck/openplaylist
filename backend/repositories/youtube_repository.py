@@ -10,6 +10,9 @@ from response_models import PlaylistSnapshot, PlaylistItem
 from lib.normalize import normalize_title
 from lib.match import TrackStub, get_match_score
 
+import dotenv
+dotenv.load_dotenv(override=True)
+
 def get_video_id_from_track(track: Dict[str, Any]) -> Optional[str]:
     """Extract video ID from a YouTube Music track dictionary"""
     if not track:
@@ -29,6 +32,7 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
     
     def __init__(self, session, config: Dict[str, str] = None, music_file_repo=None):
         super().__init__(session, config)
+        self.playlist_id = None
         
         # Get the playlist ID from the config
         self.playlist_uri = self.config.get("playlist_uri")
@@ -53,11 +57,7 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             #     client_secret=os.getenv("YOUTUBE_CLIENT_SECRET"))
             # )
 
-            # simplified browser-based auth
             self.ytmusic = YTMusic(oauth_path)
-            account_info = self.ytmusic.get_account_info()
-            if not account_info or not account_info.get("accountName"):
-                raise ValueError("YouTube Music authentication failed - invalid account info")
 
             logging.info("YouTube Music client initialized successfully")
         except Exception as e:
@@ -93,9 +93,12 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
         
         # If we have a specific playlist ID, validate we can access and edit it
         try:
-            playlist = self.ytmusic.get_playlist(self.playlist_id, limit=1)
+            playlist, resolved_id = self._fetch_playlist_with_fallback_ids(self.playlist_id, limit=1)
             if not playlist:
                 raise ValueError(f"Cannot access YouTube Music playlist with ID: {self.playlist_id}")
+
+            if resolved_id:
+                self.playlist_id = resolved_id
             
             # Check if we can edit this playlist (it should be editable if we own it)
             if playlist.get("privacy") == "PRIVATE" or playlist.get("owned"):
@@ -110,10 +113,44 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             raise ValueError(f"YouTube Music authentication validation failed: {e}")
     
     def extract_playlist_id(self, id_string: str) -> str:
+        id_string = (id_string or "").strip()
         if "list=" in id_string:
             return id_string.split("list=")[1].split("&")[0]
         
         return id_string
+
+    def _candidate_playlist_ids(self, playlist_id_or_uri: str) -> List[str]:
+        extracted = self.extract_playlist_id(playlist_id_or_uri)
+        candidates: List[str] = []
+
+        if extracted:
+            candidates.append(extracted)
+            if extracted.startswith("VL") and len(extracted) > 2:
+                candidates.append(extracted[2:])
+
+        deduped: List[str] = []
+        for candidate in candidates:
+            if candidate and candidate not in deduped:
+                deduped.append(candidate)
+
+        return deduped
+
+    def _fetch_playlist_with_fallback_ids(self, playlist_id_or_uri: str, limit=None):
+        candidates = self._candidate_playlist_ids(playlist_id_or_uri)
+        last_error = None
+
+        for candidate_id in candidates:
+            try:
+                playlist = self.ytmusic.get_playlist(candidate_id, limit=limit)
+                if playlist:
+                    return playlist, candidate_id
+            except Exception as e:
+                last_error = e
+
+        if last_error:
+            raise last_error
+
+        return None, None
     
     def lookup_playlist_id_by_name(self, playlist_name: str) -> Optional[str]:
         """Lookup a YouTube Music playlist ID by name"""
@@ -130,6 +167,79 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
         except Exception as e:
             logging.error(f"Error looking up YouTube Music playlist by name {playlist_name}: {e}")
             return None
+
+    def search_tracks(self, query: str, title: str = None, artist: str = None, album: str = None, max_results: int = 20):
+        """Search for tracks in YouTube Music library"""
+        if not self.ytmusic:
+            raise ValueError("Not authenticated with YouTube Music")
+
+        search_query = query or ""
+        if title and artist:
+            search_query = f"{artist} {title}"
+        elif title:
+            search_query = title
+        elif artist:
+            search_query = artist
+
+        if album and album.strip():
+            search_query = f"{search_query} {album}".strip()
+
+        if not search_query.strip():
+            return []
+
+        source_stub = TrackStub(
+            artist=artist or "",
+            title=title or "",
+            album=album or "",
+        )
+
+        try:
+            search_results = self.ytmusic.search(search_query[:100], filter="songs", limit=max_results)
+            if not search_results:
+                return []
+
+            results = []
+            for track in search_results:
+                video_id = get_video_id_from_track(track)
+                if not video_id:
+                    continue
+
+                artists = ", ".join(
+                    [artist_item.get("name", "") for artist_item in (track.get("artists") or []) if artist_item.get("name")]
+                )
+
+                album_name = ""
+                if isinstance(track.get("album"), dict):
+                    album_name = track.get("album", {}).get("name", "")
+
+                result = {
+                    "title": track.get("title", ""),
+                    "artist": artists,
+                    "album": album_name,
+                    "service": "youtube",
+                    "youtube_url": video_id,
+                    "score": 0,
+                }
+
+                if title or artist or album:
+                    result["score"] = get_match_score(
+                        source_stub,
+                        TrackStub(
+                            artist=result["artist"],
+                            title=result["title"],
+                            album=result["album"],
+                        ),
+                    )
+
+                results.append(result)
+
+            if title or artist or album:
+                results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+            return results
+        except Exception as e:
+            logging.error(f"Error searching YouTube Music tracks: {e}")
+            raise
     
     def fetch_media_item(self, item: PlaylistItem) -> Any:
         """Search for a track on YouTube Music"""
@@ -165,10 +275,13 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             
             # Score the results similar to Spotify implementation
             for track in search_results:
+                artist = track["artists"][0]["name"] if track.get("artists") else ""
+                title = track["title"] if track.get("title") else ""
+                album = track["album"]["name"] if track.get("album") else ""
                 score = get_match_score(match_stub, TrackStub(
-                    artist=track["artists"][0]["name"] if track.get("artists") else "",
-                    title=track["title"],
-                    album=track["album"]["name"] if track.get("album") else ""
+                    artist=artist,
+                    title=title,
+                    album=album,
                 ))
                 
                 track["score"] = score
@@ -292,10 +405,25 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             
         try:
             # For YouTube Music, we ignore playlist_name and use the ID from config
-            playlist = self.ytmusic.get_playlist(self.playlist_id, limit=None)
+            playlist, resolved_id = self._fetch_playlist_with_fallback_ids(self.playlist_id, limit=None)
+            if resolved_id:
+                self.playlist_id = resolved_id
             
             if not playlist:
                 return None
+
+            tracks = playlist.get("tracks") or []
+
+            if not tracks and self.playlist_id:
+                try:
+                    retry_playlist, retry_id = self._fetch_playlist_with_fallback_ids(self.playlist_id, limit=2000)
+                    if retry_playlist:
+                        playlist = retry_playlist
+                        tracks = retry_playlist.get("tracks") or []
+                        if retry_id:
+                            self.playlist_id = retry_id
+                except Exception as retry_error:
+                    logging.warning(f"YouTube playlist retry failed for {self.playlist_id}: {retry_error}")
             
             result = PlaylistSnapshot(
                 name=playlist_name,  # Use the provided name for consistency
@@ -303,7 +431,7 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
                 items=[]
             )
             
-            for track in playlist.get("tracks", []):
+            for track in tracks:
                 if not track:  # Skip invalid tracks
                     continue
                     
@@ -324,7 +452,12 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
                 )
                 result.add_item(playlist_item)
                 
-            logging.info(f"YouTube Music playlist snapshot contains {len(result.items)} items")
+            logging.info(
+                "YouTube Music playlist snapshot for %s (%s) contains %d items",
+                playlist.get("title", playlist_name),
+                self.playlist_id,
+                len(result.items),
+            )
             return result
             
         except Exception as e:

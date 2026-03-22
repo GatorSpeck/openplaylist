@@ -8,7 +8,16 @@ import urllib
 import logging
 from repositories.playlist_repository import PlaylistRepository
 from lib.normalize import normalize_title
+from lib.normalize_path import strip_path_root, normalize_path
 from lib.match import TrackStub, get_match_score
+
+import os
+import dotenv
+dotenv.load_dotenv(override=True)
+
+PLEX_MAP_SOURCE = os.getenv("PLEX_MAP_SOURCE", None)
+PLEX_MAP_TARGET = os.getenv("PLEX_MAP_TARGET", None)
+M3U_MAP_SOURCE = os.getenv("M3U_MAP_SOURCE", None)
 
 def to_music_file(music_file_db: MusicFileDB) -> MusicFile:
     return MusicFile(
@@ -132,6 +141,8 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         limit: int = 50,
         offset: int = 0,
         include_missing: bool = False,
+        sort_by: Optional[str] = None,
+        sort_direction: Optional[str] = "asc",
     ) -> list[MusicFile]:
         query = self.session.query(MusicFileDB)
 
@@ -139,8 +150,27 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         artist = artist.lower() if artist else None
         album = album.lower() if album else None
 
+        # Only join LocalFileDB once, but add multiple filters if needed
+        local_file_joined = False
+        local_file_filters = []
+
         if not include_missing:
-            query = query.join(LocalFileDB).filter(LocalFileDB.missing == False)
+            local_file_filters.append(LocalFileDB.missing == False)
+
+        if path:
+            # strip off unimportant parts of the path
+            path = strip_path_root(path, PLEX_MAP_SOURCE) if PLEX_MAP_SOURCE is not None else path
+            path = strip_path_root(path, PLEX_MAP_TARGET) if PLEX_MAP_TARGET is not None else path
+            path = strip_path_root(path, M3U_MAP_SOURCE) if M3U_MAP_SOURCE is not None else path
+            path = normalize_path(path)
+            local_file_filters.append(LocalFileDB.path.endswith(path))
+
+        # Apply LocalFileDB join and filters if needed
+        if local_file_filters:
+            query = query.join(LocalFileDB)
+            for filter_condition in local_file_filters:
+                query = query.filter(filter_condition)
+            local_file_joined = True
 
         if title:
             if exact:
@@ -160,14 +190,33 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
         if genre:
             query = query.join(TrackGenreDB).filter(func.lower(TrackGenreDB.genre) == genre)
 
-        if path:
-            query = query.join(LocalFileDB).filter(LocalFileDB.path == path)
+        # Apply sorting
+        if sort_by and sort_direction:
+            # Map frontend column names to database columns
+            column_mapping = {
+                'title': MusicFileDB.title,
+                'artist': MusicFileDB.artist,
+                'album': MusicFileDB.album,
+                'albumArtist': MusicFileDB.album_artist,
+                'year': MusicFileDB.year,
+                'length': MusicFileDB.length,
+                'track_number': MusicFileDB.track_number
+            }
+            
+            if sort_by in column_mapping:
+                column = column_mapping[sort_by]
+                if sort_direction.lower() == 'desc':
+                    query = query.order_by(column.desc())
+                else:
+                    query = query.order_by(column.asc())
+            else:
+                # Default ordering if sort column not recognized
+                query = query.order_by(MusicFileDB.artist, MusicFileDB.album, MusicFileDB.title)
+        else:
+            # Default ordering when no sort specified
+            query = query.order_by(MusicFileDB.artist, MusicFileDB.album, MusicFileDB.title)
 
-        results = (
-            query
-                .order_by(MusicFileDB.artist, MusicFileDB.album, MusicFileDB.title)
-                .limit(limit).offset(offset).all()
-        )
+        results = query.limit(limit).offset(offset).all()
 
         return [to_music_file(music_file) for music_file in results]
 

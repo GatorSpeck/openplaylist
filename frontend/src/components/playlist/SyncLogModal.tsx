@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Modal from '../common/Modal';
+import playlistRepository, { PersistentSyncLogEntry } from '../../repositories/PlaylistRepository';
 import './SyncLogModal.css';
 
 interface SyncLogEntry {
@@ -27,23 +28,75 @@ interface SyncResult {
 interface SyncLogModalProps {
   open: boolean;
   onClose: () => void;
-  syncResult: SyncResult | null;
+  syncResult?: SyncResult | null;
+  playlistId: number;
   playlistName: string;
 }
 
 const SyncLogModal: React.FC<SyncLogModalProps> = ({ 
   open, 
   onClose, 
+  playlistId,
   syncResult,
   playlistName 
 }) => {
-  if (!syncResult) return null;
+  const [entries, setEntries] = useState<PersistentSyncLogEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [errorsOnly, setErrorsOnly] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setErrorsOnly(false);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const fetchSyncLog = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const result = await playlistRepository.getSyncLog(playlistId, {
+          limit: 300,
+          offset: 0,
+          includeSuccess: !errorsOnly,
+        });
+        setEntries(result);
+      } catch (fetchError) {
+        console.error('Failed to load sync log:', fetchError);
+        setError('Failed to load sync log');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSyncLog();
+  }, [open, playlistId, errorsOnly]);
+
+  const orderedEntries = useMemo(() => {
+    return [...entries].sort((a, b) => {
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+
+      if (aTime !== bTime) {
+        return bTime - aTime;
+      }
+
+      return b.id - a.id;
+    });
+  }, [entries]);
 
   const getActionIcon = (action: string) => {
     switch (action) {
       case 'add': return '➕';
       case 'remove': return '➖';
       case 'create': return '🆕';
+      case 'failed_match': return '❓';
+      case 'force_push': return '⚠️';
       default: return '🔄';
     }
   };
@@ -62,15 +115,6 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
     return success ? 'success' : 'error';
   };
 
-  const groupedLogs = syncResult.log.reduce((groups, entry) => {
-    const key = `${entry.target}-${entry.target_name || 'default'}`;
-    if (!groups[key]) {
-      groups[key] = [];
-    }
-    groups[key].push(entry);
-    return groups;
-  }, {} as Record<string, SyncLogEntry[]>);
-
   return (
     <Modal 
       open={open} 
@@ -80,78 +124,129 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
     >
       <div className="sync-log-modal">
         {/* Summary Section */}
+        {syncResult && (
         <div className="sync-summary">
-          <div className={`sync-status ${syncResult.status}`}>
+          <div className={`sync-status ${syncResult.status || 'unknown'}`}>
             <h3>
               {syncResult.status === 'success' ? '✅' : 
                syncResult.status === 'partial' ? '⚠️' : '❌'} 
-              Sync {syncResult.status.charAt(0).toUpperCase() + syncResult.status.slice(1)}
+              Sync {(syncResult.status || 'unknown').charAt(0).toUpperCase() + (syncResult.status || 'unknown').slice(1)}
             </h3>
           </div>
           
           <div className="sync-stats">
             <div className="stat">
-              <span className="stat-value">{syncResult.summary.total_targets}</span>
+              <span className="stat-value">{syncResult.summary?.total_targets || 0}</span>
               <span className="stat-label">Total Targets</span>
             </div>
             <div className="stat">
-              <span className="stat-value success">{syncResult.summary.successful}</span>
+              <span className="stat-value success">{syncResult.summary?.successful || 0}</span>
               <span className="stat-label">Successful</span>
             </div>
             <div className="stat">
-              <span className="stat-value error">{syncResult.summary.failed}</span>
+              <span className="stat-value error">{syncResult.summary?.failed || 0}</span>
               <span className="stat-label">Failed</span>
             </div>
           </div>
         </div>
+        )}
+
+        {/* Global Errors Section */}
+        {syncResult?.failed && syncResult.failed.length > 0 && (
+          <div className="sync-errors">
+            <h4>⚠️ Sync Errors</h4>
+            {syncResult.failed.map((failure, index) => (
+              <div key={index} className="error-item">
+                <div className="error-service">
+                  {getTargetIcon(failure.service)} {failure.service}
+                  {failure.target_id && <span className="target-id"> (Target {failure.target_id})</span>}
+                </div>
+                <div className="error-message">{failure.error}</div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Detailed Log Section */}
         <div className="sync-log-details">
-          <h4>Sync Details</h4>
-          
-          {Object.entries(groupedLogs).map(([targetKey, entries]) => {
-            const targetInfo = entries[0];
-            const displayName = targetInfo.target_name || targetInfo.target;
-            
-            return (
-              <div key={targetKey} className="target-group">
-                <div className="target-header">
-                  {getTargetIcon(targetInfo.target)}
-                  <span className="target-name">
-                    {targetInfo.target === 'local' ? 'Local Playlist' : `${targetInfo.target} - ${displayName}`}
-                  </span>
-                  <span className="entry-count">{entries.length} changes</span>
-                </div>
-                
-                <div className="log-entries">
-                  {entries.map((entry, index) => (
-                    <div 
-                      key={index} 
+          <h4>Sync Details (Most Recent First)</h4>
+
+          <div className="sync-log-filter-row">
+            <button
+              type="button"
+              className={`sync-log-filter-btn ${!errorsOnly ? 'active' : ''}`}
+              onClick={() => setErrorsOnly(false)}
+            >
+              All Events
+            </button>
+            <button
+              type="button"
+              className={`sync-log-filter-btn ${errorsOnly ? 'active' : ''}`}
+              onClick={() => setErrorsOnly(true)}
+            >
+              Errors Only
+            </button>
+          </div>
+
+          {loading && (
+            <div className="no-changes">
+              <p>Loading sync log...</p>
+            </div>
+          )}
+
+          {!loading && error && (
+            <div className="sync-errors">
+              <h4>⚠️ Sync Errors</h4>
+              <div className="error-item">
+                <div className="error-message">{error}</div>
+              </div>
+            </div>
+          )}
+
+          {!loading && !error && orderedEntries.length > 0 && (
+            <div className="target-group">
+              <div className="target-header">
+                <span className="target-name">{orderedEntries.length} events</span>
+              </div>
+
+              <div className="log-entries">
+                {orderedEntries.map((entry) => {
+                  const targetName = entry.targetName || entry.target;
+                  const timestamp = entry.createdAt
+                    ? new Date(entry.createdAt).toLocaleString()
+                    : 'Unknown time';
+
+                  return (
+                    <div
+                      key={entry.id}
                       className={`log-entry ${getStatusClass(entry.success)}`}
                     >
                       <div className="log-icon">
                         {getActionIcon(entry.action)}
                       </div>
                       <div className="log-content">
-                        <div className="log-track">{entry.track}</div>
-                        <div className="log-reason">{entry.reason}</div>
+                        <div className="log-track">{entry.track || '(no track provided)'}</div>
+                        <div className="log-reason">
+                          [{entry.target.toUpperCase()}] {targetName} • {entry.reason || 'No reason provided'}
+                        </div>
                         {entry.error && (
                           <div className="log-error">Error: {entry.error}</div>
                         )}
                       </div>
                       <div className="log-action">
-                        {entry.action.charAt(0).toUpperCase() + entry.action.slice(1)}
+                        <div>{entry.action.replace(/_/g, ' ')}</div>
+                        <div className="log-time">{timestamp}</div>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-            );
-          })}
-          
-          {syncResult.log.length === 0 && (
+            </div>
+          )}
+
+          {!loading && !error && orderedEntries.length === 0 && (
             <div className="no-changes">
-              <p>No changes were made during this sync.</p>
+              <p>{errorsOnly ? 'No sync errors found for this playlist.' : 'No sync log events found for this playlist.'}</p>
             </div>
           )}
         </div>

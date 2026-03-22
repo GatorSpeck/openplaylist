@@ -257,7 +257,10 @@ class TestNormalizeArtist:
         
         result = normalize_artist("Name [Orchestra]")
         assert result == "name"
-        
+
+
+class TestNormalizeArtistAdditional:
+    def test_dash_bracket_removal(self):
         result = normalize_artist("The Beatles - (Group)")
         assert result == "beatles"  # Properly handles the dash and filtering
 

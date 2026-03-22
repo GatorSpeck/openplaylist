@@ -263,36 +263,42 @@ class RemotePlaylistRepository(ABC):
             logging.info(f"  Local changed: {local_changed_since_last_sync}")
             logging.info(f"  Remote changed: {remote_changed_since_last_sync}")
             
-            # Create sets for efficient lookups
-            old_remote_items = {item.to_string(normalize=True): item for item in old_remote_snapshot.items}
-            new_remote_items = {item.to_string(normalize=True): item for item in new_remote_snapshot.items}
-            new_local_items = {item.to_string(normalize=True): item for item in new_local_snapshot.items}
-            
+            # Build key indexes for efficient lookups (remote IDs, paths, and normalized title/artist)
+            old_remote_index = old_remote_snapshot.build_key_index()
+            new_remote_index = new_remote_snapshot.build_key_index()
+            new_local_index = new_local_snapshot.build_key_index()
+
+            def index_has(index: Dict[str, PlaylistItem], item: PlaylistItem) -> bool:
+                for key in item.match_keys():
+                    if key in index:
+                        return True
+                return False
+
             # Handle local changes (if local is newer than last sync)
             if local_changed_since_last_sync:
                 logging.info("Processing local changes since last sync")
                 
                 # Find items added locally
                 if send_adds:
-                    for item_str, item in new_local_items.items():
-                        if item_str not in old_remote_items:
+                    for item in new_local_snapshot.items:
+                        if not index_has(old_remote_index, item):
                             # Item was added locally since last sync
-                            if item_str not in new_remote_items:
+                            if not index_has(new_remote_index, item):
                                 # Item doesn't exist remotely, safe to add
                                 plan.append(SyncChange('add', item, 'local', 'Item added locally since last sync'))
                             else:
-                                logging.debug(f"Item {item_str} already exists remotely, skipping add")
+                                logging.debug(f"Item {item.to_string(normalize=True)} already exists remotely, skipping add")
                 
                 # Find items removed locally
                 if send_removes:
-                    for item_str, item in old_remote_items.items():
-                        if item_str not in new_local_items:
+                    for item in old_remote_snapshot.items:
+                        if not index_has(new_local_index, item):
                             # Item was removed locally since last sync
-                            if item_str in new_remote_items:
+                            if index_has(new_remote_index, item):
                                 # Item still exists remotely, safe to remove
                                 plan.append(SyncChange('remove', item, 'local', 'Item removed locally since last sync'))
                             else:
-                                logging.debug(f"Item {item_str} already removed remotely, skipping remove")
+                                logging.debug(f"Item {item.to_string(normalize=True)} already removed remotely, skipping remove")
 
         target_name = f"{sync_target.id}/{sync_target.service}" if sync_target else "remote playlist"
 
@@ -302,25 +308,25 @@ class RemotePlaylistRepository(ABC):
             
             # Find items added remotely
             if receive_adds:
-                for item_str, item in new_remote_items.items():
-                    if item_str not in old_remote_items:
+                for item in new_remote_snapshot.items:
+                    if not index_has(old_remote_index, item):
                         # Item was added remotely since last sync
-                        if item_str not in new_local_items:
+                        if not index_has(new_local_index, item):
                             # Item doesn't exist locally, safe to add
                             plan.append(SyncChange('add', item, 'remote', f'Item added to {target_name} since last sync'))
                         else:
-                            logging.debug(f"Item {item_str} already exists locally, skipping add")
+                            logging.debug(f"Item {item.to_string(normalize=True)} already exists locally, skipping add")
             
             # Find items removed remotely
             if receive_removes:
-                for item_str, item in old_remote_items.items():
-                    if item_str not in new_remote_items:
+                for item in old_remote_snapshot.items:
+                    if not index_has(new_remote_index, item):
                         # Item was removed remotely since last sync
-                        if item_str in new_local_items:
+                        if index_has(new_local_index, item):
                             # Item still exists locally, safe to remove
                             plan.append(SyncChange('remove', item, 'remote', f'Item removed from {target_name} since last sync'))
                         else:
-                            logging.debug(f"Item {item_str} already removed locally, skipping remove")
+                            logging.debug(f"Item {item.to_string(normalize=True)} already removed locally, skipping remove")
         
         # Handle conflicts (both changed since last sync)
         if local_changed_since_last_sync and remote_changed_since_last_sync:
@@ -377,7 +383,10 @@ class RemotePlaylistRepository(ABC):
                         music_file = MusicFile(
                             title=change.item.title,
                             artist=change.item.artist,
-                            album=change.item.album
+                            album=change.item.album,
+                            spotify_uri=change.item.spotify_uri,
+                            youtube_url=change.item.youtube_url,
+                            plex_rating_key=change.item.plex_rating_key
                         )
                         repo.add_music_file(playlist_id, music_file)
                         logging.info(f"Added track {change.item.to_string()} to local playlist")
@@ -393,6 +402,111 @@ class RemotePlaylistRepository(ABC):
                         logging.info(f"Removed track {change.item.to_string()} from local playlist")
                 except Exception as e:
                     logging.error(f"Error removing {change.item.to_string()} from local playlist: {e}")
+
+    def _apply_local_removal_guardrails(
+        self,
+        plan: List[SyncChange],
+        new_local_snapshot: PlaylistSnapshot,
+        sync_target: SyncTarget,
+        target_name: str,
+    ) -> List[SyncChange]:
+        """Prevent unexpectedly large remote-driven local deletions unless explicitly allowed."""
+        if not plan:
+            return plan
+
+        def parse_bool(value: Any, default: bool = False) -> bool:
+            if value is None:
+                return default
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, (int, float)):
+                return value != 0
+            if isinstance(value, str):
+                normalized = value.strip().casefold()
+                if normalized in {"1", "true", "yes", "y", "on"}:
+                    return True
+                if normalized in {"0", "false", "no", "n", "off", ""}:
+                    return False
+                return default
+            return default
+
+        def parse_float(value: Any, default: float) -> float:
+            if value is None:
+                return default
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return default
+
+        def parse_int(value: Any, default: int) -> int:
+            if value is None:
+                return default
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        config = sync_target.config or {}
+        allow_bulk_receive_removals = parse_bool(config.get("allow_bulk_receive_removals"), False)
+
+        if allow_bulk_receive_removals:
+            return plan
+
+        max_receive_removal_percent = parse_float(config.get("max_receive_removal_percent"), 0.30)
+        max_receive_removal_count = parse_int(config.get("max_receive_removal_count"), 25)
+        min_local_size_for_guard = parse_int(config.get("min_local_size_for_removal_guard"), 10)
+
+        local_removes = [
+            change for change in plan
+            if change.action == 'remove' and change.source == 'remote'
+        ]
+
+        local_size = len(new_local_snapshot.items)
+        remove_count = len(local_removes)
+
+        if remove_count == 0 or local_size < min_local_size_for_guard:
+            return plan
+
+        removal_ratio = remove_count / local_size if local_size else 0
+        exceeds_count = remove_count > max_receive_removal_count
+        exceeds_ratio = removal_ratio > max_receive_removal_percent
+
+        if not (exceeds_count or exceeds_ratio):
+            return plan
+
+        blocked = len(local_removes)
+        filtered_plan = [
+            change for change in plan
+            if not (change.action == 'remove' and change.source == 'remote')
+        ]
+
+        logging.warning(
+            "Guardrail blocked %d local deletions from target %s (%d/%d = %.1f%%). "
+            "Set config allow_bulk_receive_removals=true to bypass, or tune "
+            "max_receive_removal_percent/max_receive_removal_count.",
+            blocked,
+            target_name,
+            remove_count,
+            local_size,
+            removal_ratio * 100,
+        )
+
+        return filtered_plan
+
+    def apply_sync_guardrails(
+        self,
+        plan: List[SyncChange],
+        new_local_snapshot: PlaylistSnapshot,
+        sync_target: SyncTarget,
+        target_name: str,
+    ) -> List[SyncChange]:
+        """Apply guardrails to a sync plan before any local/remote mutations occur."""
+        return self._apply_local_removal_guardrails(
+            plan=plan,
+            new_local_snapshot=new_local_snapshot,
+            sync_target=sync_target,
+            target_name=target_name,
+        )
     
     def sync_playlist(self, local_repo, playlist_id: int, sync_target: SyncTarget):
         """
@@ -443,8 +557,9 @@ class RemotePlaylistRepository(ABC):
                 )
                 self.create_playlist(target_name, empty_snapshot)
                 new_snapshot = empty_snapshot
-                
-            self.write_snapshot(new_snapshot)
+
+            refreshed_snapshot = self.get_playlist_snapshot(target_name)
+            self.write_snapshot(refreshed_snapshot or new_snapshot)
             return
         
         # Create sync plan
@@ -454,10 +569,21 @@ class RemotePlaylistRepository(ABC):
             new_local_snapshot=local_snapshot,
             sync_target=sync_target
         )
+
+        sync_plan = self.apply_sync_guardrails(
+            plan=sync_plan,
+            new_local_snapshot=local_snapshot,
+            sync_target=sync_target,
+            target_name=target_name,
+        )
         
         # Apply sync plan
         self.apply_sync_plan(local_repo, playlist_id, target_name, sync_plan)
         
         # Update stored snapshot with current remote state
         if current_remote_snapshot:
-            self.write_snapshot(current_remote_snapshot)
+            if any(change.source == 'local' for change in sync_plan):
+                refreshed_snapshot = self.get_playlist_snapshot(target_name)
+                self.write_snapshot(refreshed_snapshot or current_remote_snapshot)
+            else:
+                self.write_snapshot(current_remote_snapshot)

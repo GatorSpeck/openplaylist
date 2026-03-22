@@ -5,6 +5,8 @@ import playlistRepository from '../../repositories/PlaylistRepository';
 import libraryRepository from '../../repositories/LibraryRepository';
 import PlaylistEntry from '../../lib/PlaylistEntry';
 import { LastFMRepository } from '../../repositories/LastFMRepository';
+import { plexRepository, PlexSearchResult } from '../../repositories/PlexRepository';
+import { youtubeRepository, YouTubeSearchResult } from '../../repositories/YouTubeRepository';
 
 interface TrackDetailsModalProps {
   entry: PlaylistEntry;
@@ -14,11 +16,19 @@ interface TrackDetailsModalProps {
 }
 
 const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({ 
-  entry, 
+  entry: entryProp, 
   playlistId, 
   onClose, 
   onEntryUpdated 
 }) => {
+  // Use local state for entry so we can update it immediately without waiting for parent
+  const [entry, setEntry] = useState(entryProp);
+  
+  // Update local entry state when prop changes
+  useEffect(() => {
+    setEntry(entryProp);
+  }, [entryProp]);
+  
   const [playlists, setPlaylists] = useState([]);
   const [showLinkSection, setShowLinkSection] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
@@ -40,10 +50,51 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
   const [lastFmSearchResults, setLastFmSearchResults] = useState([]);
   const [isSearchingLastFm, setIsSearchingLastFm] = useState(false);
   const [showLastFmSearch, setShowLastFmSearch] = useState(false);
+  const [plexSearchResults, setPlexSearchResults] = useState<PlexSearchResult[]>([]);
+  const [isSearchingPlex, setIsSearchingPlex] = useState(false);
+  const [showPlexSearch, setShowPlexSearch] = useState(false);
+  const [plexSearchQuery, setPlexSearchQuery] = useState(() => `${entry.getArtist()} ${entry.getTitle()}`.trim());
+  const [plexSearchFields, setPlexSearchFields] = useState({
+    title: entry.getTitle() || '',
+    artist: entry.getArtist() || '',
+    album: entry.getAlbum() || ''
+  });
+  const [youtubeSearchResults, setYoutubeSearchResults] = useState<YouTubeSearchResult[]>([]);
+  const [isSearchingYoutube, setIsSearchingYoutube] = useState(false);
+  const [showYoutubeSearch, setShowYoutubeSearch] = useState(false);
+  const [youtubeSearchFields, setYoutubeSearchFields] = useState({
+    title: entry.getTitle() || '',
+    artist: entry.getArtist() || '',
+    album: entry.getAlbum() || ''
+  });
+  const [showFullSizeArt, setShowFullSizeArt] = useState(false);
+  const [modalAlbumArt, setModalAlbumArt] = useState(null);
   
   if (!entry) return null;
 
   const lastFMRepository = new LastFMRepository();
+
+  // Fetch album art for the modal if not already available
+  useEffect(() => {
+    const fetchModalAlbumArt = async () => {
+      if (entry.details.art_url) {
+        setModalAlbumArt(entry.details.art_url);
+        return;
+      }
+      
+      if (entry.image_url) {
+        setModalAlbumArt(entry.image_url);
+        return;
+      }
+      
+      const url = await lastFMRepository.fetchAlbumArt(entry.getAlbumArtist(), entry.details.album);
+      if (url) {
+        setModalAlbumArt(url.image_url);
+      }
+    };
+
+    fetchModalAlbumArt();
+  }, [entry]);
 
   useEffect(() => {
     const fn = async () => {
@@ -306,7 +357,26 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
         onEntryUpdated(updatedEntry);
       }
       
-      onClose();
+      // Update local entry state immediately for UI responsiveness
+      setEntry(updatedEntry);
+      
+      // Clear external link input if this was an external source
+      if (sourceType !== 'local') {
+        const inputFieldMapping = {
+          'lastfm': 'last_fm_url',
+          'spotify': 'spotify_uri', 
+          'youtube': 'youtube_url',
+          'musicbrainz': 'mbid',
+          'plex': 'plex_rating_key'
+        };
+        const inputField = inputFieldMapping[sourceType];
+        if (inputField) {
+          setExternalLinkInputs(prev => ({ 
+            ...prev, 
+            [inputField]: '' 
+          }));
+        }
+      }
     } catch (error) {
       console.error(`Error unlinking ${sourceType}:`, error);
       alert(`Failed to unlink ${sourceType}. Please try again.`);
@@ -419,6 +489,198 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
     } catch (error) {
       console.error('Error linking Last.fm result:', error);
       alert('Failed to link Last.fm result. Please try again.');
+      setLinkingExternal(null);
+    }
+  };
+
+  const handleSearchPlex = async () => {
+    setIsSearchingPlex(true);
+    try {
+      // Build query from individual fields, fallback to combined query
+      let query = '';
+      if (plexSearchFields.title && plexSearchFields.artist) {
+        query = `${plexSearchFields.artist} ${plexSearchFields.title}`;
+      } else if (plexSearchFields.title) {
+        query = plexSearchFields.title;
+      } else if (plexSearchFields.artist) {
+        query = plexSearchFields.artist;
+      } else {
+        query = plexSearchQuery.trim() || `${entry.getArtist()} ${entry.getTitle()}`.trim();
+      }
+      
+      const results = await plexRepository.searchTracks(
+        query, 
+        plexSearchFields.title, 
+        plexSearchFields.artist, 
+        plexSearchFields.album
+      );
+      
+      setPlexSearchResults(results || []);
+      setShowPlexSearch(true);
+    } catch (error) {
+      console.error('Error searching Plex:', error);
+      alert('Failed to search Plex. Please try again.');
+    } finally {
+      setIsSearchingPlex(false);
+    }
+  };
+
+  const handleSelectPlexResult = async (result: PlexSearchResult) => {
+    if (!playlistId) {
+      console.error('Cannot link without playlist ID');
+      return;
+    }
+
+    const plexRatingKey = result.plex_rating_key;
+    if (!plexRatingKey) {
+      alert('Selected result does not have a Plex rating key');
+      return;
+    }
+
+    setLinkingExternal('plex_rating_key');
+    
+    try {
+      const linkRequest = {
+        track_id: entry.id,
+        updates: {
+          plex_rating_key: plexRatingKey
+        }
+      };
+
+      const response = await fetch(`/api/playlists/${playlistId}/links`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(linkRequest)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Create updated entry with the new Plex rating key
+      const updatedEntry = new PlaylistEntry({
+        ...entry,
+        details: {
+          ...entry.details,
+          plex_rating_key: plexRatingKey
+        }
+      });
+
+      if (onEntryUpdated) {
+        onEntryUpdated(updatedEntry);
+      }
+      
+      // Update local entry state immediately for UI responsiveness
+      setEntry(updatedEntry);
+      
+      // Close search results but keep the main modal open
+      setShowPlexSearch(false);
+      setPlexSearchResults([]);
+      setLinkingExternal(null);
+      
+      // Clear the manual input field since it's now linked
+      setExternalLinkInputs(prev => ({ 
+        ...prev, 
+        plex_rating_key: '' 
+      }));
+      
+    } catch (error) {
+      console.error('Error linking Plex result:', error);
+      alert('Failed to link Plex result. Please try again.');
+      setLinkingExternal(null);
+    }
+  };
+
+  const handleSearchYoutube = async () => {
+    setIsSearchingYoutube(true);
+    try {
+      let query = '';
+      if (youtubeSearchFields.title && youtubeSearchFields.artist) {
+        query = `${youtubeSearchFields.artist} ${youtubeSearchFields.title}`;
+      } else if (youtubeSearchFields.title) {
+        query = youtubeSearchFields.title;
+      } else if (youtubeSearchFields.artist) {
+        query = youtubeSearchFields.artist;
+      } else {
+        query = `${entry.getArtist()} ${entry.getTitle()}`.trim();
+      }
+
+      const results = await youtubeRepository.searchTracks(
+        query,
+        youtubeSearchFields.title,
+        youtubeSearchFields.artist,
+        youtubeSearchFields.album
+      );
+
+      setYoutubeSearchResults(results || []);
+      setShowYoutubeSearch(true);
+    } catch (error) {
+      console.error('Error searching YouTube Music:', error);
+      alert('Failed to search YouTube Music. Please try again.');
+    } finally {
+      setIsSearchingYoutube(false);
+    }
+  };
+
+  const handleSelectYoutubeResult = async (result: YouTubeSearchResult) => {
+    if (!playlistId) {
+      console.error('Cannot link without playlist ID');
+      return;
+    }
+
+    const youtubeVideoId = result.youtube_url;
+    if (!youtubeVideoId) {
+      alert('Selected result does not have a YouTube video ID');
+      return;
+    }
+
+    setLinkingExternal('youtube_url');
+
+    try {
+      const linkRequest = {
+        track_id: entry.id,
+        updates: {
+          youtube_url: youtubeVideoId
+        }
+      };
+
+      const response = await fetch(`/api/playlists/${playlistId}/links`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(linkRequest)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const updatedEntry = new PlaylistEntry({
+        ...entry,
+        details: {
+          ...entry.details,
+          youtube_url: youtubeVideoId
+        }
+      });
+
+      if (onEntryUpdated) {
+        onEntryUpdated(updatedEntry);
+      }
+
+      setEntry(updatedEntry);
+      setShowYoutubeSearch(false);
+      setYoutubeSearchResults([]);
+      setExternalLinkInputs(prev => ({
+        ...prev,
+        youtube_url: ''
+      }));
+      setLinkingExternal(null);
+    } catch (error) {
+      console.error('Error linking YouTube Music result:', error);
+      alert('Failed to link YouTube Music result. Please try again.');
       setLinkingExternal(null);
     }
   };
@@ -542,6 +804,8 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
     
     const unlinkType = unlinkTypeMapping[sourceType];
     const isLastFm = sourceType === 'last_fm_url';
+    const isPlex = sourceType === 'plex_rating_key';
+    const isYoutube = sourceType === 'youtube_url';
     
     return (
       <div className="external-source-item" key={sourceType}>
@@ -594,6 +858,24 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                     className="search-button"
                   >
                     {isSearchingLastFm ? 'Searching...' : 'Search Last.fm'}
+                  </button>
+                )}
+                {isPlex && (
+                  <button 
+                    onClick={handleSearchPlex}
+                    disabled={isSearchingPlex}
+                    className="search-button"
+                  >
+                    {isSearchingPlex ? 'Searching...' : 'Search Plex'}
+                  </button>
+                )}
+                {isYoutube && (
+                  <button
+                    onClick={handleSearchYoutube}
+                    disabled={isSearchingYoutube}
+                    className="search-button"
+                  >
+                    {isSearchingYoutube ? 'Searching...' : 'Search YouTube Music'}
                   </button>
                 )}
               </div>
@@ -650,6 +932,200 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                   )}
                 </div>
               )}
+              
+              {/* Plex Search Results */}
+              {isPlex && showPlexSearch && (
+                <div className="plex-search-results">
+                  <div className="search-header">
+                    <h4>Plex Search Results:</h4>
+                    <button 
+                      onClick={() => setShowPlexSearch(false)}
+                      className="close-search-button"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  
+                  <div className="search-fields-group">
+                    <div className="search-field">
+                      <label htmlFor="plex-search-title">Title:</label>
+                      <input
+                        id="plex-search-title"
+                        type="text"
+                        value={plexSearchFields.title}
+                        onChange={(e) => setPlexSearchFields(prev => ({ ...prev, title: e.target.value }))}
+                        placeholder="Enter track title..."
+                        className="search-input"
+                      />
+                    </div>
+                    
+                    <div className="search-field">
+                      <label htmlFor="plex-search-artist">Artist:</label>
+                      <input
+                        id="plex-search-artist"
+                        type="text"
+                        value={plexSearchFields.artist}
+                        onChange={(e) => setPlexSearchFields(prev => ({ ...prev, artist: e.target.value }))}
+                        placeholder="Enter artist name..."
+                        className="search-input"
+                      />
+                    </div>
+                    
+                    <div className="search-field">
+                      <label htmlFor="plex-search-album">Album:</label>
+                      <input
+                        id="plex-search-album"
+                        type="text"
+                        value={plexSearchFields.album}
+                        onChange={(e) => setPlexSearchFields(prev => ({ ...prev, album: e.target.value }))}
+                        placeholder="Enter album name..."
+                        className="search-input"
+                      />
+                    </div>
+                    
+                    <div className="search-actions">
+                      <button 
+                        onClick={handleSearchPlex} 
+                        disabled={isSearchingPlex || (!plexSearchFields.title && !plexSearchFields.artist)}
+                        className="search-button"
+                      >
+                        {isSearchingPlex ? 'Searching...' : 'Search Plex'}
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {plexSearchResults.length > 0 ? (
+                    <div className="search-results-list">
+                      {plexSearchResults.map((result, index) => (
+                        <div key={index} className="search-result-item">
+                          <div className="result-content">
+                            <div className="result-info">
+                              <strong>{result.title}</strong>
+                              {result.artist && <><br /><em>by {result.artist}</em></>}
+                              {result.album && <><br /><span>Album: {result.album}</span></>}
+                              <br /><small>Rating Key: {result.plex_rating_key}</small>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => handleSelectPlexResult(result)}
+                            className="select-button"
+                            disabled={linkingExternal === 'plex_rating_key'}
+                          >
+                            {linkingExternal === 'plex_rating_key' ? 'Linking...' : 'Select'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    plexSearchResults.length === 0 && !isSearchingPlex && (
+                      <p className="no-results">No results found. Try searching with different terms or enter the rating key manually.</p>
+                    )
+                  )}
+                </div>
+              )}
+
+              {/* YouTube Music Search Results */}
+              {isYoutube && showYoutubeSearch && (
+                <div className="lastfm-search-results">
+                  <div className="search-header">
+                    <h4>YouTube Music Search Results:</h4>
+                    <button
+                      onClick={() => setShowYoutubeSearch(false)}
+                      className="close-search-button"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  <div className="search-fields-group">
+                    <div className="search-field">
+                      <label htmlFor="youtube-search-title">Title:</label>
+                      <input
+                        id="youtube-search-title"
+                        type="text"
+                        value={youtubeSearchFields.title}
+                        onChange={(e) => setYoutubeSearchFields(prev => ({ ...prev, title: e.target.value }))}
+                        placeholder="Enter track title..."
+                        className="search-input"
+                      />
+                    </div>
+
+                    <div className="search-field">
+                      <label htmlFor="youtube-search-artist">Artist:</label>
+                      <input
+                        id="youtube-search-artist"
+                        type="text"
+                        value={youtubeSearchFields.artist}
+                        onChange={(e) => setYoutubeSearchFields(prev => ({ ...prev, artist: e.target.value }))}
+                        placeholder="Enter artist name..."
+                        className="search-input"
+                      />
+                    </div>
+
+                    <div className="search-field">
+                      <label htmlFor="youtube-search-album">Album:</label>
+                      <input
+                        id="youtube-search-album"
+                        type="text"
+                        value={youtubeSearchFields.album}
+                        onChange={(e) => setYoutubeSearchFields(prev => ({ ...prev, album: e.target.value }))}
+                        placeholder="Enter album name..."
+                        className="search-input"
+                      />
+                    </div>
+
+                    <div className="search-actions">
+                      <button
+                        onClick={handleSearchYoutube}
+                        disabled={isSearchingYoutube || (!youtubeSearchFields.title && !youtubeSearchFields.artist)}
+                        className="search-button"
+                      >
+                        {isSearchingYoutube ? 'Searching...' : 'Search YouTube Music'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {youtubeSearchResults.length > 0 ? (
+                    <div className="search-results-list">
+                      {youtubeSearchResults.map((result, index) => (
+                        <div key={index} className="search-result-item">
+                          <div className="result-content">
+                            <div className="result-info">
+                              <strong>{result.title}</strong>
+                              {result.artist && <><br /><em>by {result.artist}</em></>}
+                              {result.album && <><br /><span>Album: {result.album}</span></>}
+                              {result.youtube_url && (
+                                <>
+                                  <br />
+                                  <a
+                                    href={`https://www.youtube.com/watch?v=${result.youtube_url}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="lastfm-link"
+                                  >
+                                    View on YouTube
+                                  </a>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleSelectYoutubeResult(result)}
+                            className="select-button"
+                            disabled={linkingExternal === 'youtube_url'}
+                          >
+                            {linkingExternal === 'youtube_url' ? 'Linking...' : 'Select'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    youtubeSearchResults.length === 0 && !isSearchingYoutube && (
+                      <p className="no-results">No results found. Try searching with different terms or enter the URL manually.</p>
+                    )
+                  )}
+                </div>
+              )}
             </div>
           )
         )}
@@ -673,6 +1149,31 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
       <div className="modal-content" onClick={e => e.stopPropagation()}>
         <h2>Entry Details</h2>
         <div className="track-details">
+          {/* Album Art Display */}
+          {modalAlbumArt && (
+            <div className="album-art-section">
+              <img 
+                src={modalAlbumArt}
+                alt="Album artwork"
+                className="album-art-thumbnail"
+                onClick={() => setShowFullSizeArt(true)}
+                style={{
+                  width: '120px',
+                  height: '120px',
+                  objectFit: 'cover',
+                  cursor: 'pointer',
+                  borderRadius: '4px',
+                  marginBottom: '16px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                }}
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+                title="Click to view full size"
+              />
+            </div>
+          )}
+          
           <p><strong>ID:</strong> {entry.id}</p>
           <p><strong>Type:</strong> {entry.entry_type}</p>
           <p><strong>Title:</strong> {entry.getTitle()}</p>
@@ -895,6 +1396,61 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
           <button onClick={onClose}>Close</button>
         </div>
       </div>
+      
+      {/* Full-size album art modal */}
+      {showFullSizeArt && modalAlbumArt && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => setShowFullSizeArt(false)}
+          style={{ zIndex: 2000 }}
+        >
+          <div 
+            className="fullsize-art-container"
+            onClick={e => e.stopPropagation()}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              maxWidth: '90vw',
+              maxHeight: '90vh'
+            }}
+          >
+            <img 
+              src={modalAlbumArt}
+              alt="Album artwork - full size"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain',
+                borderRadius: '8px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+              }}
+              onClick={() => setShowFullSizeArt(false)}
+            />
+            <button
+              onClick={() => setShowFullSizeArt(false)}
+              style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                background: 'rgba(0,0,0,0.7)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '50%',
+                width: '40px',
+                height: '40px',
+                fontSize: '20px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
