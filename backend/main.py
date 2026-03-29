@@ -618,6 +618,7 @@ def sync_playlist_background(playlist_id: int, force_push: bool, job_id: str):
     from database import Database
     
     job_context = JobContext(job_id)
+    db = None
     
     try:
         job_context.update_progress(0.0, "Starting playlist sync")
@@ -642,6 +643,10 @@ def sync_playlist_background(playlist_id: int, force_push: bool, job_id: str):
     except Exception as e:
         logging.error(f"Playlist sync failed: {e}", exc_info=True)
         job_tracker.fail_job(job_id, str(e))
+    finally:
+        # Ensure session is properly closed
+        if db:
+            db.close()
 
 @router.get("/scan/progress", response_model=ScanResults)
 def scan_progress():
