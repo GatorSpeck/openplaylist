@@ -353,16 +353,21 @@ def scan_directory(directory: str, full=False, job_id: str = None):
                 continue
 
             last_modified_time = datetime.fromtimestamp(os.path.getmtime(full_path))
-            existing_file = (
-                db.query(MusicFileDB).join(LocalFileDB).filter(LocalFileDB.path == full_path).first()
-            )
+            
+            # Check for existing LocalFileDB by path directly (primary key check)
+            existing_local_file = db.query(LocalFileDB).filter(LocalFileDB.path == full_path).first()
+            
+            # Then check for associated MusicFileDB through relationship
+            existing_file = None
+            if existing_local_file:
+                existing_file = existing_local_file.music_file
 
             found_existing_file = False
-            if existing_file and existing_file.missing:
+            if existing_local_file and existing_local_file.missing:
                 found_existing_file = True
-                existing_file.missing = False
+                existing_local_file.missing = False
 
-            if (not full) and (not found_existing_file) and existing_file and existing_file.last_scanned and existing_file.last_scanned >= last_modified_time:
+            if (not full) and (not found_existing_file) and existing_local_file and existing_local_file.last_scanned and existing_local_file.last_scanned >= last_modified_time:
                 continue  # Skip files that have not changed
 
             metadata = None
@@ -408,31 +413,42 @@ def scan_directory(directory: str, full=False, job_id: str = None):
                     albums_and_artists_seen[album_and_artist] = album
 
             # Update or add the file in the database
-            if existing_file:
+            if existing_local_file:
+                # Update existing LocalFileDB record
                 scan_results.files_updated += 1
-
-                # existing_file.last_modified = last_modified_time
-                existing_file.title = metadata.title
-                existing_file.artist = metadata.artist
-                existing_file.album = metadata.album
-                existing_file.album_artist = metadata.album_artist
-                existing_file.year = year
-                existing_file.length = metadata.length
-                existing_file.publisher = metadata.publisher
-                existing_file.rating = metadata.rating
-                existing_file.genres = [
-                    TrackGenreDB(parent_type="music_file", genre=genre)
+                existing_local_file.last_scanned = datetime.now()
+                existing_local_file.size = file_size
+                existing_local_file.file_title = metadata.title
+                existing_local_file.file_artist = metadata.artist
+                existing_local_file.file_album_artist = metadata.album_artist
+                existing_local_file.file_album = metadata.album
+                existing_local_file.file_year = year
+                existing_local_file.file_length = metadata.length
+                existing_local_file.file_publisher = metadata.publisher
+                existing_local_file.file_rating = metadata.rating
+                existing_local_file.file_comments = metadata.comments
+                existing_local_file.file_track_number = metadata.track_number
+                existing_local_file.file_disc_number = metadata.disc_number
+                existing_local_file.file_genres = [
+                    LocalFileGenreDB(genre=genre)
                     for genre in metadata.genres
                 ]
-                existing_file.comments = metadata.comments
-                existing_file.track_number = metadata.track_number
-                existing_file.disc_number = metadata.disc_number
-
-                # get existing MusicFile record
-                this_track = db.query(MusicFileDB).join(LocalFileDB).filter(LocalFileDB.id == existing_file.id).first()
-                if this_track:
+                
+                # Update or create associated MusicFileDB
+                if existing_file:
+                    # Update existing MusicFileDB with synced metadata from file
+                    existing_file.sync_from_file_metadata()
                     db.flush()
+                else:
+                    # Create new MusicFileDB for this LocalFileDB
+                    this_track = metadata.to_db()
+                    this_track.local_file = existing_local_file
                     this_track.sync_from_file_metadata()
+                    db.add(this_track)
+                    
+                    if album is not None:
+                        db.flush()
+                        album.tracks.append(AlbumTrackDB(linked_track_id=this_track.id, order=len(album.tracks)))
 
             else:
                 scan_results.files_indexed += 1
