@@ -1281,142 +1281,133 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
         )}
 
         {/* Column Configuration Modal */}
-        {columnConfigOpen && (
-          <div className="fixed inset-0 z-[1200] flex items-center justify-center overflow-y-auto bg-text/40 px-4 py-6 dark:bg-text-dark/25" onClick={() => setColumnConfigOpen(false)}>
-            <div 
-              className="w-full max-w-[500px] max-h-[calc(100vh-3rem)] overflow-y-auto rounded border border-border bg-surface text-text shadow-lg dark:border-border-dark dark:bg-surface-dark-elevated dark:text-text-dark"
-              style={{
-                width: '90vw',
-                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="border-b border-border p-5 dark:border-border-dark">
-                <h3 style={{ margin: '0', fontSize: '18px' }}>Configure Columns</h3>
-              </div>
-              <div className="column-config-content p-5">
-                <p>Select which columns to display:</p>
-                <div className="column-checkboxes">
-                  {visibleColumns.map((columnKey, index) => {
-                    const column = availableColumns.find(col => col.key === columnKey);
-                    if (!column) return null;
-                    
-                    return (
-                      <label 
-                        key={column.key} 
-                        className="column-checkbox-item draggable-column border border-border dark:border-border-dark rounded"
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData('text/plain', index.toString());
-                          e.currentTarget.style.opacity = '0.5';
-                        }}
-                        onDragEnd={(e) => {
-                          e.currentTarget.style.opacity = '1';
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
-                          const dropIndex = index;
-                          
-                          if (dragIndex !== dropIndex) {
-                            const newColumns = [...visibleColumns];
-                            const draggedColumn = newColumns[dragIndex];
-                            newColumns.splice(dragIndex, 1);
-                            newColumns.splice(dropIndex, 0, draggedColumn);
-                            updateColumnVisibility(newColumns);
-                          }
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          marginBottom: '10px',
-                          padding: '8px',
-                          cursor: 'grab'
-                        }}
-                      >
-                        <span className="drag-handle" style={{ cursor: 'grab', marginRight: '8px' }}>⋮⋮</span>
-                        <input
-                          type="checkbox"
-                          checked={true}
-                          onChange={(e) => {
-                            if (!e.target.checked && visibleColumns.length > 1) {
-                              updateColumnVisibility(visibleColumns.filter(col => col !== column.key));
-                            }
-                          }}
-                          disabled={visibleColumns.length === 1}
-                          style={{ marginRight: '10px' }}
-                        />
-                        <div>
-                          <div style={{ fontWeight: 'bold' }}>{column.label}</div>
-                          <div className="text-xs text-text-muted dark:text-text-dark/60">{column.description}</div>
-                        </div>
-                      </label>
-                    );
-                  })}
-                  
-                  {/* Hidden columns that can be added */}
-                  {availableColumns
-                    .filter(column => !visibleColumns.includes(column.key))
-                    .map(column => (
-                      <label 
-                        key={column.key} 
-                        className="column-checkbox-item border border-border dark:border-border-dark rounded opacity-60"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          marginBottom: '10px',
-                          padding: '8px'
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={false}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              updateColumnVisibility([...visibleColumns, column.key]);
-                            }
-                          }}
-                          style={{ marginRight: '10px' }}
-                        />
-                        <div>
-                          <div style={{ fontWeight: 'bold' }}>{column.label}</div>
-                          <div className="text-xs text-text-muted dark:text-text-dark/60">{column.description}</div>
-                        </div>
-                      </label>
-                    ))
-                  }
-                </div>
-                <div className="flex gap-2.5 justify-end mt-5 border-t border-border dark:border-border-dark pt-4" style={{ 
-                  display: 'flex', 
-                  gap: '10px', 
-                  justifyContent: 'flex-end'
-                }}>
-                  <button 
-                    onClick={() => {
-                      updateColumnVisibility(defaultColumns);
-                      setColumnWidths(defaultColumnWidths);
+        <Modal
+          open={columnConfigOpen}
+          onClose={() => setColumnConfigOpen(false)}
+          title="Configure Columns"
+          size="md"
+        >
+          <div className="column-config-content">
+            <p>Select which columns to display:</p>
+            <div className="column-checkboxes">
+              {visibleColumns.map((columnKey, index) => {
+                const column = availableColumns.find(col => col.key === columnKey);
+                if (!column) return null;
+                
+                return (
+                  <label 
+                    key={column.key} 
+                    className="column-checkbox-item draggable-column border border-border dark:border-border-dark rounded"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('text/plain', index.toString());
+                      e.currentTarget.style.opacity = '0.5';
                     }}
-                    className="px-4 py-2 rounded bg-surface-subtle dark:bg-surface-dark border border-border dark:border-border-dark text-text dark:text-text-dark transition hover:bg-surface-muted dark:hover:bg-surface-dark-elevated"
+                    onDragEnd={(e) => {
+                      e.currentTarget.style.opacity = '1';
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                      const dropIndex = index;
+                      
+                      if (dragIndex !== dropIndex) {
+                        const newColumns = [...visibleColumns];
+                        const draggedColumn = newColumns[dragIndex];
+                        newColumns.splice(dragIndex, 1);
+                        newColumns.splice(dropIndex, 0, draggedColumn);
+                        updateColumnVisibility(newColumns);
+                      }
+                    }}
                     style={{
-                      cursor: 'pointer'
+                      display: 'flex',
+                      alignItems: 'center',
+                      marginBottom: '10px',
+                      padding: '8px',
+                      cursor: 'grab'
                     }}
                   >
-                    Reset to Default
-                  </button>
-                  <button 
-                    onClick={() => setColumnConfigOpen(false)}
-                    className="rounded bg-accent px-4 py-2 text-sm font-medium text-text-dark transition hover:bg-accent-hover"
+                    <span className="drag-handle" style={{ cursor: 'grab', marginRight: '8px' }}>⋮⋮</span>
+                    <input
+                      type="checkbox"
+                      checked={true}
+                      onChange={(e) => {
+                        if (!e.target.checked && visibleColumns.length > 1) {
+                          updateColumnVisibility(visibleColumns.filter(col => col !== column.key));
+                        }
+                      }}
+                      disabled={visibleColumns.length === 1}
+                      style={{ marginRight: '10px' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 'bold' }}>{column.label}</div>
+                      <div className="text-xs text-text-muted dark:text-text-dark/60">{column.description}</div>
+                    </div>
+                  </label>
+                );
+              })}
+              
+              {/* Hidden columns that can be added */}
+              {availableColumns
+                .filter(column => !visibleColumns.includes(column.key))
+                .map(column => (
+                  <label 
+                    key={column.key} 
+                    className="column-checkbox-item border border-border dark:border-border-dark rounded opacity-60"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      marginBottom: '10px',
+                      padding: '8px'
+                    }}
                   >
-                    Done
-                  </button>
-                </div>
-              </div>
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          updateColumnVisibility([...visibleColumns, column.key]);
+                        }
+                      }}
+                      style={{ marginRight: '10px' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 'bold' }}>{column.label}</div>
+                      <div className="text-xs text-text-muted dark:text-text-dark/60">{column.description}</div>
+                    </div>
+                  </label>
+                ))
+              }
+            </div>
+            <div className="flex gap-2.5 justify-end mt-5 border-t border-border dark:border-border-dark pt-4" style={{ 
+              display: 'flex', 
+              gap: '10px', 
+              justifyContent: 'flex-end'
+            }}>
+              <button 
+                onClick={() => {
+                  updateColumnVisibility(defaultColumns);
+                  setColumnWidths(defaultColumnWidths);
+                }}
+                className="px-4 py-2 rounded bg-surface-subtle dark:bg-surface-dark border border-border dark:border-border-dark text-text dark:text-text-dark transition hover:bg-surface-muted dark:hover:bg-surface-dark-elevated"
+                style={{
+                  cursor: 'pointer'
+                }}
+              >
+                Reset to Default
+              </button>
+              <button 
+                onClick={() => setColumnConfigOpen(false)}
+                className="rounded bg-accent px-4 py-2 text-sm font-medium text-text-dark transition hover:bg-accent-hover"
+              >
+                Done
+              </button>
             </div>
           </div>
-        )}
+        </Modal>
 
         {libraryStats.visible && (
           <div>
