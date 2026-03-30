@@ -35,6 +35,10 @@ The Library Scanning feature enables OpenPlaylist to discover, catalog, and mana
 - Q: How frequently should progress updates be reported during active scans?
 - A: Batch updates every 100 files processed OR every 5 seconds, whichever occurs first. This balances real-time feedback with performance (avoids excessive DB/UI updates).
 
+**Missing File Detection Strategy**
+- Q: How should scan detect files that were deleted from disk without running a separate prune pass?
+- A: Use a mark-and-sweep pass within each scan run. Capture scan start timestamp, update each seen file's `last_scanned` to that timestamp, then mark as missing any active file under configured scan roots with `last_scanned < scan_started_at`.
+
 ---
 
 ## User Scenarios & Testing
@@ -209,7 +213,7 @@ A user's music collection includes files in various audio formats (MP3, FLAC, WA
 - **FR-008**: System MUST provide real-time progress tracking during ongoing scans with batch updates (every 100 files processed OR every 5 seconds, whichever occurs first) including percentage complete, files processed count, and elapsed time
 - **FR-009**: System MUST organize scanned tracks into albums based on extracted album metadata
 - **FR-010**: System MUST maintain separate "file metadata" (immutable source from audio tags) and "user-editable metadata" (overridable by users)
-- **FR-011**: System MUST mark files as "missing" when they are deleted from disk but keep records in database for historical tracking
+- **FR-011**: System MUST mark files as "missing" when they are deleted from disk but keep records in database for historical tracking, using an in-scan mark-and-sweep strategy (no separate prune dependency for correctness)
 - **FR-012**: System MUST handle metadata extraction errors gracefully by skipping failed files and immediately committing successfully extracted metadata, with errors logged for user review and retry in subsequent scans
 - **FR-013**: System MUST support job tracking for scan operations with progress, status, and error logging
 - **FR-014**: System MUST support configurable scan locations stored in the database as user settings/preferences, accessible and modifiable through the application UI

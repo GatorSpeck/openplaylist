@@ -26,7 +26,7 @@ from job_tracker import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from starlette.middleware.base import BaseHTTPMiddleware
 from database import Database
 from models import *
@@ -315,12 +315,14 @@ def scan_directory(directory: str, full=False, job_id: str = None):
 
     logging.info(f"Scanning directory {directory}, full={full}")
     start_time = time.time()
+    scan_started_at = datetime.now()
     
     if job_context:
         job_context.update_progress(0.0, f"Starting {'full' if full else 'incremental'} scan")
 
     # read directory paths from config file
     all_files = []
+    music_paths = []
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r") as f:
             config = json.load(f)
@@ -332,6 +334,12 @@ def scan_directory(directory: str, full=False, job_id: str = None):
                         for file in files:
                             all_files.append(os.path.join(root, file))
 
+    if not music_paths:
+        music_paths = [str(directory)]
+        for root, _, files in os.walk(directory):
+            for file in files:
+                all_files.append(os.path.join(root, file))
+
     db = Database.get_session()
 
     albums_and_artists_seen = {}
@@ -342,7 +350,7 @@ def scan_directory(directory: str, full=False, job_id: str = None):
     for full_path in tqdm(all_files, desc="Scanning files"):
         try:
             files_seen += 1
-            scan_results.progress = round(files_seen / total_files * 100, 1)
+            scan_results.progress = round(files_seen / total_files * 100, 1) if total_files else 100.0
             
             # Update job progress every 10 files or for the last file
             if job_context and (files_seen % 10 == 0 or files_seen == len(all_files)):
@@ -416,7 +424,7 @@ def scan_directory(directory: str, full=False, job_id: str = None):
             if existing_local_file:
                 # Update existing LocalFileDB record
                 scan_results.files_updated += 1
-                existing_local_file.last_scanned = datetime.now()
+                existing_local_file.last_scanned = scan_started_at
                 existing_local_file.size = file_size
                 existing_local_file.file_title = metadata.title
                 existing_local_file.file_artist = metadata.artist
@@ -460,8 +468,8 @@ def scan_directory(directory: str, full=False, job_id: str = None):
                 local_file = LocalFileDB(
                     path=full_path,
                     kind=metadata.kind,
-                    first_scanned=datetime.now(),
-                    last_scanned=datetime.now(),
+                    first_scanned=scan_started_at,
+                    last_scanned=scan_started_at,
                     size=file_size,
                     # Store file metadata
                     file_title=metadata.title,
@@ -504,6 +512,32 @@ def scan_directory(directory: str, full=False, job_id: str = None):
         except Exception as e:
             logging.error(f"Failed to scan file {full_path}: {e}", exc_info=True)
 
+    # Mark-and-sweep for deleted files: any active file under scanned roots that
+    # was not touched during this scan run is now considered missing.
+    missing_query = db.query(LocalFileDB).filter(
+        LocalFileDB.missing == False,
+        or_(LocalFileDB.last_scanned.is_(None), LocalFileDB.last_scanned < scan_started_at),
+    )
+
+    scan_roots = []
+    for root in music_paths:
+        normalized_root = str(pathlib.Path(root))
+        if not normalized_root.endswith(os.sep):
+            normalized_root = normalized_root + os.sep
+        scan_roots.append(normalized_root)
+
+    if scan_roots:
+        missing_query = missing_query.filter(or_(*[LocalFileDB.path.startswith(root) for root in scan_roots]))
+
+    stale_files = missing_query.all()
+    for stale_file in stale_files:
+        stale_file.missing = True
+        stale_file.last_scanned = scan_started_at
+
+    scan_results.files_missing = len(stale_files)
+    if stale_files:
+        logging.info(f"Marked {len(stale_files)} files as missing during scan sweep")
+
     db.commit()
     db.close()
 
@@ -512,11 +546,17 @@ def scan_directory(directory: str, full=False, job_id: str = None):
     # Complete job tracking if job_id was provided
     if job_context:
         duration = time.time() - start_time
-        result_message = f"Scan completed in {duration:.2f} seconds. Added {scan_results.files_added} new files, updated {scan_results.files_updated} existing files."
+        result_message = (
+            f"Scan completed in {duration:.2f} seconds. "
+            f"Added {scan_results.files_added} new files, "
+            f"updated {scan_results.files_updated} existing files, "
+            f"marked {scan_results.files_missing} missing files."
+        )
         job_context.update_progress(1.0, result_message)
         job_tracker.complete_job(job_id, {
             "added_count": scan_results.files_added,
             "updated_count": scan_results.files_updated,
+            "missing_count": scan_results.files_missing,
             "duration_seconds": duration,
             "total_files": len(all_files)
         })
@@ -555,7 +595,6 @@ def scan(background_tasks: BackgroundTasks):
         raise HTTPException(status_code=409, detail="Scan already in progress")
     
     background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), full=False)
-    background_tasks.add_task(prune_music_files)
 
     return HTTPException(status_code=202, detail="Scan started")
 
@@ -565,7 +604,6 @@ def full_scan(background_tasks: BackgroundTasks):
         raise HTTPException(status_code=409, detail="Scan already in progress")
 
     background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), full=True)
-    background_tasks.add_task(prune_music_files)
 
     return HTTPException(status_code=202, detail="Scan started")
 
@@ -585,7 +623,6 @@ def scan_with_job(background_tasks: BackgroundTasks):
     
     # Start background task with job tracking
     background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), False, job_id)
-    background_tasks.add_task(prune_music_files)
     
     return {"message": "Scan started", "job_id": job_id}
 
@@ -604,7 +641,6 @@ def full_scan_with_job(background_tasks: BackgroundTasks):
     
     # Start background task with job tracking
     background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), True, job_id)
-    background_tasks.add_task(prune_music_files)
     
     return {"message": "Full scan started", "job_id": job_id}
 
