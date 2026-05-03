@@ -599,13 +599,14 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     const newOrder = entries.length ? entries[entries.length - 1].order + 1 : 0;
 
     const tracksToAdd = (Array.isArray(tracks) ? tracks : [tracks]).map((track, idx) => {
-      let thisTrack = track;
+      const thisTrack = new PlaylistEntry(track);
       thisTrack.order = idx + newOrder;
-      thisTrack.music_file_id = track.id;
+      // Keep only a real music_file_id from the source track; do not infer from UI ids.
+      thisTrack.music_file_id = track.music_file_id ?? null;
 
       // set ID to a random number if not set
       thisTrack.id = track.id || Math.floor(Math.random() * (10000000 - 1000000) + 1000000);
-      
+
       thisTrack.entry_type = track.entry_type || 'requested';
       return thisTrack;
     });
