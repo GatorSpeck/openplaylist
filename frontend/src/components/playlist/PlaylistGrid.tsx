@@ -598,18 +598,22 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const addTracksToPlaylist = async (tracks: PlaylistEntry[]) => {
     const newOrder = entries.length ? entries[entries.length - 1].order + 1 : 0;
 
-    const tracksToAdd = (Array.isArray(tracks) ? tracks : [tracks]).map((track, idx) => {
+    const tracksToAdd = await Promise.all((Array.isArray(tracks) ? tracks : [tracks]).map(async (track, idx) => {
+      const entryType = track.entry_type || 'music_file';
+      const reservedEntry = await playlistRepository.reserveEntryId(
+        playlistID,
+        entryType
+      );
       const thisTrack = new PlaylistEntry(track);
       thisTrack.order = idx + newOrder;
       // Keep only a real music_file_id from the source track; do not infer from UI ids.
       thisTrack.music_file_id = track.music_file_id ?? null;
 
-      // set ID to a random number if not set
-      thisTrack.id = track.id || Math.floor(Math.random() * (10000000 - 1000000) + 1000000);
+      thisTrack.id = reservedEntry.id;
 
-      thisTrack.entry_type = track.entry_type || 'requested';
+      thisTrack.entry_type = entryType;
       return thisTrack;
-    });
+    }));
 
     pushToHistory(entries);
 

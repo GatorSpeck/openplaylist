@@ -132,6 +132,22 @@ def add_to_playlist(
         logging.error(f"Failed to add to playlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to add to playlist")
 
+@router.post("/{playlist_id}/reserve-entry")
+def reserve_playlist_entry(
+    playlist_id: int,
+    request_data: dict = Body(default={}),
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+):
+    try:
+        entry_type = request_data.get("entry_type", "music_file")
+        entry = repo.reserve_entry_id(playlist_id, entry_type)
+        return {"id": entry.id, "entry_type": entry.entry_type}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logging.error(f"Failed to reserve playlist entry: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to reserve playlist entry")
+
 @router.post("/{playlist_id}/remove")
 def remove_from_playlist(
     playlist_id: int,

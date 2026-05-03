@@ -108,6 +108,13 @@ export class PlaylistRepository {
         });
     }
 
+    async reserveEntryId(playlistId: number, entryType: string = 'music_file') {
+        const response = await axios.post(`/api/playlists/${playlistId}/reserve-entry`, {
+            entry_type: entryType,
+        });
+        return response.data as { id: number; entry_type: string };
+    }
+
     async updateEntries(id: number, entries: PlaylistEntry[]) {
         try {
             return await axios.put(`/api/playlists/${id}`, {
