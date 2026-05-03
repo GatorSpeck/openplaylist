@@ -3,6 +3,8 @@ from models import (
     PlaylistDB,
     PlaylistEntryDB,
     MusicFileEntryDB,
+    NestedPlaylistEntryDB,
+    AlbumEntryDB,
     MusicFileDB,
     TrackGenreDB,
     BaseNode,
@@ -139,6 +141,61 @@ class PlaylistFilter(BaseModel):
 class PlaylistRepository(BaseRepository[PlaylistDB]):
     def __init__(self, session):
         super().__init__(session, PlaylistDB)
+
+    def reserve_entry_id(self, playlist_id: int, entry_type: str = "music_file") -> PlaylistEntryDB:
+        playlist = self.session.get(PlaylistDB, playlist_id)
+        if playlist is None:
+            raise ValueError(f"Playlist with ID {playlist_id} not found")
+
+        next_order = (
+            self.session.query(func.max(PlaylistEntryDB.order))
+            .filter(PlaylistEntryDB.playlist_id == playlist_id)
+            .scalar()
+            or 0
+        ) + 100
+
+        entry_map = {
+            "music_file": MusicFileEntryDB,
+            "nested_playlist": NestedPlaylistEntryDB,
+            "album": AlbumEntryDB,
+            "requested_album": RequestedAlbumEntryDB,
+        }
+        entry_cls = entry_map.get(entry_type)
+        if entry_cls is None:
+            raise ValueError(f"Unsupported entry type: {entry_type}")
+
+        placeholder = entry_cls(
+            playlist_id=playlist_id,
+            entry_type=entry_type,
+            order=next_order,
+            date_added=datetime.now(),
+            is_hidden=True,
+        )
+        self.session.add(placeholder)
+        self.session.commit()
+        self.session.refresh(placeholder)
+        return placeholder
+
+    def _populate_existing_entry(self, existing_entry: PlaylistEntryDB, entry: PlaylistEntryBase, order: int) -> PlaylistEntryDB:
+        existing_entry.order = order
+        existing_entry.date_added = entry.date_added or existing_entry.date_added or datetime.now()
+        existing_entry.is_hidden = entry.is_hidden if entry.is_hidden is not None else False
+        existing_entry.date_hidden = entry.date_hidden if existing_entry.is_hidden else None
+        if entry.notes is not None:
+            existing_entry.notes = entry.notes
+
+        if isinstance(existing_entry, MusicFileEntryDB):
+            existing_entry.music_file_id = getattr(entry, "music_file_id", None)
+        elif isinstance(existing_entry, NestedPlaylistEntryDB):
+            existing_entry.nested_playlist_id = getattr(entry, "playlist_id", None)
+        elif isinstance(existing_entry, AlbumEntryDB):
+            existing_entry.album_id = getattr(entry, "album_id", None)
+        elif isinstance(existing_entry, RequestedAlbumEntryDB):
+            existing_entry.album_id = getattr(entry, "requested_album_id", None)
+        else:
+            raise ValueError(f"Unsupported reserved entry type: {type(existing_entry)}")
+
+        return existing_entry
     
     def _get_playlist_query(self, playlist_id: int, details=False, limit=None, offset=None):
         # Start with a simple query for the playlist
@@ -543,12 +600,24 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         CHUNK_SIZE = 1000
         for i in range(0, len(entries), CHUNK_SIZE):
             chunk = entries[i:i + CHUNK_SIZE]
-            
-            # Create all entries for this chunk
-            playlist_entries = [
-                entry.to_playlist(playlist_id, order=next(order_generator))
-                for entry in chunk
-            ]
+
+            playlist_entries = []
+            for entry in chunk:
+                next_order = next(order_generator)
+                existing_entry = None
+                if entry.id is not None:
+                    existing_entry = self.session.query(PlaylistEntryDB).filter(
+                        PlaylistEntryDB.playlist_id == playlist_id,
+                        PlaylistEntryDB.id == entry.id
+                    ).first()
+
+                if existing_entry is not None:
+                    playlist_entries.append(
+                        self._populate_existing_entry(existing_entry, entry, next_order)
+                    )
+                    continue
+
+                playlist_entries.append(entry.to_playlist(playlist_id, order=next_order))
             
             this_playlist.entries.extend(playlist_entries)
         

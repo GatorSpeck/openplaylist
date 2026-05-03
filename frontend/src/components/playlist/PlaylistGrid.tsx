@@ -595,30 +595,134 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     }
   };
 
+  const matchesCurrentPlaylistView = (entry: any) => {
+    if (!showHidden && entry.is_hidden) {
+      return false;
+    }
+
+    const activeFilter = debouncedFilter.trim().toLowerCase();
+    if (!activeFilter) {
+      return true;
+    }
+
+    const searchableValues = [
+      entry.getTitle(),
+      entry.getArtist(),
+      entry.getAlbum(),
+      entry.getNotes(),
+    ];
+
+    return searchableValues.some((value: any) =>
+      typeof value === 'string' && value.toLowerCase().includes(activeFilter)
+    );
+  };
+
+  const getEntrySortText = (entry: any, column: string) => {
+    if (column === 'title') {
+      return entry.getTitle?.() || '';
+    }
+    if (column === 'artist') {
+      return entry.getArtist?.() || '';
+    }
+    if (column === 'album') {
+      return entry.getAlbum?.() || '';
+    }
+    if (column === 'notes') {
+      return entry.getNotes?.() || '';
+    }
+    return '';
+  };
+
+  const getRandomSortKey = (entry: any) => {
+    const titleHash = ((entry.getTitle?.() || '').length || 0) * 31;
+    const artistHash = ((entry.getArtist?.() || '').length || 0) * 37;
+    const rawValue =
+      Math.imul(entry.id || 0, 1664525) +
+      Math.imul(titleHash, 2654435761) +
+      Math.imul(artistHash, 3266489917) +
+      Math.imul(randomSeed || 0, 1013904223);
+
+    return ((rawValue % 2147483647) + 2147483647) % 2147483647;
+  };
+
+  const compareVisibleEntries = (left: any, right: any) => {
+    if (sortColumn === 'random') {
+      const leftKey = getRandomSortKey(left);
+      const rightKey = getRandomSortKey(right);
+      if (leftKey < rightKey) return -1;
+      if (leftKey > rightKey) return 1;
+      return (left.id || 0) - (right.id || 0);
+    }
+
+    if (sortColumn === 'order' || !sortColumn) {
+      const leftOrder = left.order || 0;
+      const rightOrder = right.order || 0;
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+      return (left.id || 0) - (right.id || 0);
+    }
+
+    const leftText = getEntrySortText(left, sortColumn).toLowerCase();
+    const rightText = getEntrySortText(right, sortColumn).toLowerCase();
+    const textComparison = leftText.localeCompare(rightText);
+    if (textComparison !== 0) {
+      return textComparison;
+    }
+
+    const leftOrder = left.order || 0;
+    const rightOrder = right.order || 0;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+
+    return (left.id || 0) - (right.id || 0);
+  };
+
+  const insertVisibleTracksInCurrentSort = (currentEntries: any[], newVisibleTracks: any[]) => {
+    const canSortLoadedEntries = currentEntries.every((entry) => typeof entry?.getTitle === 'function');
+    if (!canSortLoadedEntries || sortColumn === 'order' && sortDirection === 'asc') {
+      return [...currentEntries, ...newVisibleTracks];
+    }
+
+    const sortedEntries = [...currentEntries, ...newVisibleTracks].sort(compareVisibleEntries);
+    if (sortColumn === 'random' || sortDirection === 'asc') {
+      return sortedEntries;
+    }
+
+    return sortedEntries.reverse();
+  };
+
   const addTracksToPlaylist = async (tracks: PlaylistEntry[]) => {
     const newOrder = entries.length ? entries[entries.length - 1].order + 1 : 0;
 
-    const tracksToAdd = (Array.isArray(tracks) ? tracks : [tracks]).map((track, idx) => {
-      let thisTrack = track;
+    const tracksToAdd = await Promise.all((Array.isArray(tracks) ? tracks : [tracks]).map(async (track, idx) => {
+      const entryType = track.entry_type || 'music_file';
+      const reservedEntry = await playlistRepository.reserveEntryId(
+        playlistID,
+        entryType
+      );
+      const thisTrack = new PlaylistEntry(track);
       thisTrack.order = idx + newOrder;
-      thisTrack.music_file_id = track.id;
+      // Keep only a real music_file_id from the source track; do not infer from UI ids.
+      thisTrack.music_file_id = track.music_file_id ?? null;
 
-      // set ID to a random number if not set
-      thisTrack.id = track.id || Math.floor(Math.random() * (10000000 - 1000000) + 1000000);
-      
-      thisTrack.entry_type = track.entry_type || 'requested';
+      thisTrack.id = reservedEntry.id;
+
+      thisTrack.entry_type = entryType;
       return thisTrack;
-    });
+    }));
+
+    const visibleTracksToAdd = tracksToAdd.filter(matchesCurrentPlaylistView);
 
     pushToHistory(entries);
 
-    const newEntries = [
-      ...entries,
-      ...tracksToAdd
-    ];
-    
-    setEntries(newEntries);
-    setTotalCount(prevCount => prevCount + tracksToAdd.length);
+    if (visibleTracksToAdd.length > 0) {
+      const newEntries = insertVisibleTracksInCurrentSort(entries as any[], visibleTracksToAdd);
+
+      setEntries(newEntries);
+      setTotalCount(prevCount => prevCount + visibleTracksToAdd.length);
+    }
 
     playlistRepository.addTracks(playlistID, tracksToAdd, false);
         

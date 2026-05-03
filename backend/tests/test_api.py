@@ -147,6 +147,51 @@ def test_add_lastfm_to_playlist(client, test_tracks):
     assert response.json()["entries"] is not None    
     assert response.json()["entries"][0]["details"]["title"] == "Test Song"
 
+def test_reserved_playlist_entry_preserves_notes_on_add(client, test_tracks):
+    playlist_response = client.post(
+        "/api/playlists",
+        json={"name": "Reserved Entry Playlist", "entries": []}
+    )
+    playlist_id = playlist_response.json()["id"]
+
+    reserve_response = client.post(
+        f"/api/playlists/{playlist_id}/reserve-entry",
+        json={"entry_type": "music_file"}
+    )
+    assert reserve_response.status_code == 200
+    reserved_id = reserve_response.json()["id"]
+
+    update_response = client.put(
+        f"/api/playlists/{playlist_id}/update-entry",
+        json={
+            "track_id": reserved_id,
+            "updates": {
+                "notes": "pending note"
+            }
+        }
+    )
+    assert update_response.status_code == 200
+
+    add_response = client.post(
+        f"/api/playlists/{playlist_id}/add",
+        json=[
+            {
+                "id": reserved_id,
+                "order": 0,
+                "entry_type": "music_file",
+                "music_file_id": test_tracks[0].id,
+            }
+        ]
+    )
+    assert add_response.status_code == 200
+
+    playlist_details = client.get(f"/api/playlists/{playlist_id}")
+    assert playlist_details.status_code == 200
+    assert len(playlist_details.json()["entries"]) == 1
+    assert playlist_details.json()["entries"][0]["id"] == reserved_id
+    assert playlist_details.json()["entries"][0]["notes"] == "pending note"
+    assert playlist_details.json()["entries"][0]["details"]["path"] == "test1.mp3"
+
 def test_delete_playlist(client):
     # Create playlist
     response = client.post(

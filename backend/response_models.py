@@ -405,10 +405,12 @@ class MusicFileEntry(PlaylistEntryBase):
 
     def to_playlist(self, playlist_id, order=None) -> MusicFileEntryDB:
         return MusicFileEntryDB(
+            id=self.id,
             order=order,
             playlist_id=playlist_id,
             entry_type="music_file",  # deprecated
             music_file_id=self.music_file_id,
+            notes=self.notes,
             date_added = self.date_added or datetime.now()
         )
 
@@ -446,9 +448,11 @@ class NestedPlaylistEntry(PlaylistEntryBase):
 
     def to_playlist(self, playlist_id, order=None) -> NestedPlaylistEntryDB:
         return NestedPlaylistEntryDB(
+            id=self.id,
             order=order,
             entry_type=self.entry_type,
             playlist_id=playlist_id,
+            notes=self.notes,
             date_added = self.date_added or datetime.now()
         )
 
@@ -476,10 +480,12 @@ class AlbumEntry(PlaylistEntryBase):
 
     def to_playlist(self, playlist_id, order=None) -> AlbumEntryDB:
         return AlbumEntryDB(
+            id=self.id,
             order=order,
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             album_id=self.album_id,
+            notes=self.notes,
             date_added = self.date_added or datetime.now()
         )
 
@@ -531,10 +537,12 @@ class RequestedAlbumEntry(PlaylistEntryBase):
 
     def to_playlist(self, playlist_id, order=None) -> RequestedAlbumEntryDB:
         return RequestedAlbumEntryDB(
+            id=self.id,
             order=order,
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             album_id=self.requested_album_id,
+            notes=self.notes,
             date_added = self.date_added or datetime.now(),
         )
 
