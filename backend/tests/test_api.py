@@ -192,6 +192,46 @@ def test_reserved_playlist_entry_preserves_notes_on_add(client, test_tracks):
     assert playlist_details.json()["entries"][0]["notes"] == "pending note"
     assert playlist_details.json()["entries"][0]["details"]["path"] == "test1.mp3"
 
+def test_add_entry_with_foreign_explicit_id_ignores_id(client, test_tracks):
+    source_playlist = client.post(
+        "/api/playlists",
+        json={"name": "Source Playlist", "entries": []}
+    )
+    source_playlist_id = source_playlist.json()["id"]
+
+    target_playlist = client.post(
+        "/api/playlists",
+        json={"name": "Target Playlist", "entries": []}
+    )
+    target_playlist_id = target_playlist.json()["id"]
+
+    reserve_response = client.post(
+        f"/api/playlists/{source_playlist_id}/reserve-entry",
+        json={"entry_type": "music_file"}
+    )
+    assert reserve_response.status_code == 200
+    foreign_entry_id = reserve_response.json()["id"]
+
+    add_response = client.post(
+        f"/api/playlists/{target_playlist_id}/add",
+        json=[
+            {
+                "id": foreign_entry_id,
+                "order": 0,
+                "entry_type": "music_file",
+                "music_file_id": test_tracks[0].id,
+            }
+        ]
+    )
+    assert add_response.status_code == 200
+
+    details_response = client.get(f"/api/playlists/{target_playlist_id}")
+    assert details_response.status_code == 200
+
+    target_entries = details_response.json()["entries"]
+    assert len(target_entries) == 1
+    assert target_entries[0]["id"] != foreign_entry_id
+
 def test_delete_playlist(client):
     # Create playlist
     response = client.post(

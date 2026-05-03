@@ -611,6 +611,27 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
                         PlaylistEntryDB.id == entry.id
                     ).first()
 
+                    if existing_entry is None:
+                        # Only allow explicit IDs when they target an existing row in this playlist
+                        # (e.g. reserved placeholder IDs). Otherwise let DB allocate a fresh PK.
+                        foreign_entry = self.session.get(PlaylistEntryDB, entry.id)
+                        if foreign_entry is not None:
+                            logging.warning(
+                                "Ignoring explicit playlist entry id=%s for playlist=%s; "
+                                "id belongs to playlist=%s",
+                                entry.id,
+                                playlist_id,
+                                foreign_entry.playlist_id,
+                            )
+                        else:
+                            logging.warning(
+                                "Ignoring explicit playlist entry id=%s for playlist=%s; "
+                                "no existing row found",
+                                entry.id,
+                                playlist_id,
+                            )
+                        entry.id = None
+
                 if existing_entry is not None:
                     playlist_entries.append(
                         self._populate_existing_entry(existing_entry, entry, next_order)
