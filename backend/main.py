@@ -316,7 +316,7 @@ def scan_directory(directory: str, full=False, job_id: str = None):
 
     logging.info(f"Scanning directory {directory}, full={full}")
     start_time = time.time()
-    scan_started_at = datetime.now()
+    scan_started_at = datetime.now().replace(microsecond=0)
     
     if job_context:
         job_context.update_progress(0.0, f"Starting {'full' if full else 'incremental'} scan")
