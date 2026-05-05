@@ -180,19 +180,18 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
   const getGridTemplate = () => {
     const baseColumns = ['50px']; // Fixed width for checkbox column
     
-    visibleColumns.forEach((col, index) => {
+    visibleColumns.forEach((col) => {
       const width = columnWidths[col] || defaultColumnWidths[col];
-      // Make the last visible column flexible to fill remaining space
-      if (index === visibleColumns.length - 1) {
-        baseColumns.push('1fr');
-      } else {
-        baseColumns.push(`${width}px`);
-      }
+      baseColumns.push(`${width}px`);
     });
     
     baseColumns.push('40px'); // Fixed width for settings button
     
     return baseColumns.join(' ');
+  };
+
+  const getGridMinWidth = () => {
+    return 90 + visibleColumns.reduce((sum, col) => sum + (columnWidths[col] || defaultColumnWidths[col]), 0);
   };
 
   const ITEMS_PER_PAGE = 50;
@@ -1040,7 +1039,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
           position: 'relative'
         }}>
           <div style={{
-            minWidth: 'fit-content'
+            minWidth: `${getGridMinWidth()}px`
           }}>
             <div className="search-grid-header-row bg-surface text-text dark:bg-surface-dark dark:text-text-dark" style={{
               gridTemplateColumns: getGridTemplate(),
@@ -1176,7 +1175,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
             <div style={{ 
               height: '540px',
               overflowY: 'auto',
-              overflowX: 'hidden'
+              overflowX: 'visible'
             }}>
               <AutoSizer disableWidth>
                 {({ height }) => (
@@ -1199,7 +1198,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                         itemSize={50}
                         width="100%" 
                         onItemsRendered={onItemsRendered}
-                        style={{ overflowX: 'hidden' }}
+                        style={{ overflowX: 'visible' }}
                       >
                         {Row}
                       </List>

@@ -92,6 +92,20 @@ html.dark {
   height: 100%;
 }
 
+.playlist-grid-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.playlist-grid-inner {
+  min-height: 100%;
+  width: max-content;
+  display: flex;
+  flex-direction: column;
+}
+
 
 .playlist-grid-row {
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
