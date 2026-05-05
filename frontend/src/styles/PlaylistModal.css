@@ -51,3 +51,24 @@ li:hover {
   background-color: #ddd;
   color: #000; /* Change this to the desired text color */
 }
+
+/* Dark mode */
+html.dark .modal-content {
+  background-color: #2a2a2a;
+  color: rgba(255, 255, 255, 0.87);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .close {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+html.dark .close:hover,
+html.dark .close:focus {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+html.dark li:hover {
+  background-color: #333;
+  color: rgba(255, 255, 255, 0.87);
+}

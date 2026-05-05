@@ -125,3 +125,40 @@
   color: white;
   border: none;
 }
+
+/* Dark mode */
+html.dark .playlist-sidebar {
+  background: #1a1a1a;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+html.dark .playlist-item:hover {
+  background: #2a2a2a;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+html.dark .playlist-item.selected {
+  background: #333;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+html.dark .playlist-context-menu {
+  background: #2a2a2a;
+  color: rgba(255, 255, 255, 0.87);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .playlist-context-menu div:hover {
+  background: #333;
+}
+
+html.dark .admin-actions {
+  border-top-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .form-group input,
+html.dark .form-group select {
+  background: #1f1f1f;
+  color: rgba(255, 255, 255, 0.87);
+  border-color: rgba(255, 255, 255, 0.2);
+}

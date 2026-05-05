@@ -289,3 +289,30 @@ input:checked + .toggle-slider:before {
   padding: 20px;
   color: var(--op-text-muted);
 }
+
+/* Dark mode */
+html.dark .error-message {
+  background-color: rgba(198, 40, 40, 0.15);
+  color: #ef9a9a;
+}
+
+html.dark .dismiss-button {
+  color: #ef9a9a;
+}
+
+html.dark .target-service {
+  background-color: rgba(33, 150, 243, 0.15);
+  color: rgba(255, 255, 255, 0.87);
+}
+
+html.dark .direction-icon.active {
+  background-color: rgba(76, 175, 80, 0.2);
+  color: #81c784;
+}
+
+html.dark .form-group input,
+html.dark .form-group select {
+  background: #1f1f1f;
+  color: rgba(255, 255, 255, 0.87);
+}
+}

@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 
 const LOG_LEVEL_COLORS: Record<string, string> = {
-  DEBUG: '#6c757d',
-  INFO: '#17a2b8',
-  WARNING: '#d97706',
-  ERROR: '#dc2626',
-  CRITICAL: '#7c3aed',
+  DEBUG: '#9ca3af',
+  INFO: '#38bdf8',
+  WARNING: '#fbbf24',
+  ERROR: '#f87171',
+  CRITICAL: '#c084fc',
 };
 
 const LogsPanel = () => {

@@ -74,3 +74,33 @@
   padding: 16px;
   border-top: 1px solid #eee;
 }
+
+/* Dark mode */
+html.dark .modal-content {
+  background: #2a2a2a;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+html.dark .modal-header {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .modal-close {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+html.dark .match-item {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .match-item:hover {
+  background: #333;
+}
+
+html.dark .match-details {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+html.dark .modal-footer {
+  border-top-color: rgba(255, 255, 255, 0.12);
+}

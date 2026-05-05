@@ -410,3 +410,15 @@
     margin-left: 6px;
   }
 }
+
+/* Dark mode */
+html.dark .anniversary-timeline {
+  --background-color: #2a2a2a;
+  --border-color: rgba(255, 255, 255, 0.12);
+  --text-color: rgba(255, 255, 255, 0.87);
+  --text-color-secondary: rgba(255, 255, 255, 0.6);
+  --item-background: #1f1f1f;
+  --item-border: rgba(255, 255, 255, 0.12);
+  --item-background-hover: #2a2a2a;
+  --accent-color-light: rgba(0, 123, 255, 0.2);
+}
