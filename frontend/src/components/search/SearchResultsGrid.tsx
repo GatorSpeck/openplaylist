@@ -185,8 +185,6 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
       baseColumns.push(`${width}px`);
     });
     
-    baseColumns.push('40px'); // Fixed width for settings button
-    
     return baseColumns.join(' ');
   };
 
@@ -582,6 +580,16 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
 
   useEffect(() => {
     const handleClickOutside = (event) => {
+      const target = event.target as HTMLElement | null;
+
+      if (target?.closest('[data-track-details-modal]')) {
+        return;
+      }
+
+      if (showTrackDetails) {
+        return;
+      }
+
       if (toggleButtonRef.current && toggleButtonRef.current.contains(event.target)) {
         return;
       }
@@ -593,7 +601,7 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isPanelOpen, selectedSearchResults.length]);
+  }, [isPanelOpen, selectedSearchResults.length, showTrackDetails]);
 
   useEffect(() => {
     const handleClickOutside = () => {
@@ -1028,6 +1036,13 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
               }}>
                 Clear
               </button>
+              <button
+                onClick={() => setColumnConfigOpen(true)}
+                className="rounded border border-border bg-surface-subtle px-2 py-1 text-sm text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+                title="Configure columns"
+              >
+                Columns
+              </button>
             </div>
           </div>
         </div>
@@ -1056,7 +1071,6 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
               </div>
               {visibleColumns.map((column, index) => {
                 const columnInfo = availableColumns.find(col => col.key === column);
-                const isLastColumn = index === visibleColumns.length - 1;
                 const prevColumn = index > 0 ? visibleColumns[index - 1] : null;
                 
                 return (
@@ -1079,25 +1093,6 @@ const SearchResultsGrid: React.FC<SearchResultsGridProps> = ({ filter, onAddSong
                           </span>
                         )}
                       </div>
-                      {isLastColumn && (
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation(); // Prevent sort when clicking settings
-                            setColumnConfigOpen(true);
-                          }}
-                          className="text-text-muted dark:text-text-dark/60 hover:text-text dark:hover:text-text-dark"
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            fontSize: '14px',
-                            marginLeft: '8px'
-                          }}
-                          title="Configure columns"
-                        >
-                          ⚙️
-                        </button>
-                      )}
                     </div>
                     {prevColumn && (
                       <div 
