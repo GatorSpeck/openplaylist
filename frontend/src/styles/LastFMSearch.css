@@ -269,3 +269,68 @@
 .results-list::-webkit-scrollbar-thumb:hover {
   background: #999;
 }
+
+/* Dark mode */
+html.dark .lastfm-modal-content {
+  background: #2a2a2a;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+html.dark .search-inputs input {
+  background: #1f1f1f;
+  color: rgba(255, 255, 255, 0.87);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+html.dark .results-header {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .results-count {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+html.dark .results-list {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .result-item {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .result-item:hover {
+  background-color: #333;
+}
+
+html.dark .result-item.selected {
+  background-color: rgba(74, 158, 255, 0.2);
+}
+
+html.dark .result-info p {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+html.dark .loading-more {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+html.dark .no-more-results {
+  color: rgba(255, 255, 255, 0.5);
+  border-top-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .results-list {
+  scrollbar-color: #555 #2a2a2a;
+}
+
+html.dark .results-list::-webkit-scrollbar-track {
+  background: #2a2a2a;
+}
+
+html.dark .results-list::-webkit-scrollbar-thumb {
+  background: #555;
+}
+
+html.dark .results-list::-webkit-scrollbar-thumb:hover {
+  background: #777;
+}

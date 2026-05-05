@@ -265,3 +265,21 @@ html.dark {
   color: #e17055;
   font-size: 0.95rem;
 }
+
+/* Dark mode */
+html.dark .log-entry.success {
+  background-color: rgba(76, 175, 80, 0.12);
+}
+
+html.dark .log-entry.error {
+  background-color: rgba(244, 67, 54, 0.12);
+}
+
+html.dark .sync-errors {
+  background-color: rgba(253, 203, 110, 0.12);
+  border-color: rgba(253, 203, 110, 0.3);
+}
+
+html.dark .error-service {
+  color: rgba(255, 255, 255, 0.87);
+}

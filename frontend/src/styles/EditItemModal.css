@@ -57,3 +57,15 @@
 .save-button:hover {
   background-color: #1565c0;
 }
+
+/* Dark mode */
+html.dark .form-group input {
+  background: #1f1f1f;
+  color: rgba(255, 255, 255, 0.87);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+html.dark .cancel-button {
+  color: rgba(255, 255, 255, 0.87);
+  border-color: rgba(255, 255, 255, 0.2);
+}
