@@ -149,6 +149,9 @@ const PlaylistAutoSyncDialog = ({ open, onClose, playlistId, playlistName }) => 
     setSettings(prev => ({ ...prev, auto_sync_schedule: preset }));
   };
 
+  const checkboxClass = 'h-4 w-4 rounded border border-border bg-surface text-accent focus:ring-accent dark:border-border-dark dark:bg-surface-dark';
+  const inputClass = 'w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text/60 focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:placeholder:text-text-dark/60';
+
   if (loading) {
     return (
       <Modal open={open} onClose={onClose} title={`Auto-Sync Settings for "${playlistName}"`}>
@@ -172,7 +175,7 @@ const PlaylistAutoSyncDialog = ({ open, onClose, playlistId, playlistName }) => 
               type="checkbox"
               checked={settings.auto_sync_enabled}
               onChange={(e) => setSettings(prev => ({ ...prev, auto_sync_enabled: e.target.checked }))}
-              className="h-4 w-4 rounded border border-border text-accent focus:ring-accent dark:border-border-dark dark:bg-surface-dark"
+              className={checkboxClass}
             />
             Enable Auto-Sync
           </label>
@@ -210,7 +213,7 @@ const PlaylistAutoSyncDialog = ({ open, onClose, playlistId, playlistName }) => 
                   placeholder="e.g., 0 */4 * * * (every 4 hours)"
                   value={customCron}
                   onChange={(e) => handleCronChange(e.target.value)}
-                  className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text/60 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:placeholder:text-text-dark/60"
+                  className={inputClass}
                 />
                 <p className="mt-1 text-xs text-text/70 dark:text-text-dark/70">
                   Format: minute hour day month day_of_week (times are in server timezone)
@@ -270,7 +273,7 @@ const PlaylistAutoSyncDialog = ({ open, onClose, playlistId, playlistName }) => 
                       This playlist will be synced by the following scheduled tasks:
                     </p>
                     {scheduledTasks.map((task) => (
-                      <div key={task.id} className="mt-1 rounded border border-border bg-surface-subtle p-3 dark:border-border-dark dark:bg-surface-dark">
+                      <div key={task.id} className="mt-1 rounded border border-border bg-surface-subtle p-3 dark:border-border-dark dark:bg-surface-dark-elevated">
                         <p className="text-sm font-medium text-text dark:text-text-dark">
                           {task.name}
                         </p>

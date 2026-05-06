@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import RenameDialog from './RenameDialog';
 import SettingsModal from './SettingsModal'; 
 import ImportPlaylistModal from './ImportPlaylistModal'; // Add this import
-import PlaylistAutoSyncDialog from '../playlist/PlaylistAutoSyncDialog';
 
 const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex, pinned, onTogglePin, onShowSyncOptions, onShowAutoSync }) => (
   <div
@@ -47,7 +46,6 @@ const PlaylistSidebar = ({
   const [renameDialog, setRenameDialog] = useState({ open: false, playlist: null });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
-  const [autoSyncDialog, setAutoSyncDialog] = useState({ open: false, playlistId: null, playlistName: '' });
 
   const sidebarRef = useRef(null);
   const hamburgerRef = useRef(null);
@@ -251,14 +249,7 @@ const PlaylistSidebar = ({
             onShowAutoSync={onShowAutoSync ? () => {
               onShowAutoSync(contextMenu.playlist.id, contextMenu.playlist.name);
               setContextMenu({ visible: false });
-            } : (() => {
-              setAutoSyncDialog({ 
-                open: true, 
-                playlistId: contextMenu.playlist.id, 
-                playlistName: contextMenu.playlist.name 
-              });
-              setContextMenu({ visible: false });
-            })}
+            } : null}
           />
         </div>
       )}
@@ -279,13 +270,6 @@ const PlaylistSidebar = ({
       <SettingsModal 
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-      />
-
-      <PlaylistAutoSyncDialog
-        open={autoSyncDialog.open}
-        onClose={() => setAutoSyncDialog({ open: false, playlistId: null, playlistName: '' })}
-        playlistId={autoSyncDialog.playlistId}
-        playlistName={autoSyncDialog.playlistName}
       />
     </>
   );

@@ -3,17 +3,6 @@ import axios from 'axios';
 import { BiTrash, BiPlus } from 'react-icons/bi';
 import Modal from '../common/Modal';
 import playlistRepository from '../../repositories/PlaylistRepository';
-import { 
-  Box, 
-  Typography,
-  FormControlLabel,
-  Checkbox,
-  FormGroup,
-  Divider,
-  Switch,
-  Grid,
-  Tooltip
-} from '@mui/material';
 
 // Types for our configuration
 interface SyncTarget {
@@ -64,6 +53,11 @@ interface SyncConfigProps {
 
 const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, onSyncResult }) => {
   const [syncTargets, setSyncTargets] = useState<SyncTarget[]>([]);
+  const [autoSyncSettings, setAutoSyncSettings] = useState({
+    auto_sync_enabled: false,
+    auto_sync_schedule: '0 2 * * *',
+  });
+  const [autoSyncSaving, setAutoSyncSaving] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [currentTarget, setCurrentTarget] = useState<SyncTarget | null>(null);
@@ -76,9 +70,15 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
     const fetchSyncTargets = async () => {
       try {
         setLoading(true);
-        // Fixed URL to include the playlist ID
-        const response = await axios.get(`/api/playlists/${playlistId}/syncconfig`);
-        setSyncTargets(response.data);
+        const [syncTargetsResponse, autoSyncResponse] = await Promise.all([
+          axios.get(`/api/playlists/${playlistId}/syncconfig`),
+          axios.get(`/api/playlists/${playlistId}/auto-sync`),
+        ]);
+        setSyncTargets(syncTargetsResponse.data);
+        setAutoSyncSettings({
+          auto_sync_enabled: autoSyncResponse.data.auto_sync_enabled || false,
+          auto_sync_schedule: autoSyncResponse.data.auto_sync_schedule || '0 2 * * *',
+        });
       } catch (err) {
         console.error('Error loading sync targets:', err);
         setError('Failed to load sync configuration');
@@ -212,6 +212,25 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
   // Clear error message
   const clearError = () => setError(null);
 
+  const handleAutoSyncToggle = async (enabled: boolean) => {
+    const nextSettings = {
+      ...autoSyncSettings,
+      auto_sync_enabled: enabled,
+      auto_sync_schedule: autoSyncSettings.auto_sync_schedule || '0 2 * * *',
+    };
+
+    setAutoSyncSaving(true);
+    try {
+      await axios.put(`/api/playlists/${playlistId}/auto-sync`, nextSettings);
+      setAutoSyncSettings(nextSettings);
+    } catch (err) {
+      console.error('Error updating auto-sync setting:', err);
+      setError('Failed to update auto-sync setting');
+    } finally {
+      setAutoSyncSaving(false);
+    }
+  };
+
   const handleSync = async (forcePush: boolean = false) => {
     // Show confirmation dialog for force push
     if (forcePush) {
@@ -248,6 +267,7 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
     if (!currentTarget) return null;
     
     const serviceConfig = serviceConfigs[currentTarget.service];
+    const checkboxClass = 'h-4 w-4 rounded border border-border bg-surface text-accent focus:ring-accent dark:border-border-dark dark:bg-surface-dark';
     
     return (
       <>
@@ -259,9 +279,9 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
             onChange={(e) => handleInputChange('service', e.target.value)}
             className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
           >
-            <option value="plex">Plex</option>
-            <option value="spotify">Spotify</option>
-            <option value="youtube">YouTube Music</option>
+            <option value="plex" className="bg-surface text-text dark:bg-surface-dark dark:text-text-dark">Plex</option>
+            <option value="spotify" className="bg-surface text-text dark:bg-surface-dark dark:text-text-dark">Spotify</option>
+            <option value="youtube" className="bg-surface text-text dark:bg-surface-dark dark:text-text-dark">YouTube Music</option>
           </select>
         </div>
         
@@ -281,93 +301,77 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
           </div>
         ))}
 
-        <Divider sx={{ my: 2 }} />
-        
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="h6" gutterBottom>
-            Sync Options
-          </Typography>
-          
-          <FormControlLabel
-            control={
-              <Switch
-                checked={currentTarget.enabled}
-                onChange={(e) => handleInputChange('enabled', e.target.checked)}
-              />
-            }
-            label="Enable Sync"
-          />
-          
-          <Box sx={{ mt: 2 }}>
-            <Grid container spacing={3}>
-              {/* Local to Remote */}
-              <Grid item xs={12} md={6}>
-                <Box sx={{ p: 2, border: '1px solid #ddd', borderRadius: 1 }}>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Local → Remote
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    Changes that will be sent from your local playlist to the remote service
-                  </Typography>
-                  
-                  <FormGroup>
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={currentTarget.sendEntryAdds}
-                          onChange={(e) => handleInputChange('sendEntryAdds', e.target.checked)}
-                        />
-                      }
-                      label="Send track additions"
-                    />
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={currentTarget.sendEntryRemovals}
-                          onChange={(e) => handleInputChange('sendEntryRemovals', e.target.checked)}
-                        />
-                      }
-                      label="Send track removals"
-                    />
-                  </FormGroup>
-                </Box>
-              </Grid>
-              
-              {/* Remote to Local */}
-              <Grid item xs={12} md={6}>
-                <Box sx={{ p: 2, border: '1px solid #ddd', borderRadius: 1 }}>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Remote → Local
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    Changes that will be received from the remote service to your local playlist
-                  </Typography>
-                  
-                  <FormGroup>
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={currentTarget.receiveEntryAdds}
-                          onChange={(e) => handleInputChange('receiveEntryAdds', e.target.checked)}
-                        />
-                      }
-                      label="Receive track additions"
-                    />
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={currentTarget.receiveEntryRemovals}
-                          onChange={(e) => handleInputChange('receiveEntryRemovals', e.target.checked)}
-                        />
-                      }
-                      label="Receive track removals"
-                    />
-                  </FormGroup>
-                </Box>
-              </Grid>
-            </Grid>
-          </Box>
-        </Box>
+        <div className="my-5 border-t border-border dark:border-border-dark" />
+
+        <div className="mb-2">
+          <h4 className="mb-3 text-base font-semibold text-text dark:text-text-dark">Sync Options</h4>
+
+          <label className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-text dark:text-text-dark">
+            <input
+              type="checkbox"
+              checked={currentTarget.enabled}
+              onChange={(e) => handleInputChange('enabled', e.target.checked)}
+              className={checkboxClass}
+            />
+            Enable Sync
+          </label>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="rounded border border-border bg-surface-subtle p-4 dark:border-border-dark dark:bg-surface-dark">
+              <h5 className="mb-1 text-sm font-semibold text-text dark:text-text-dark">Local → Remote</h5>
+              <p className="mb-3 text-sm text-text/70 dark:text-text-dark/70">
+                Changes that will be sent from your local playlist to the remote service
+              </p>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm text-text dark:text-text-dark">
+                  <input
+                    type="checkbox"
+                    checked={currentTarget.sendEntryAdds}
+                    onChange={(e) => handleInputChange('sendEntryAdds', e.target.checked)}
+                    className={checkboxClass}
+                  />
+                  Send track additions
+                </label>
+                <label className="flex items-center gap-2 text-sm text-text dark:text-text-dark">
+                  <input
+                    type="checkbox"
+                    checked={currentTarget.sendEntryRemovals}
+                    onChange={(e) => handleInputChange('sendEntryRemovals', e.target.checked)}
+                    className={checkboxClass}
+                  />
+                  Send track removals
+                </label>
+              </div>
+            </div>
+
+            <div className="rounded border border-border bg-surface-subtle p-4 dark:border-border-dark dark:bg-surface-dark">
+              <h5 className="mb-1 text-sm font-semibold text-text dark:text-text-dark">Remote → Local</h5>
+              <p className="mb-3 text-sm text-text/70 dark:text-text-dark/70">
+                Changes that will be received from the remote service to your local playlist
+              </p>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm text-text dark:text-text-dark">
+                  <input
+                    type="checkbox"
+                    checked={currentTarget.receiveEntryAdds}
+                    onChange={(e) => handleInputChange('receiveEntryAdds', e.target.checked)}
+                    className={checkboxClass}
+                  />
+                  Receive track additions
+                </label>
+                <label className="flex items-center gap-2 text-sm text-text dark:text-text-dark">
+                  <input
+                    type="checkbox"
+                    checked={currentTarget.receiveEntryRemovals}
+                    onChange={(e) => handleInputChange('receiveEntryRemovals', e.target.checked)}
+                    className={checkboxClass}
+                  />
+                  Receive track removals
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
       </>
     );
   };
@@ -375,29 +379,29 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
   const renderSyncDirectionIcons = (target: SyncTarget) => {
     return (
       <div className="flex gap-2">
-        <Tooltip title={`${target.sendEntryAdds ? 'Adding' : 'Not adding'} tracks to remote`}>
+        <div title={`${target.sendEntryAdds ? 'Adding' : 'Not adding'} tracks to remote`}>
           <span className={`inline-flex h-6 w-6 items-center justify-center rounded text-xs font-semibold ${target.sendEntryAdds ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-surface-muted text-text/50 dark:bg-surface-dark-elevated dark:text-text-dark/50'}`}>
             ↑+
           </span>
-        </Tooltip>
+        </div>
         
-        <Tooltip title={`${target.sendEntryRemovals ? 'Removing' : 'Not removing'} tracks from remote`}>
+        <div title={`${target.sendEntryRemovals ? 'Removing' : 'Not removing'} tracks from remote`}>
           <span className={`inline-flex h-6 w-6 items-center justify-center rounded text-xs font-semibold ${target.sendEntryRemovals ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-surface-muted text-text/50 dark:bg-surface-dark-elevated dark:text-text-dark/50'}`}>
             ↑−
           </span>
-        </Tooltip>
+        </div>
         
-        <Tooltip title={`${target.receiveEntryAdds ? 'Receiving' : 'Not receiving'} new tracks from remote`}>
+        <div title={`${target.receiveEntryAdds ? 'Receiving' : 'Not receiving'} new tracks from remote`}>
           <span className={`inline-flex h-6 w-6 items-center justify-center rounded text-xs font-semibold ${target.receiveEntryAdds ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-surface-muted text-text/50 dark:bg-surface-dark-elevated dark:text-text-dark/50'}`}>
             ↓+
           </span>
-        </Tooltip>
+        </div>
         
-        <Tooltip title={`${target.receiveEntryRemovals ? 'Removing' : 'Not removing'} local tracks when removed from remote`}>
+        <div title={`${target.receiveEntryRemovals ? 'Removing' : 'Not removing'} local tracks when removed from remote`}>
           <span className={`inline-flex h-6 w-6 items-center justify-center rounded text-xs font-semibold ${target.receiveEntryRemovals ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-surface-muted text-text/50 dark:bg-surface-dark-elevated dark:text-text-dark/50'}`}>
             ↓−
           </span>
-        </Tooltip>
+        </div>
       </div>
     );
   };
@@ -440,7 +444,20 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
             <button className="ml-3 text-lg leading-none" onClick={clearError}>×</button>
           </div>
         )}
-        
+
+        <div className="mb-4 rounded border border-border bg-surface-subtle p-4 dark:border-border-dark dark:bg-surface-dark">
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-text dark:text-text-dark">
+            <input
+              type="checkbox"
+              checked={autoSyncSettings.auto_sync_enabled}
+              onChange={(e) => handleAutoSyncToggle(e.target.checked)}
+              disabled={autoSyncSaving}
+              className="h-4 w-4 rounded border border-border bg-surface text-accent focus:ring-accent disabled:cursor-not-allowed dark:border-border-dark dark:bg-surface-dark"
+            />
+            {autoSyncSaving ? 'Saving...' : 'Enable Auto-Sync'}
+          </label>
+        </div>
+
         {loading ? (
           <div className="py-6 text-center text-sm text-text/70 dark:text-text-dark/70">Loading sync configuration...</div>
         ) : syncTargets.length === 0 ? (
@@ -469,7 +486,7 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
                       type="checkbox"
                       checked={target.enabled}
                       onChange={() => handleToggleEnabled(target)}
-                      className="h-4 w-4"
+                      className="h-4 w-4 rounded border border-border bg-surface text-accent focus:ring-accent dark:border-border-dark dark:bg-surface-dark"
                     />
                   </label>
                   <button className="rounded bg-sky-600 px-3 py-1.5 text-xs font-semibold text-text-dark transition hover:bg-sky-700" onClick={() => handleEditTarget(target)}>
@@ -525,6 +542,7 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
             </div>
           </div>
         </Modal>
+
       </div>
     </Modal>
   );

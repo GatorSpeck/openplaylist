@@ -134,8 +134,14 @@ const TaskFormDialog = ({ open, onClose, onSave, task = null, isEditing = false 
   const handleSubmit = () => {
     if (!cronValidation.valid) return;
     let config = { ...formData.config };
-    if (formData.task_type === 'playlist_sync' && selectedPlaylists.length > 0) {
-      config.playlist_ids = selectedPlaylists;
+    if (formData.task_type === 'playlist_sync') {
+      if (selectedPlaylists.length > 0) {
+        config.playlist_ids = selectedPlaylists;
+      } else {
+        delete config.playlist_ids;
+      }
+    } else {
+      delete config.playlist_ids;
     }
     onSave({ ...formData, config });
   };
@@ -143,6 +149,7 @@ const TaskFormDialog = ({ open, onClose, onSave, task = null, isEditing = false 
   const inputClass = 'w-full rounded border border-border bg-transparent px-3 py-2 text-sm text-text placeholder:text-text/50 focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:text-text-dark dark:placeholder:text-text-dark/50';
   const selectClass = 'w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:bg-surface-dark dark:text-text-dark';
   const labelClass = 'text-sm font-medium text-text dark:text-text-dark';
+  const checkboxClass = 'h-4 w-4 rounded border border-border bg-surface text-accent focus:ring-accent dark:border-border-dark dark:bg-surface-dark';
 
   return (
     <Modal open={open} onClose={onClose} title={isEditing ? 'Edit Task' : 'Create Scheduled Task'} size="lg">
@@ -168,8 +175,8 @@ const TaskFormDialog = ({ open, onClose, onSave, task = null, isEditing = false 
               onChange={(e) => handleChange('task_type', e.target.value)}
               className={selectClass}
             >
-              <option value="library_scan">Library Scan</option>
-              <option value="playlist_sync">Playlist Sync</option>
+              <option value="library_scan" className="bg-surface text-text dark:bg-surface-dark dark:text-text-dark">Library Scan</option>
+              <option value="playlist_sync" className="bg-surface text-text dark:bg-surface-dark dark:text-text-dark">Playlist Sync</option>
             </select>
           </div>
 
@@ -180,7 +187,7 @@ const TaskFormDialog = ({ open, onClose, onSave, task = null, isEditing = false 
                 type="checkbox"
                 checked={formData.enabled}
                 onChange={(e) => handleChange('enabled', e.target.checked)}
-                className="rounded accent-accent"
+                className={checkboxClass}
               />
               Enabled
             </label>
@@ -197,7 +204,7 @@ const TaskFormDialog = ({ open, onClose, onSave, task = null, isEditing = false 
                   type="checkbox"
                   checked={selectedPlaylists.length === 0}
                   onChange={() => setSelectedPlaylists([])}
-                  className="accent-accent"
+                  className={checkboxClass}
                 />
                 <span className="text-sm italic text-text/70 dark:text-text-dark/70">All playlists with auto-sync enabled</span>
               </label>
@@ -207,7 +214,7 @@ const TaskFormDialog = ({ open, onClose, onSave, task = null, isEditing = false 
                     type="checkbox"
                     checked={selectedPlaylists.includes(playlist.id)}
                     onChange={() => togglePlaylist(playlist.id)}
-                    className="accent-accent"
+                    className={checkboxClass}
                   />
                   <span className="text-sm text-text dark:text-text-dark">{playlist.name}</span>
                 </label>
@@ -393,6 +400,7 @@ const ScheduledTasksPanel = () => {
 
       <p className="mb-4 text-xs text-text/60 dark:text-text-dark/60">
         Schedule background tasks like library scanning and playlist synchronization using cron expressions.
+        Playlist sync tasks can target specific playlists or all playlists with auto-sync enabled.
       </p>
 
       {tasks.length === 0 ? (
@@ -407,7 +415,7 @@ const ScheduledTasksPanel = () => {
           </button>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded border border-border dark:border-border-dark">
+        <div className="overflow-x-auto rounded border border-border bg-surface dark:border-border-dark dark:bg-surface-dark">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-subtle text-xs font-medium text-text/70 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark/70">
