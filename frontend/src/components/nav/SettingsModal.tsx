@@ -4,16 +4,15 @@ import PathSelector from './PathSelector';
 import LogsPanel from './LogsPanel';
 import DarkModeToggle from '../common/DarkModeToggle';
 import JobsPanel from '../job/JobsPanel';
-import ScheduledTasksPanel from './ScheduledTasksPanel';
 import axios from 'axios';
 
 const TABS = [
-  'Music Paths', 'Jobs', 'Scheduled Tasks', 'Database', 'Last.fm',
+  'Music Paths', 'Jobs', 'Database', 'Last.fm',
   'Plex', 'OpenAI', 'Redis', 'Spotify', 'YouTube Music', 'Logs', 'Theme',
 ];
 
 // Tabs where the Save button is not applicable
-const NO_SAVE_TABS = new Set([1, 2, 3, 10, 11]);
+const NO_SAVE_TABS = new Set([1, 2, 9, 10]);
 
 const SpotifyConnectionPanel = () => {
   const [status, setStatus] = useState({
@@ -473,9 +472,8 @@ const SettingsModal = ({ open, onClose }) => {
           <PathSelector paths={indexPaths} onChange={handlePathsChange} isLoading={isLoading} />
         )}
         {activeTab === 1 && <JobsPanel />}
-        {activeTab === 2 && <ScheduledTasksPanel />}
-        {activeTab === 3 && <DatabaseMigrationsPanel />}
-        {activeTab === 4 && (
+        {activeTab === 2 && <DatabaseMigrationsPanel />}
+        {activeTab === 3 && (
           <div className="space-y-2">
             <h3 className="text-base font-semibold text-text dark:text-text-dark">Last.fm Settings</h3>
             <p className="text-sm text-text/80 dark:text-text-dark/80">
@@ -483,7 +481,7 @@ const SettingsModal = ({ open, onClose }) => {
             </p>
           </div>
         )}
-        {activeTab === 5 && (
+        {activeTab === 4 && (
           <div className="space-y-2">
             <h3 className="text-base font-semibold text-text dark:text-text-dark">Plex Settings</h3>
             <p className="text-sm text-text/80 dark:text-text-dark/80">
@@ -491,7 +489,7 @@ const SettingsModal = ({ open, onClose }) => {
             </p>
           </div>
         )}
-        {activeTab === 6 && (
+        {activeTab === 5 && (
           <div className="space-y-2">
             <h3 className="text-base font-semibold text-text dark:text-text-dark">OpenAI Settings</h3>
             <p className="text-sm text-text/80 dark:text-text-dark/80">
@@ -499,7 +497,7 @@ const SettingsModal = ({ open, onClose }) => {
             </p>
           </div>
         )}
-        {activeTab === 7 && (
+        {activeTab === 6 && (
           <div className="space-y-2">
             <h3 className="text-base font-semibold text-text dark:text-text-dark">Redis Settings</h3>
             <p className="text-sm text-text/80 dark:text-text-dark/80">
@@ -507,7 +505,7 @@ const SettingsModal = ({ open, onClose }) => {
             </p>
           </div>
         )}
-        {activeTab === 8 && (
+        {activeTab === 7 && (
           <div>
             <p className="mb-4 text-sm text-text/80 dark:text-text-dark/80">
               <strong>Spotify API Configured:</strong>{settings.spotifyConfigured ? ' Yes' : ' No'}
@@ -515,7 +513,7 @@ const SettingsModal = ({ open, onClose }) => {
             <SpotifyConnectionPanel />
           </div>
         )}
-        {activeTab === 9 && (
+        {activeTab === 8 && (
           <div>
             <p className="mb-4 text-sm text-text/80 dark:text-text-dark/80">
               <strong>YouTube Music API Configured:</strong>{settings.youtubeMusicConfigured ? ' Yes' : ' No'}
@@ -523,8 +521,8 @@ const SettingsModal = ({ open, onClose }) => {
             <YouTubeMusicConnectionPanel />
           </div>
         )}
-        {activeTab === 10 && <LogsPanel />}
-        {activeTab === 11 && (
+        {activeTab === 9 && <LogsPanel />}
+        {activeTab === 10 && (
           <div className="space-y-4">
             <h3 className="text-base font-semibold text-text dark:text-text-dark">Appearance</h3>
             <div className="rounded border border-border bg-surface-subtle p-4 dark:border-border-dark dark:bg-surface-dark">

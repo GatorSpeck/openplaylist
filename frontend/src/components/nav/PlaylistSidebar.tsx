@@ -3,9 +3,9 @@ import RenameDialog from './RenameDialog';
 import SettingsModal from './SettingsModal'; 
 import ImportPlaylistModal from './ImportPlaylistModal'; // Add this import
 
-const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex, pinned, onTogglePin, onShowSyncOptions, onShowAutoSync }) => (
+const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRenamePlaylist, onSyncToPlex, pinned, onTogglePin, onShowSyncOptions, onToggleAutoSync, autoSyncEnabled }) => (
   <div
-    className="fixed z-[1001] min-w-48 overflow-hidden rounded border border-border bg-surface py-1 text-sm text-text shadow-sm dark:border-border-dark dark:bg-surface-dark-elevated dark:text-text-dark"
+    className="fixed z-[1004] min-w-48 overflow-hidden rounded border border-border bg-surface py-1 text-sm text-text shadow-sm dark:border-border-dark dark:bg-surface-dark-elevated dark:text-text-dark"
     style={{ left: x, top: y }}
   >
     <div className="cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark" onClick={onTogglePin}>{pinned ? 'Unpin Playlist' : 'Pin Playlist'}</div>
@@ -15,7 +15,7 @@ const PlaylistContextMenu = ({ x, y, onClose, onClone, onDelete, onExport, onRen
     <div className="cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark" onClick={onExport}>Export Playlist</div>
     <div className="cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark" onClick={onSyncToPlex}>Sync to Plex</div>
     {onShowSyncOptions && <div className="cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark" onClick={onShowSyncOptions}>Sync Options</div>}
-    {onShowAutoSync && <div className="cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark" onClick={onShowAutoSync}>Auto-Sync Settings</div>}
+    {onToggleAutoSync && <div className="cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark" onClick={onToggleAutoSync}>{autoSyncEnabled ? 'Disable Auto-Sync' : 'Enable Auto-Sync'}</div>}
   </div>
 );
 
@@ -34,7 +34,7 @@ const PlaylistSidebar = ({
   togglePin,
   reorderPinnedPlaylist,
   onShowSyncOptions,
-  onShowAutoSync
+  onToggleAutoSync
 }) => {
   const [contextMenu, setContextMenu] = useState({ 
     visible: false, 
@@ -207,7 +207,7 @@ const PlaylistSidebar = ({
       </div>
 
       {contextMenu.visible && (
-        <div className="fixed z-[1000]" 
+        <div className="fixed z-[1003]" 
           style={{
             display: contextMenu.visible ? 'block' : 'none',
             left: contextMenu.x,
@@ -246,10 +246,11 @@ const PlaylistSidebar = ({
               onShowSyncOptions(contextMenu.playlist.id);
               setContextMenu({ visible: false });
             } : null}
-            onShowAutoSync={onShowAutoSync ? () => {
-              onShowAutoSync(contextMenu.playlist.id, contextMenu.playlist.name);
+            onToggleAutoSync={onToggleAutoSync ? () => {
+              onToggleAutoSync(contextMenu.playlist.id);
               setContextMenu({ visible: false });
             } : null}
+            autoSyncEnabled={Boolean(contextMenu.playlist.auto_sync_enabled)}
           />
         </div>
       )}

@@ -7,6 +7,7 @@ import { ExpandMore as ExpandMoreIcon, PlayArrow as PlayIcon,
          Schedule as ScheduleIcon } from '@mui/icons-material';
 import { useJobTracker } from '../../lib/useJobTracker';
 import { JobRepository } from '../../repositories/JobRepository';
+import ScheduledTasksPanel from '../nav/ScheduledTasksPanel';
 
 const JobsPanel: React.FC = () => {
   const { 
@@ -75,31 +76,9 @@ const JobsPanel: React.FC = () => {
         Background Jobs
       </Typography>
 
-      <Box mb={3}>
-        <Typography variant="subtitle2" gutterBottom>
-          Start New Tasks
-        </Typography>
-        <Box display="flex" gap={2} mb={2}>
-          <Button
-            variant="outlined"
-            onClick={handleStartLibraryScan}
-            disabled={loading}
-            startIcon={<PlayIcon />}
-          >
-            Library Scan (Incremental)
-          </Button>
-          <Button
-            variant="outlined"
-            onClick={handleStartFullLibraryScan}
-            disabled={loading}
-            startIcon={<PlayIcon />}
-          >
-            Full Library Scan
-          </Button>
-        </Box>
-      </Box>
-
       <Divider sx={{ mb: 2 }} />
+
+      <ScheduledTasksPanel />
 
       {error && (
         <Typography color="error" gutterBottom>
@@ -199,7 +178,7 @@ const JobsPanel: React.FC = () => {
 
       {activeJobs.length === 0 && allJobs.length === 0 && !loading && (
         <Typography color="textSecondary" textAlign="center" py={3}>
-          No jobs found. Start a library scan to see background tasks here.
+          No active jobs found. Start a library scan to see background tasks here.
         </Typography>
       )}
     </Box>

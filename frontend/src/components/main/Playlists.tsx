@@ -216,6 +216,33 @@ const Playlists = () => {
     }
   };
 
+  const toggleAutoSync = async (playlistID) => {
+    const playlist = playlists.find(p => p.id === playlistID);
+
+    try {
+      const nextSettings = await playlistRepository.toggleAutoSync(playlistID);
+
+      setPlaylists(prev => prev.map(p => (
+        p.id === playlistID
+          ? { ...p, auto_sync_enabled: nextSettings.auto_sync_enabled }
+          : p
+      )));
+
+      setSnackbar({
+        open: true,
+        message: `${nextSettings.auto_sync_enabled ? 'Enabled' : 'Disabled'} auto-sync${playlist?.name ? ` for ${playlist.name}` : ''}`,
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error toggling auto-sync:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to update auto-sync setting',
+        severity: 'error'
+      });
+    }
+  };
+
   const onRenamePlaylist = async (playlistID, newName) => {
     try {
       await playlistRepository.rename(playlistID, newName);
@@ -264,6 +291,7 @@ const Playlists = () => {
         onDeletePlaylist={deletePlaylist}
         onRenamePlaylist={onRenamePlaylist}
         togglePin={togglePin}
+        onToggleAutoSync={toggleAutoSync}
         reorderPinnedPlaylist={reorderPinnedPlaylist}
       />
       

@@ -26,6 +26,11 @@ export interface PersistentSyncLogEntry {
     metadata?: Record<string, any>;
 }
 
+export interface PlaylistAutoSyncSettings {
+    auto_sync_enabled: boolean;
+    auto_sync_schedule?: string;
+}
+
 export class PlaylistRepository {
     async getPlaylistDetails(playlistID: number) {
         try {
@@ -317,6 +322,27 @@ export class PlaylistRepository {
         await axios.put(`/api/playlists/${id}/reorderpinned`, { position: position });
 
         return this.getPlaylists();
+    }
+
+    async getAutoSyncSettings(id: number) {
+        const response = await axios.get(`/api/playlists/${id}/auto-sync`);
+        return response.data as PlaylistAutoSyncSettings;
+    }
+
+    async updateAutoSyncSettings(id: number, settings: PlaylistAutoSyncSettings) {
+        await axios.put(`/api/playlists/${id}/auto-sync`, settings);
+        return settings;
+    }
+
+    async toggleAutoSync(id: number) {
+        const current = await this.getAutoSyncSettings(id);
+        const nextSettings: PlaylistAutoSyncSettings = {
+            auto_sync_enabled: !current.auto_sync_enabled,
+            auto_sync_schedule: current.auto_sync_schedule || '0 2 * * *',
+        };
+
+        await this.updateAutoSyncSettings(id, nextSettings);
+        return nextSettings;
     }
 };
 

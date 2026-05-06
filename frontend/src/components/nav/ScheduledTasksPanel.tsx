@@ -327,6 +327,7 @@ const ScheduledTasksPanel = () => {
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
+  const [runningTaskId, setRunningTaskId] = useState(null);
 
   useEffect(() => {
     loadTasks();
@@ -372,6 +373,18 @@ const ScheduledTasksPanel = () => {
       loadTasks();
     } catch (error) {
       console.error('Error deleting task:', error);
+    }
+  };
+
+  const handleRunTaskNow = async (taskId) => {
+    try {
+      setRunningTaskId(taskId);
+      await axios.post(`/api/scheduled-tasks/${taskId}/run`);
+      loadTasks();
+    } catch (error) {
+      console.error('Error running task now:', error);
+    } finally {
+      setRunningTaskId(null);
     }
   };
 
@@ -473,6 +486,15 @@ const ScheduledTasksPanel = () => {
                     )}
                   </td>
                   <td className="px-3 py-2 text-right">
+                    <button
+                      type="button"
+                      title="Run task now"
+                      onClick={() => handleRunTaskNow(task.id)}
+                      disabled={runningTaskId === task.id}
+                      className="mr-1 rounded px-2 py-1 text-xs text-emerald-600/80 transition hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:text-emerald-400/80 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400"
+                    >
+                      {runningTaskId === task.id ? 'Running...' : 'Run Now'}
+                    </button>
                     <button
                       type="button"
                       title="Edit task"
