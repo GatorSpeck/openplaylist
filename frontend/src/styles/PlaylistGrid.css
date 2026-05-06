@@ -20,7 +20,8 @@ html.dark {
 
 .playlist-container {
   height: calc(100vh - 120px); /* Taller, only leave space for header/controls */
-  width: calc(100vw - 32px); /* Nearly full width with margins */
+  width: 100%;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   border: 1px solid #ddd;
@@ -101,7 +102,7 @@ html.dark {
 
 .playlist-grid-inner {
   min-height: 100%;
-  width: max-content;
+  width: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -211,8 +212,8 @@ html.dark {
 /* Add responsive styles for smaller screens */
 @media (max-width: 768px) {
   .playlist-container {
-    width: calc(100vw - 16px);
-    margin: 8px;
+    width: 100%;
+    margin: 0;
   }
 
   .playlist-grid-header-row,

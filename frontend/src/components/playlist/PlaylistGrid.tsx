@@ -1668,7 +1668,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
       <div className={`playlist-container ${isAtBottom ? 'at-bottom' : ''} overflow-hidden rounded border border-border bg-surface dark:border-border-dark dark:bg-surface-dark-elevated`} ref={gridRef}>
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="playlist-grid-scroll">
-            <div className="playlist-grid-inner" style={{ minWidth: `${getGridMinWidth()}px` }}>
+            <div className="playlist-grid-inner" style={{ minWidth: `${getGridMinWidth()}px`, width: '100%' }}>
           <div className="playlist-grid-header-row" style={{ gridTemplateColumns: getGridTemplate() }}>
             <div className="grid-cell px-2 py-2 text-sm font-semibold" style={{ overflow: 'visible' }}>
               <input
