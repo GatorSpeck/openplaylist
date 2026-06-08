@@ -577,13 +577,9 @@ def sync_playlist(
                 # Parse the config
                 config = target.config
                 
-                # Get the target name if available
-                target_name = config.get('playlist_name', None)
-                if not target_name and target.service == 'plex':
-                    # Use playlist name as fallback for Plex
-                    playlist = repo.get_by_id(playlist_id)
-                    target_name = playlist.name
-                if not target_name and target.service == 'spotify':
+                # Prefer an explicit mapped name, then fall back to the local playlist name.
+                target_name = config.get('playlist_name') or playlist.name
+                if not target_name and target.service in {'spotify', 'youtube'}:
                     target_name = config.get('playlist_uri', None)
                 
                 # Create the appropriate repository

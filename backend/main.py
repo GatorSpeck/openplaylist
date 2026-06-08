@@ -49,6 +49,7 @@ from routes import router
 from routes.spotify_router import spotify_router
 from routes.scheduled_tasks import scheduled_tasks_router, playlist_sync_router
 from task_scheduler import task_scheduler
+from lib.app_config import get_music_paths, get_playlist_sync_defaults, set_music_paths, set_playlist_sync_defaults
 
 # Create a router for job management
 job_router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -921,20 +922,24 @@ async def get_album_list(
 
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
+
+class PlaylistSyncDefaultsPayload(BaseModel):
+    enabled: bool = False
+    services: dict[str, bool] = {}
+
+
+class SettingsPayload(BaseModel):
+    playlistSyncDefaults: Optional[PlaylistSyncDefaultsPayload] = None
+
 @router.get("/settings/paths")
 def get_index_paths():
     """Get configured music indexing paths"""
-    if not os.path.exists(CONFIG_FILE):
-        return []
-    with open(CONFIG_FILE, 'r') as f:
-        config = json.load(f)
-    return config.get('music_paths', [])
+    return get_music_paths()
 
 @router.post("/settings/paths")
 def save_index_paths(paths: List[str]):
     """Save configured music indexing paths"""
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump({'music_paths': paths}, f)
+    set_music_paths(paths)
     return {"success": True}
 
 @router.get("/settings")
@@ -948,7 +953,18 @@ def get_settings():
         "redisConfigured": redis_session is not None,
         "configDir": str(CONFIG_DIR),
         "logLevel": log_level,
+        "playlistSyncDefaults": get_playlist_sync_defaults(),
     }
+
+
+@router.post("/settings")
+def save_settings(payload: SettingsPayload):
+    result = {"success": True}
+
+    if payload.playlistSyncDefaults is not None:
+        result["playlistSyncDefaults"] = set_playlist_sync_defaults(payload.playlistSyncDefaults.model_dump())
+
+    return result
 
 @router.get("/settings/migrations/status")
 def get_migration_status():

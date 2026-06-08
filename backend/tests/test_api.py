@@ -72,6 +72,44 @@ def test_create_playlist_with_entries(client, test_tracks):
     assert result["entries"][0]["details"]["path"] == "test1.mp3"
     assert result["entries"][1]["details"]["path"] == "test2.mp3"
 
+def test_create_playlist_applies_global_sync_defaults(client, monkeypatch, tmp_path):
+    monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+
+    settings_response = client.post(
+        "/api/settings",
+        json={
+            "playlistSyncDefaults": {
+                "enabled": True,
+                "services": {
+                    "plex": True,
+                    "spotify": True,
+                    "youtube": False
+                }
+            }
+        }
+    )
+    assert settings_response.status_code == 200
+
+    create_response = client.post(
+        "/api/playlists",
+        json={"name": "Auto Sync Playlist", "entries": []}
+    )
+    assert create_response.status_code == 200
+    playlist_id = create_response.json()["id"]
+    assert create_response.json()["auto_sync_enabled"] is True
+
+    auto_sync_response = client.get(f"/api/playlists/{playlist_id}/auto-sync")
+    assert auto_sync_response.status_code == 200
+    assert auto_sync_response.json()["auto_sync_enabled"] is True
+
+    sync_targets_response = client.get(f"/api/playlists/{playlist_id}/syncconfig")
+    assert sync_targets_response.status_code == 200
+    sync_targets = sync_targets_response.json()
+
+    assert len(sync_targets) == 2
+    assert {target["service"] for target in sync_targets} == {"plex", "spotify"}
+    assert all(target["config"]["playlist_name"] == "Auto Sync Playlist" for target in sync_targets)
+
 def test_get_playlists_empty(client):
     response = client.get("/api/playlists")
     assert response.status_code == 200

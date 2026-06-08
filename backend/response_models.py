@@ -354,6 +354,7 @@ class PlaylistBase(BaseModel):
     updated_at: Optional[datetime] = None
     pinned: Optional[bool] = False
     pinned_order: Optional[int] = None
+    auto_sync_enabled: Optional[bool] = False
 
 class PlaylistEntryStub(BaseModel):
     id: Optional[int] = None
@@ -609,7 +610,15 @@ class Playlist(PlaylistBase):
             else:
                 raise ValueError(f"Unknown entry type: {entry.entry_type}")
 
-        return cls(id=obj.id, name=obj.name, entries=entries, updated_at=obj.updated_at, pinned=obj.pinned, pinned_order=obj.pinned_order)
+        return cls(
+            id=obj.id,
+            name=obj.name,
+            entries=entries,
+            updated_at=obj.updated_at,
+            pinned=obj.pinned,
+            pinned_order=obj.pinned_order,
+            auto_sync_enabled=obj.auto_sync_enabled,
+        )
 
 
 class SearchQuery(BaseModel):

@@ -47,6 +47,7 @@ from tqdm import tqdm
 import time
 
 from lib.normalize_path import normalize_path, strip_path_root
+from lib.app_config import get_playlist_sync_defaults
 
 import dotenv
 dotenv.load_dotenv(override=True)
@@ -432,13 +433,35 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         return [
             Playlist(
                 id=r.id, name=r.name, entries=[],
-                updated_at=r.updated_at, pinned=r.pinned, pinned_order=r.pinned_order
+                updated_at=r.updated_at, pinned=r.pinned, pinned_order=r.pinned_order,
+                auto_sync_enabled=r.auto_sync_enabled,
             ) for r in results
         ]
 
     def create(self, playlist: Playlist):
         playlist_db = PlaylistDB(name=playlist.name, entries=[])
         self.session.add(playlist_db)
+
+        sync_defaults = get_playlist_sync_defaults()
+        enabled_services = [
+            service for service, enabled in sync_defaults["services"].items()
+            if enabled
+        ]
+
+        if sync_defaults["enabled"] and enabled_services:
+            playlist_db.auto_sync_enabled = True
+            for service in enabled_services:
+                self.session.add(SyncTargetDB(
+                    playlist=playlist_db,
+                    service=service,
+                    config=json.dumps({"playlist_name": playlist.name}),
+                    enabled=True,
+                    send_entry_adds=True,
+                    send_entry_removals=True,
+                    receive_entry_adds=True,
+                    receive_entry_removals=True,
+                ))
+
         self.session.commit()
 
         self.add_entries(playlist_db.id, entries=playlist.entries)
@@ -1533,7 +1556,6 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             return
         
         # logging.info(list([e.order for e in entries]))
-        
         # Reorder the entries in the playlist (starting from the back)
         idx = len(entries)
         for entry in entries[::-1]:

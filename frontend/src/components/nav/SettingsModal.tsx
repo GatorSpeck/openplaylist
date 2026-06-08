@@ -7,12 +7,21 @@ import JobsPanel from '../job/JobsPanel';
 import axios from 'axios';
 
 const TABS = [
-  'Music Paths', 'Jobs', 'Database', 'Last.fm',
+  'Music Paths', 'Jobs', 'Playlist Sync', 'Database', 'Last.fm',
   'Plex', 'OpenAI', 'Redis', 'Spotify', 'YouTube Music', 'Logs', 'Theme',
 ];
 
 // Tabs where the Save button is not applicable
-const NO_SAVE_TABS = new Set([1, 2, 9, 10]);
+const NO_SAVE_TABS = new Set(['Jobs', 'Database', 'Logs', 'Theme']);
+
+const DEFAULT_PLAYLIST_SYNC_DEFAULTS = {
+  enabled: false,
+  services: {
+    plex: false,
+    spotify: false,
+    youtube: false,
+  },
+};
 
 const SpotifyConnectionPanel = () => {
   const [status, setStatus] = useState({
@@ -402,11 +411,113 @@ const DatabaseMigrationsPanel = () => {
   );
 };
 
+const PlaylistSyncDefaultsPanel = ({ settings, value, onChange, disabled }) => {
+  const configuredByService = {
+    plex: Boolean(settings.plexConfigured),
+    spotify: Boolean(settings.spotifyConfigured),
+    youtube: Boolean(settings.youtubeMusicConfigured),
+  };
+
+  const services = [
+    {
+      key: 'plex',
+      title: 'Plex',
+      description: 'Create a Plex sync target that matches the local playlist name.',
+    },
+    {
+      key: 'spotify',
+      title: 'Spotify',
+      description: 'Create a Spotify sync target and let the first sync create or match the remote playlist by name.',
+    },
+    {
+      key: 'youtube',
+      title: 'YouTube Music',
+      description: 'Create a YouTube Music sync target and let the first sync create or match the remote playlist by name.',
+    },
+  ];
+
+  const handleEnabledChange = (enabled) => {
+    onChange({
+      ...value,
+      enabled,
+    });
+  };
+
+  const handleServiceChange = (service, enabled) => {
+    onChange({
+      ...value,
+      services: {
+        ...value.services,
+        [service]: enabled,
+      },
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-base font-semibold text-text dark:text-text-dark">Playlist Sync Defaults</h3>
+        <p className="mt-1 text-sm text-text/75 dark:text-text-dark/75">
+          Automatically enable playlist auto-sync for newly created playlists and seed sync targets for the selected services.
+        </p>
+      </div>
+
+      <div className="rounded border border-border bg-surface-subtle p-4 dark:border-border-dark dark:bg-surface-dark">
+        <label className="flex items-start gap-3 text-sm text-text dark:text-text-dark">
+          <input
+            type="checkbox"
+            checked={value.enabled}
+            onChange={(e) => handleEnabledChange(e.target.checked)}
+            disabled={disabled}
+            className="mt-0.5 h-4 w-4 rounded border border-border bg-surface text-accent focus:ring-accent disabled:cursor-not-allowed dark:border-border-dark dark:bg-surface-dark"
+          />
+          <span>
+            <span className="block font-medium">Enable auto-sync by default for new playlists</span>
+            <span className="mt-1 block text-xs text-text/65 dark:text-text-dark/65">
+              New playlists will be marked auto-sync eligible and configured to sync to same-named playlists on the enabled services below.
+            </span>
+          </span>
+        </label>
+      </div>
+
+      <div className="space-y-3">
+        {services.map((service) => {
+          const isConfigured = configuredByService[service.key];
+          return (
+            <label
+              key={service.key}
+              className={`flex items-start gap-3 rounded border p-4 text-sm ${isConfigured ? 'border-border bg-surface-subtle dark:border-border-dark dark:bg-surface-dark' : 'border-border bg-surface-subtle opacity-60 dark:border-border-dark dark:bg-surface-dark'}`}
+            >
+              <input
+                type="checkbox"
+                checked={Boolean(value.services?.[service.key])}
+                onChange={(e) => handleServiceChange(service.key, e.target.checked)}
+                disabled={disabled || !value.enabled || !isConfigured}
+                className="mt-0.5 h-4 w-4 rounded border border-border bg-surface text-accent focus:ring-accent disabled:cursor-not-allowed dark:border-border-dark dark:bg-surface-dark"
+              />
+              <span>
+                <span className="block font-medium text-text dark:text-text-dark">{service.title}</span>
+                <span className="mt-1 block text-xs text-text/65 dark:text-text-dark/65">{service.description}</span>
+                {!isConfigured && (
+                  <span className="mt-2 block text-xs text-amber-700 dark:text-amber-300">
+                    Configure {service.title} first before using it as a default sync target.
+                  </span>
+                )}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const SettingsModal = ({ open, onClose }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [indexPaths, setIndexPaths] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [settings, setSettings] = useState({});
+  const [playlistSyncDefaults, setPlaylistSyncDefaults] = useState(DEFAULT_PLAYLIST_SYNC_DEFAULTS);
 
   useEffect(() => {
     if (open) {
@@ -421,6 +532,14 @@ const SettingsModal = ({ open, onClose }) => {
       setIndexPaths(response.data || []);
       const settingsResp = await axios.get('/api/settings');
       setSettings(settingsResp.data || {});
+      setPlaylistSyncDefaults({
+        ...DEFAULT_PLAYLIST_SYNC_DEFAULTS,
+        ...(settingsResp.data?.playlistSyncDefaults || {}),
+        services: {
+          ...DEFAULT_PLAYLIST_SYNC_DEFAULTS.services,
+          ...(settingsResp.data?.playlistSyncDefaults?.services || {}),
+        },
+      });
     } catch (error) {
       console.error('Error loading settings:', error);
     } finally {
@@ -431,7 +550,12 @@ const SettingsModal = ({ open, onClose }) => {
   const saveSettings = async () => {
     setIsLoading(true);
     try {
-      await axios.post('/api/settings/paths', indexPaths);
+      await Promise.all([
+        axios.post('/api/settings/paths', indexPaths),
+        axios.post('/api/settings', {
+          playlistSyncDefaults,
+        }),
+      ]);
       onClose();
     } catch (error) {
       console.error('Error saving settings:', error);
@@ -472,8 +596,16 @@ const SettingsModal = ({ open, onClose }) => {
           <PathSelector paths={indexPaths} onChange={handlePathsChange} isLoading={isLoading} />
         )}
         {activeTab === 1 && <JobsPanel />}
-        {activeTab === 2 && <DatabaseMigrationsPanel />}
-        {activeTab === 3 && (
+        {activeTab === 2 && (
+          <PlaylistSyncDefaultsPanel
+            settings={settings}
+            value={playlistSyncDefaults}
+            onChange={setPlaylistSyncDefaults}
+            disabled={isLoading}
+          />
+        )}
+        {activeTab === 3 && <DatabaseMigrationsPanel />}
+        {activeTab === 4 && (
           <div className="space-y-2">
             <h3 className="text-base font-semibold text-text dark:text-text-dark">Last.fm Settings</h3>
             <p className="text-sm text-text/80 dark:text-text-dark/80">
@@ -481,7 +613,7 @@ const SettingsModal = ({ open, onClose }) => {
             </p>
           </div>
         )}
-        {activeTab === 4 && (
+        {activeTab === 5 && (
           <div className="space-y-2">
             <h3 className="text-base font-semibold text-text dark:text-text-dark">Plex Settings</h3>
             <p className="text-sm text-text/80 dark:text-text-dark/80">
@@ -489,7 +621,7 @@ const SettingsModal = ({ open, onClose }) => {
             </p>
           </div>
         )}
-        {activeTab === 5 && (
+        {activeTab === 6 && (
           <div className="space-y-2">
             <h3 className="text-base font-semibold text-text dark:text-text-dark">OpenAI Settings</h3>
             <p className="text-sm text-text/80 dark:text-text-dark/80">
@@ -497,7 +629,7 @@ const SettingsModal = ({ open, onClose }) => {
             </p>
           </div>
         )}
-        {activeTab === 6 && (
+        {activeTab === 7 && (
           <div className="space-y-2">
             <h3 className="text-base font-semibold text-text dark:text-text-dark">Redis Settings</h3>
             <p className="text-sm text-text/80 dark:text-text-dark/80">
@@ -505,7 +637,7 @@ const SettingsModal = ({ open, onClose }) => {
             </p>
           </div>
         )}
-        {activeTab === 7 && (
+        {activeTab === 8 && (
           <div>
             <p className="mb-4 text-sm text-text/80 dark:text-text-dark/80">
               <strong>Spotify API Configured:</strong>{settings.spotifyConfigured ? ' Yes' : ' No'}
@@ -513,7 +645,7 @@ const SettingsModal = ({ open, onClose }) => {
             <SpotifyConnectionPanel />
           </div>
         )}
-        {activeTab === 8 && (
+        {activeTab === 9 && (
           <div>
             <p className="mb-4 text-sm text-text/80 dark:text-text-dark/80">
               <strong>YouTube Music API Configured:</strong>{settings.youtubeMusicConfigured ? ' Yes' : ' No'}
@@ -521,8 +653,8 @@ const SettingsModal = ({ open, onClose }) => {
             <YouTubeMusicConnectionPanel />
           </div>
         )}
-        {activeTab === 9 && <LogsPanel />}
-        {activeTab === 10 && (
+        {activeTab === 10 && <LogsPanel />}
+        {activeTab === 11 && (
           <div className="space-y-4">
             <h3 className="text-base font-semibold text-text dark:text-text-dark">Appearance</h3>
             <div className="rounded border border-border bg-surface-subtle p-4 dark:border-border-dark dark:bg-surface-dark">
@@ -547,7 +679,7 @@ const SettingsModal = ({ open, onClose }) => {
         >
           Close
         </button>
-        {!NO_SAVE_TABS.has(activeTab) && (
+        {!NO_SAVE_TABS.has(TABS[activeTab]) && (
           <button
             type="button"
             onClick={saveSettings}
