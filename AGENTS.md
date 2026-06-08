@@ -150,6 +150,13 @@ When adding a new external service:
 - Avoid creating parallel configuration flows when one already exists
 - If behavior spans backend and frontend, verify both sides still agree on field names and semantics
 
+### Documentation Maintenance
+
+- Keep folder-level `README.md` documentation up to date whenever you add, remove, or significantly reshape code in that folder.
+- For any new significant folder, add a `README.md` in the same change that introduces the folder.
+- Update neighboring folder READMEs when ownership or boundaries move between areas.
+- Prefer concise, operational guidance: folder purpose, key files, and how to validate changes.
+
 ## UI Guidance
 
 - All screens and UI components need to support dark mode
