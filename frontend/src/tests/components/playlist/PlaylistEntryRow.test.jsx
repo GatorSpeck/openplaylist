@@ -168,4 +168,54 @@ describe('PlaylistEntryRow', () => {
     
     expect(lastFMRepository.fetchAlbumArt).toHaveBeenCalledWith('Test Artist', 'Test Album');
   });
+
+  test('does not reset inline notes value during rerender while editing', () => {
+    const entry = new PlaylistEntry({
+      id: 1,
+      order: 0,
+      entry_type: 'music_file',
+      notes: '',
+      details: {
+        title: 'Test Track',
+        artist: 'Test Artist',
+        album: 'Test Album'
+      }
+    });
+
+    const { rerender, container } = render(
+      <PlaylistEntryRow
+        entry={entry}
+        {...defaultProps}
+        visibleColumns={['notes']}
+      />
+    );
+
+    const notesCell = container.querySelector('.notes-cell');
+    expect(notesCell).toBeInTheDocument();
+    fireEvent.click(notesCell);
+    const notesInput = screen.getByPlaceholderText('Add notes...');
+    fireEvent.change(notesInput, { target: { value: 'typing quickly' } });
+
+    const refreshedEntry = new PlaylistEntry({
+      id: 1,
+      order: 0,
+      entry_type: 'music_file',
+      notes: '',
+      details: {
+        title: 'Test Track',
+        artist: 'Test Artist',
+        album: 'Test Album'
+      }
+    });
+
+    rerender(
+      <PlaylistEntryRow
+        entry={refreshedEntry}
+        {...defaultProps}
+        visibleColumns={['notes']}
+      />
+    );
+
+    expect(screen.getByPlaceholderText('Add notes...')).toHaveValue('typing quickly');
+  });
 });

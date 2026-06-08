@@ -262,10 +262,12 @@ const PlaylistEntryRow = forwardRef<HTMLDivElement, PlaylistEntryRowProps>(({
     }
   }, [isEditingNotes]);
 
-  // Reset notes value when entry changes
+  // Keep local edits stable while typing; only sync from entry when not actively editing.
   useEffect(() => {
-    setNotesValue(entry.getNotes());
-  }, [entry]);
+    if (!isEditingNotes) {
+      setNotesValue(entry.getNotes());
+    }
+  }, [entry, isEditingNotes]);
 
   const handleNotesClick = (e: React.MouseEvent) => {
     e.stopPropagation();
