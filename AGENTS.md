@@ -173,6 +173,12 @@ When adding a new external service:
 - Playlist UI and options: `frontend/src/components/playlist/`
 - Settings UI: `frontend/src/components/nav/SettingsModal.tsx`
 
+## Testing
+
+- Testing should focus on the core logic of the app
+    - Special focus on frontend <-> backend interactions likely to cause runtime errors
+- Avoid testing NFRs like performance and resource usage
+
 ## Before Finishing
 
 - Run the narrowest relevant validation available
