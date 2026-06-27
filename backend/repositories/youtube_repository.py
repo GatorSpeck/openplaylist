@@ -33,13 +33,15 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
     def __init__(self, session, config: Dict[str, str] = None, music_file_repo=None):
         super().__init__(session, config)
         self.playlist_id = None
-        
-        # Get the playlist ID from the config.
+        self.playlist_name = self.config.get("playlist_name")
+
         # Prefer a persisted playlist_id, but continue accepting legacy playlist_uri values.
         self.playlist_uri = self.config.get("playlist_id") or self.config.get("playlist_uri")
         if self.playlist_uri:
             self.playlist_id = self.extract_playlist_id(self.playlist_uri)
             logging.info(f"Editing YouTube Music playlist with ID: {self.playlist_id}")
+        elif self.playlist_name:
+            logging.info(f"Resolving YouTube Music playlist by name: {self.playlist_name}")
         
         self.music_file_repo = music_file_repo
             
@@ -61,6 +63,11 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             self.ytmusic = YTMusic(oauth_path)
 
             logging.info("YouTube Music client initialized successfully")
+
+            if not self.playlist_id and self.playlist_name:
+                self.playlist_id = self.lookup_playlist_id_by_name(self.playlist_name)
+                if self.playlist_id:
+                    logging.info(f"Resolved YouTube Music playlist '{self.playlist_name}' to ID: {self.playlist_id}")
         except Exception as e:
             logging.error(f"Failed to initialize YouTube Music client: {e}")
             self.ytmusic = None
@@ -495,7 +502,7 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
         if track_ids:
             try:
                 self.ytmusic.add_playlist_items(self.playlist_id, track_ids)
-                logging.info(f"Added {len(track_ids)} tracks to YouTube Music playlist")
+                logging.info(f"Added {len(track_ids)} tracks to YouTube Music playlist {self.playlist_id}")
             except Exception as e:
                 logging.error(f"Error adding tracks to YouTube Music playlist: {e}")
     

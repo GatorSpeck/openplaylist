@@ -3,6 +3,7 @@ import axios from 'axios';
 import { BiTrash, BiPlus } from 'react-icons/bi';
 import Modal from '../common/Modal';
 import playlistRepository from '../../repositories/PlaylistRepository';
+import jobRepository from '../../repositories/JobRepository';
 
 // Types for our configuration
 interface SyncTarget {
@@ -37,7 +38,7 @@ const serviceConfigs = {
   },
   youtube: {
     fields: [
-      { name: "playlist_uri", label: "Playlist URI", placeholder: "https://www.youtube.com/playlist?list=your_playlist_id", type: "text" },
+      { name: "playlist_name", label: "Playlist Name", placeholder: "My YouTube Playlist", type: "text" },
     ],
     icon: '▶️',
     description: 'Sync with a YouTube Music playlist'
@@ -248,11 +249,35 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
     try {
       setSyncing(true);
       const response = await playlistRepository.syncToPlex(playlistId, forcePush);
-      
-      if (onSyncResult) {
-        onSyncResult(response);
+
+      if (!response?.job_id) {
+        throw new Error('Sync job did not return a job id');
       }
-      
+
+      const jobId = response.job_id;
+      const pollInterval = setInterval(async () => {
+        try {
+          const job = await jobRepository.getJob(jobId);
+
+          if (job.status === 'completed') {
+            clearInterval(pollInterval);
+
+            if (onSyncResult) {
+              onSyncResult(job.result);
+            }
+          } else if (job.status === 'failed') {
+            clearInterval(pollInterval);
+            setError(`Sync failed: ${job.error || 'Unknown error'}`);
+          }
+        } catch (pollError) {
+          console.error('Error checking sync job status:', pollError);
+          clearInterval(pollInterval);
+          setError('Failed to read sync job status');
+        }
+      }, 2000);
+
+      setTimeout(() => clearInterval(pollInterval), 300000);
+
       // Show success message
       setError(null);
     } catch (err) {
@@ -265,10 +290,9 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
   // Modal form for adding/editing a sync target
   const renderTargetForm = () => {
     if (!currentTarget) return null;
-    
     const serviceConfig = serviceConfigs[currentTarget.service];
     const checkboxClass = 'h-4 w-4 rounded border border-border bg-surface text-accent focus:ring-accent dark:border-border-dark dark:bg-surface-dark';
-    
+
     return (
       <>
         <div className="mb-4">
@@ -406,6 +430,10 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
     );
   };
 
+  const getTargetDisplayName = (target: SyncTarget) => {
+    return target.config.playlist_name || target.config.playlist_uri || target.config.playlist_id || 'Unnamed Playlist';
+  };
+
   return (
     <Modal
       open={visible}
@@ -472,7 +500,7 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
                   {serviceConfigs[target.service].icon}
                 </div>
                 <div className="min-w-[180px] flex-1 text-sm font-semibold text-text dark:text-text-dark">
-                  {target.config.playlist_id || target.config.playlist_uri || target.config.playlist_name || 'Unnamed Playlist'}
+                  {getTargetDisplayName(target)}
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="rounded bg-sky-100 px-2 py-1 text-xs font-medium text-sky-800 dark:bg-sky-900/30 dark:text-sky-300">

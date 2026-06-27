@@ -1577,16 +1577,24 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         targets = self.session.query(SyncTargetDB).filter(SyncTargetDB.playlist_id == playlist_id).all()
         
         # Convert to Pydantic models
-        return [SyncTarget(
-            id=target.id,
-            service=target.service,
-            config=json.loads(target.config),
-            enabled=target.enabled,
-            sendEntryAdds=target.send_entry_adds,
-            sendEntryRemovals=target.send_entry_removals,
-            receiveEntryAdds=target.receive_entry_adds,
-            receiveEntryRemovals=target.receive_entry_removals
-        ) for target in targets]
+        sync_targets = []
+        for target in targets:
+            config = json.loads(target.config)
+            if target.service == "youtube" and not config.get("playlist_name"):
+                config["playlist_name"] = playlist.name
+
+            sync_targets.append(SyncTarget(
+                id=target.id,
+                service=target.service,
+                config=config,
+                enabled=target.enabled,
+                sendEntryAdds=target.send_entry_adds,
+                sendEntryRemovals=target.send_entry_removals,
+                receiveEntryAdds=target.receive_entry_adds,
+                receiveEntryRemovals=target.receive_entry_removals
+            ))
+
+        return sync_targets
 
     def create_sync_target(self, playlist_id: int, target: SyncTarget) -> SyncTarget:
         """Create a new sync target for a playlist"""
@@ -1599,12 +1607,16 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             # Validate service
             if target.service not in ['plex', 'spotify', 'youtube']:
                 raise ValueError(f"Invalid service: {target.service}")
+
+            config = dict(target.config or {})
+            if target.service == "youtube" and not config.get("playlist_name"):
+                config["playlist_name"] = playlist.name
             
             # Create new sync target
             new_target = SyncTargetDB(
                 playlist_id=playlist_id,
                 service=target.service,
-                config=json.dumps(target.config),
+                config=json.dumps(config),
                 enabled=target.enabled,
                 send_entry_adds=target.sendEntryAdds,
                 send_entry_removals=target.sendEntryRemovals,
@@ -1617,6 +1629,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             
             # Set the ID and return
             target.id = new_target.id
+            target.config = config
             return target
         except Exception as e:
             self.session.rollback()
@@ -1635,10 +1648,16 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             
             if not db_target:
                 raise ValueError(f"Sync target with ID {target.id} not found for playlist {playlist_id}")
+
+            config = dict(target.config or {})
+            if target.service == "youtube" and not config.get("playlist_name"):
+                playlist = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
+                if playlist:
+                    config["playlist_name"] = playlist.name
             
             # Update fields
             db_target.service = target.service
-            db_target.config = json.dumps(target.config)
+            db_target.config = json.dumps(config)
             db_target.enabled = target.enabled
             db_target.send_entry_adds = target.sendEntryAdds
             db_target.send_entry_removals = target.sendEntryRemovals
@@ -1646,6 +1665,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             db_target.receive_entry_removals = target.receiveEntryRemovals
 
             self.session.commit()
+            target.config = config
             return target
         except Exception as e:
             self.session.rollback()

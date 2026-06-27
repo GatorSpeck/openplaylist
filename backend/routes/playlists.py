@@ -31,6 +31,10 @@ def _get_remote_playlist_ref(config: Dict[str, Any], local_playlist_name: str) -
     return config.get("playlist_id") or config.get("playlist_uri") or config.get("playlist_name") or local_playlist_name
 
 
+def _get_remote_playlist_display_name(config: Dict[str, Any], local_playlist_name: str) -> str:
+    return config.get("playlist_name") or local_playlist_name
+
+
 def _get_remote_playlist_create_title(config: Dict[str, Any], local_playlist_name: str) -> str:
     return config.get("playlist_name") or local_playlist_name
 
@@ -625,16 +629,17 @@ def sync_playlist(
                 if not remote_repo.is_authenticated():
                     raise Exception(f"Authentication failed for service: {target.service}")
 
-                # Store the repository and target name for later use
+                # Store the repository and separate remote ref/display name for later use
                 remote_repos[target.id] = {
                     'repo': remote_repo,
                     'target': target,
-                    'target_name': target_ref or f"{target.service}_playlist"
+                    'target_ref': target_ref or f"{target.service}_playlist",
+                    'target_name': _get_remote_playlist_display_name(target.config, playlist.name),
                 }
                 
                 # Get current and old snapshots for unified planning
-                old_snapshots[target.id] = remote_repo.get_current_snapshot(target_ref or f"{target.service}_playlist")
-                current_snapshots[target.id] = remote_repo.get_playlist_snapshot(target_ref or f"{target.service}_playlist")
+                old_snapshots[target.id] = remote_repo.get_current_snapshot(remote_repos[target.id]['target_ref'])
+                current_snapshots[target.id] = remote_repo.get_playlist_snapshot(remote_repos[target.id]['target_ref'])
 
                 _persist_remote_playlist_id(db, target, playlist_id, getattr(remote_repo, "playlist_id", None))
 
@@ -642,9 +647,9 @@ def sync_playlist(
                     # remote playlist doesn't exist - let's create it
                     sync_log.append(SyncLogEntry(
                         action="create",
-                        track=f"Playlist '{target_ref or f'{target.service}_playlist'}'",
+                        track=f"Playlist '{remote_repos[target.id]['target_name']}'",
                         target=target.service,
-                        target_name=target_ref,
+                        target_name=remote_repos[target.id]['target_name'],
                         reason="Remote playlist did not exist",
                         success=True,
                         eventKind="system"
@@ -662,7 +667,7 @@ def sync_playlist(
 
                     _persist_remote_playlist_id(db, target, playlist_id, remote_playlist_id)
 
-                    current_snapshots[target.id] = remote_repo.get_playlist_snapshot(target_ref or f"{target.service}_playlist")
+                    current_snapshots[target.id] = remote_repo.get_playlist_snapshot(remote_repos[target.id]['target_ref'])
                     _persist_remote_playlist_id(db, target, playlist_id, getattr(remote_repo, "playlist_id", None))
 
                 logging.info(f"Initialized {target.service} repository for target {target.id}")
@@ -871,6 +876,7 @@ def sync_playlist(
                     remote_repo = repo_info['repo']
                     target = repo_info['target']
                     target_name = repo_info['target_name']
+                    target_ref = repo_info['target_ref']
 
                     logging.info(f"Syncing with target: {target_name}")
 
@@ -946,7 +952,7 @@ def sync_playlist(
             if add_changes:
                 try:
                     for change_chunk in _chunk_changes(add_changes, remote_batch_size):
-                        remote_repo.add_items(target_name, [change.item for change in change_chunk])
+                        remote_repo.add_items(target_ref, [change.item for change in change_chunk])
                         for change in change_chunk:
                             sync_log.append(SyncLogEntry(
                                 action="add",
@@ -980,7 +986,7 @@ def sync_playlist(
             if remove_changes:
                 try:
                     for change_chunk in _chunk_changes(remove_changes, remote_batch_size):
-                        remote_repo.remove_items(target_name, [change.item for change in change_chunk])
+                        remote_repo.remove_items(target_ref, [change.item for change in change_chunk])
                         for change in change_chunk:
                             sync_log.append(SyncLogEntry(
                                 action="remove",
@@ -1016,9 +1022,10 @@ def sync_playlist(
                 repo_info = plan_info['repo_info']
                 remote_repo = repo_info['repo']
                 target_name = repo_info['target_name']
+                target_ref = repo_info['target_ref']
 
                 # Get the new snapshot after applying changes
-                new_snapshot = remote_repo.get_playlist_snapshot(target_name)
+                new_snapshot = remote_repo.get_playlist_snapshot(target_ref)
                 if new_snapshot:
                     remote_repo.write_snapshot(new_snapshot)
                     results["success"].append({
@@ -1096,6 +1103,16 @@ def get_playlist_sync_log(
     if not playlist:
         raise HTTPException(status_code=404, detail="Playlist not found")
 
+    sync_targets = repo.get_sync_targets(playlist_id)
+    youtube_display_name = next(
+        (
+            target.config.get("playlist_name")
+            for target in sync_targets
+            if target.service == "youtube" and target.config.get("playlist_name")
+        ),
+        playlist.name,
+    )
+
     db = Database.get_session()
     try:
         query = db.query(RemoteSyncEventDB).filter(RemoteSyncEventDB.playlist_id == playlist_id)
@@ -1124,7 +1141,7 @@ def get_playlist_sync_log(
                 action=event.action,
                 track=event.track,
                 target=event.target,
-                targetName=event.target_name,
+                targetName=youtube_display_name if event.target == "youtube" else event.target_name,
                 reason=event.reason,
                 success=event.success,
                 error=event.error,

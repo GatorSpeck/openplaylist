@@ -15,21 +15,13 @@ OpenPlaylist is a music library management system with a FastAPI backend and Rea
 
 ## Preferred Workflow
 
-Use the provided project scripts instead of ad hoc commands when possible:
+Use the provided Justfile for dev workflows:
+- `just clean`
+- `just test`
+    - `just test_backend`
+    - `just test_frontend`
 
-```bash
-./scripts/setup.sh
-./scripts/dev.sh
-./scripts/test.sh
-./scripts/lint.sh
-```
-
-When working in one layer only, keep validation narrow:
-
-- Backend: `cd backend && python -m pytest`
-- Frontend: `cd frontend && npm test`
-
-### Database Migrations
+### Creating Database Migrations
 
 ```bash
 cd backend && source venv/bin/activate
@@ -67,7 +59,7 @@ When adding or changing integrations:
 
 ### Request Caching Strategy
 
-- Redis is used for expensive API calls such as OpenAI and Last.fm operations
+- Redis is optionally used for expensive API calls such as OpenAI and Last.fm operations
 - Session-based request caching exists via `requests_cache_session.py`
 - Respect caching behavior for rate-limited services
 
@@ -129,8 +121,8 @@ When adding a new external service:
 
 - Use Alembic for schema changes
 - Migrations should be idempotent where practical
-- Keep migrations compatible with both SQLite and MySQL/MariaDB unless there is a strong reason not to
-- Avoid database-specific features unless the task requires them
+- Keep migrations compatible with both SQLite and MySQL/MariaDB
+- Avoid database-specific features
 - Be especially careful around polymorphic playlist entry models
 
 ### Performance Considerations
@@ -138,7 +130,7 @@ When adding a new external service:
 - Search fields are heavily indexed
 - Genres are stored in a separate table for multiple genres per track
 - Album relationships use many-to-many linking tables
-- Pagination matters for large libraries and playlists
+- Operations that return large data sets should support pagination
 
 ## Coding Expectations
 
