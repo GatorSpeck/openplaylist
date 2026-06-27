@@ -115,6 +115,23 @@ def test_create_playlist_applies_global_sync_defaults(client, monkeypatch, tmp_p
 
 
 def test_playlist_sync_backfills_remote_playlist_id(client, monkeypatch):
+    monkeypatch.setenv("CONFIG_DIR", "/tmp/playlist-test-config")
+
+    settings_response = client.post(
+        "/api/settings",
+        json={
+            "playlistSyncDefaults": {
+                "enabled": True,
+                "services": {
+                    "plex": True,
+                    "spotify": True,
+                    "youtube": False,
+                }
+            }
+        }
+    )
+    assert settings_response.status_code == 200
+
     class MockResolvingRemoteRepository(RemotePlaylistRepository):
         def __init__(self, session, config=None, music_file_repo=None):
             super().__init__(session, config or {})
