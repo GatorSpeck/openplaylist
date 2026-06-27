@@ -1,11 +1,16 @@
 from ytmusicapi import YTMusic
-import sys
-import argparse 
+import argparse
+import pytest
 
-parser = argparse.ArgumentParser(description='Test YTMusic API')
-parser.add_argument('auth_file', type=str, help='Path to the auth.json file')
+pytest.mark.skip("This test requires a valid auth.json file to run.")
+def main():
+    parser = argparse.ArgumentParser(description='Test YTMusic API')
+    parser.add_argument('auth_file', type=str, help='Path to the auth.json file')
 
-args = parser.parse_args()
+    args = parser.parse_args()
 
-yt = YTMusic(args.auth_file)
-print(yt.get_library_playlists())
+    yt = YTMusic(args.auth_file)
+    print(yt.get_library_playlists())
+
+if __name__ == "__main__":
+    main()
