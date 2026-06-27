@@ -4,100 +4,10 @@ import datetime
 import logging
 from typing import List, Dict, Any
 
-from repositories.remote_playlist_repository import RemotePlaylistRepository
+from tests.mock_remote_playlist_repository import MockRemotePlaylistRepository
 from response_models import PlaylistItem, PlaylistSnapshot, SyncTarget, TrackDetails
 from models import PlaylistDB, PlaylistEntryDB
 from sqlalchemy.orm import Session
-
-
-class MockRemotePlaylistRepository(RemotePlaylistRepository):
-    """Mock implementation of RemotePlaylistRepository for testing"""
-    
-    def __init__(self, session=None, config: Dict[str, str] = None):
-        super().__init__(session, config)
-        self.remote_playlists = {}  # name -> items
-        self.get_playlist_snapshot_called = 0
-        self.create_playlist_called = 0
-        self.add_items_called = 0
-        self.remove_items_called = 0
-        # Reset counters for each test
-        self._reset_counters()
-    
-    def _reset_counters(self):
-        """Reset all counters for clean test state"""
-        self.get_playlist_snapshot_called = 0
-        self.create_playlist_called = 0
-        self.add_items_called = 0
-        self.remove_items_called = 0
-    
-    def get_playlist_snapshot(self, playlist_name: str) -> PlaylistSnapshot:
-        """Get a snapshot from the remote service"""
-        self.get_playlist_snapshot_called += 1
-        if playlist_name not in self.remote_playlists:
-            return None
-            
-        items = self.remote_playlists[playlist_name]
-        return PlaylistSnapshot(
-            name=playlist_name,
-            last_updated=datetime.datetime.now().astimezone(),
-            items=items.copy()
-        )
-    
-    def create_playlist(self, playlist_name: str, snapshot: PlaylistSnapshot) -> Any:
-        """Create a playlist on the remote service"""
-        self.create_playlist_called += 1
-        self.remote_playlists[playlist_name] = snapshot.items.copy()
-        return playlist_name
-    
-    def add_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
-        """Add items to a remote playlist"""
-        self.add_items_called += 1
-        if playlist_name not in self.remote_playlists:
-            self.remote_playlists[playlist_name] = []
-        
-        for item in items:
-            if not any(i.to_string() == item.to_string() for i in self.remote_playlists[playlist_name]):
-                self.remote_playlists[playlist_name].append(item)
-    
-    def remove_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
-        """Remove items from a remote playlist"""
-        self.remove_items_called += 1
-        if playlist_name not in self.remote_playlists:
-            return
-            
-        for item in items:
-            self.remote_playlists[playlist_name] = [
-                i for i in self.remote_playlists[playlist_name] 
-                if i.to_string() != item.to_string()
-            ]
-    
-    def fetch_media_item(self, item: PlaylistItem) -> Any:
-        """Fetch a media item from the remote service"""
-        return item
-    
-    def create_snapshot(self, playlist: PlaylistDB) -> PlaylistSnapshot:
-        """Create a snapshot from a local playlist"""
-        items = []
-        for entry in playlist.entries:
-            if hasattr(entry.details, 'artist') and hasattr(entry.details, 'title'):
-                item = PlaylistItem(
-                    artist=entry.details.artist,
-                    title=entry.details.title,
-                    album=entry.details.album if hasattr(entry.details, 'album') else None,
-                )
-                items.append(item)
-        
-        return PlaylistSnapshot(
-            name=playlist.name,
-            last_updated=playlist.updated_at if hasattr(playlist, 'updated_at') else datetime.datetime.now().astimezone(),
-            items=items
-        )
-
-    def is_authenticated(self):
-        return True
-    
-    def clear_playlist(self):
-        pass
 
 
 class TestRemotePlaylistRepository(unittest.TestCase):
