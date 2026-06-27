@@ -137,8 +137,9 @@ class SpotifyRepository(RemotePlaylistRepository):
 
         self.music_file_repo = music_file_repo
         
-        # Extract playlist URI from config if available
-        self.playlist_uri = self.config.get("playlist_uri")
+        # Extract playlist reference from config if available.
+        # Prefer a persisted playlist_id, but continue accepting legacy playlist_uri values.
+        self.playlist_uri = self.config.get("playlist_id") or self.config.get("playlist_uri")
         if self.playlist_uri and self.playlist_uri.startswith("spotify:playlist:"):
             self.playlist_id = self.playlist_uri.split(":")[-1]
         elif self.playlist_uri and "playlist/" in self.playlist_uri:

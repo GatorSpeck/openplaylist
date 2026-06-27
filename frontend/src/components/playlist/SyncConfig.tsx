@@ -133,7 +133,7 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
     if (!currentTarget) return;
     
     try {
-      let response;
+      let response: any;
       
       if (currentTarget.id) {
         // Fixed URL to include the playlist ID and target ID
@@ -472,7 +472,7 @@ const SyncConfig: React.FC<SyncConfigProps> = ({ playlistId, visible, onClose, o
                   {serviceConfigs[target.service].icon}
                 </div>
                 <div className="min-w-[180px] flex-1 text-sm font-semibold text-text dark:text-text-dark">
-                  {target.config.playlist_name || target.config.playlist_uri || 'Unnamed Playlist'}
+                  {target.config.playlist_id || target.config.playlist_uri || target.config.playlist_name || 'Unnamed Playlist'}
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="rounded bg-sky-100 px-2 py-1 text-xs font-medium text-sky-800 dark:bg-sky-900/30 dark:text-sky-300">

@@ -14,7 +14,7 @@ from fastapi.exceptions import HTTPException
 from dependencies import get_music_file_repository, get_playlist_repository, get_plex_repository
 from typing import Optional, List
 from database import Database
-from models import PlaylistDB, PlaylistEntryDB, MusicFileEntryDB, RemoteSyncRunDB, RemoteSyncEventDB
+from models import PlaylistDB, PlaylistEntryDB, MusicFileEntryDB, RemoteSyncRunDB, RemoteSyncEventDB, SyncTargetDB
 import pathlib
 import os
 from repositories.requests_cache_session import requests_cache_session
@@ -25,6 +25,37 @@ from repositories.remote_repository_factory import create_remote_repository
 from repositories.remote_playlist_repository import SyncChange, create_snapshot
 
 router = APIRouter()
+
+
+def _get_remote_playlist_ref(config: Dict[str, Any], local_playlist_name: str) -> str:
+    return config.get("playlist_id") or config.get("playlist_uri") or config.get("playlist_name") or local_playlist_name
+
+
+def _get_remote_playlist_create_title(config: Dict[str, Any], local_playlist_name: str) -> str:
+    return config.get("playlist_name") or local_playlist_name
+
+
+def _persist_remote_playlist_id(db, target: SyncTarget, playlist_id: int, remote_playlist_id: Optional[str]) -> None:
+    if not remote_playlist_id:
+        return
+
+    config = dict(target.config or {})
+    if config.get("playlist_id") == remote_playlist_id:
+        return
+
+    config["playlist_id"] = remote_playlist_id
+
+    db_target = db.query(SyncTargetDB).filter(
+        SyncTargetDB.id == target.id,
+        SyncTargetDB.playlist_id == playlist_id,
+    ).first()
+
+    if not db_target:
+        return
+
+    db_target.config = json.dumps(config)
+    db.commit()
+    target.config = config
 
 @router.post("/", response_model=Playlist)
 def create_playlist(
@@ -577,10 +608,8 @@ def sync_playlist(
                 # Parse the config
                 config = target.config
                 
-                # Prefer an explicit mapped name, then fall back to the local playlist name.
-                target_name = config.get('playlist_name') or playlist.name
-                if not target_name and target.service in {'spotify', 'youtube'}:
-                    target_name = config.get('playlist_uri', None)
+                target_ref = _get_remote_playlist_ref(config, playlist.name)
+                target_create_title = _get_remote_playlist_create_title(config, playlist.name)
                 
                 # Create the appropriate repository
                 remote_repo = create_remote_repository(
@@ -600,28 +629,41 @@ def sync_playlist(
                 remote_repos[target.id] = {
                     'repo': remote_repo,
                     'target': target,
-                    'target_name': target_name or f"{target.service}_playlist"
+                    'target_name': target_ref or f"{target.service}_playlist"
                 }
                 
                 # Get current and old snapshots for unified planning
-                old_snapshots[target.id] = remote_repo.get_current_snapshot(target_name or f"{target.service}_playlist")
-                current_snapshots[target.id] = remote_repo.get_playlist_snapshot(target_name or f"{target.service}_playlist")
+                old_snapshots[target.id] = remote_repo.get_current_snapshot(target_ref or f"{target.service}_playlist")
+                current_snapshots[target.id] = remote_repo.get_playlist_snapshot(target_ref or f"{target.service}_playlist")
+
+                _persist_remote_playlist_id(db, target, playlist_id, getattr(remote_repo, "playlist_id", None))
 
                 if not current_snapshots[target.id]:
                     # remote playlist doesn't exist - let's create it
                     sync_log.append(SyncLogEntry(
                         action="create",
-                        track=f"Playlist '{target_name or f'{target.service}_playlist'}'",
+                        track=f"Playlist '{target_ref or f'{target.service}_playlist'}'",
                         target=target.service,
-                        target_name=target_name,
+                        target_name=target_ref,
                         reason="Remote playlist did not exist",
                         success=True,
                         eventKind="system"
                     ))
                     logging.info(f"Creating new remote playlist for {target.service} target {target.id}")
 
-                    remote_repo.create_playlist(target_name or f"{target.service}_playlist", local_snapshot)
-                    current_snapshots[target.id] = remote_repo.get_playlist_snapshot(target_name or f"{target.service}_playlist")
+                    created_playlist = remote_repo.create_playlist(target_create_title, local_snapshot)
+
+                    remote_playlist_id = getattr(remote_repo, "playlist_id", None)
+                    if not remote_playlist_id:
+                        if isinstance(created_playlist, dict):
+                            remote_playlist_id = created_playlist.get("id") or created_playlist.get("playlist_id")
+                        else:
+                            remote_playlist_id = getattr(created_playlist, "id", None) or getattr(created_playlist, "playlist_id", None)
+
+                    _persist_remote_playlist_id(db, target, playlist_id, remote_playlist_id)
+
+                    current_snapshots[target.id] = remote_repo.get_playlist_snapshot(target_ref or f"{target.service}_playlist")
+                    _persist_remote_playlist_id(db, target, playlist_id, getattr(remote_repo, "playlist_id", None))
 
                 logging.info(f"Initialized {target.service} repository for target {target.id}")
                 

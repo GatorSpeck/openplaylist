@@ -34,8 +34,9 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
         super().__init__(session, config)
         self.playlist_id = None
         
-        # Get the playlist ID from the config
-        self.playlist_uri = self.config.get("playlist_uri")
+        # Get the playlist ID from the config.
+        # Prefer a persisted playlist_id, but continue accepting legacy playlist_uri values.
+        self.playlist_uri = self.config.get("playlist_id") or self.config.get("playlist_uri")
         if self.playlist_uri:
             self.playlist_id = self.extract_playlist_id(self.playlist_uri)
             logging.info(f"Editing YouTube Music playlist with ID: {self.playlist_id}")

@@ -4,6 +4,9 @@ from dependencies import get_music_file_repository
 from response_models import MusicFile
 from database import Base
 from sqlalchemy import create_engine
+from datetime import datetime
+
+from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot
 
 @pytest.fixture()
 def engine():
@@ -109,6 +112,144 @@ def test_create_playlist_applies_global_sync_defaults(client, monkeypatch, tmp_p
     assert len(sync_targets) == 2
     assert {target["service"] for target in sync_targets} == {"plex", "spotify"}
     assert all(target["config"]["playlist_name"] == "Auto Sync Playlist" for target in sync_targets)
+
+
+def test_playlist_sync_backfills_remote_playlist_id(client, monkeypatch):
+    class MockResolvingRemoteRepository(RemotePlaylistRepository):
+        def __init__(self, session, config=None, music_file_repo=None):
+            super().__init__(session, config or {})
+            self.playlist_id = None
+
+        def is_authenticated(self):
+            return True
+
+        def get_current_snapshot(self, playlist_name: str):
+            return PlaylistSnapshot(
+                name=playlist_name,
+                last_updated=datetime.now().astimezone(),
+                items=[],
+            )
+
+        def get_playlist_snapshot(self, playlist_name: str):
+            self.playlist_id = "remote-playlist-123"
+            return PlaylistSnapshot(
+                name=playlist_name,
+                last_updated=datetime.now().astimezone(),
+                items=[],
+            )
+
+        def create_playlist(self, playlist_name: str, snapshot: PlaylistSnapshot):
+            self.playlist_id = "remote-playlist-123"
+            return {"id": self.playlist_id}
+
+        def add_items(self, playlist_name: str, items):
+            return None
+
+        def remove_items(self, playlist_name: str, items):
+            return None
+
+        def fetch_media_item(self, item):
+            return None
+
+        def clear_playlist(self):
+            return None
+
+    def fake_create_remote_repository(service, session, config=None, music_file_repo=None):
+        return MockResolvingRemoteRepository(session, config, music_file_repo=music_file_repo)
+
+    monkeypatch.setattr("routes.playlists.create_remote_repository", fake_create_remote_repository)
+
+    create_response = client.post(
+        "/api/playlists",
+        json={"name": "Sync ID Playlist", "entries": []},
+    )
+    assert create_response.status_code == 200
+    playlist_id = create_response.json()["id"]
+
+    sync_response = client.get(f"/api/playlists/{playlist_id}/sync")
+    assert sync_response.status_code == 200
+
+    sync_targets_response = client.get(f"/api/playlists/{playlist_id}/syncconfig")
+    assert sync_targets_response.status_code == 200
+    sync_targets = sync_targets_response.json()
+    assert all(target["config"].get("playlist_id") == "remote-playlist-123" for target in sync_targets if target["service"] in {"plex", "spotify"})
+
+
+def test_plex_sync_uses_rating_key_for_renamed_playlist(monkeypatch):
+    from repositories.plex_repository import PlexRepository
+
+    class FakePlaylist:
+        def __init__(self, rating_key: int, title: str):
+            self.ratingKey = rating_key
+            self.title = title
+            self.updatedAt = datetime.now().astimezone()
+
+        def items(self):
+            return []
+
+        def removeItems(self, items):
+            return None
+
+        def addItems(self, items):
+            return None
+
+    class FakeServer:
+        def __init__(self):
+            self.fetch_item_calls = []
+            self.playlist_calls = []
+            self.playlists_calls = []
+            self.playlist_obj = FakePlaylist(1234, "Renamed Plex Playlist")
+
+        def library(self):
+            raise AssertionError("library() should not be called in this test")
+
+        def fetchItem(self, key):
+            self.fetch_item_calls.append(key)
+            if key == "/playlists/1234":
+                return self.playlist_obj
+            raise Exception("not found")
+
+        def playlist(self, title):
+            self.playlist_calls.append(title)
+            raise AssertionError("name-based lookup should not be used when playlist_id is available")
+
+        def playlists(self, **kwargs):
+            self.playlists_calls.append(kwargs)
+            return [self.playlist_obj]
+
+        def account(self):
+            return object()
+
+        class library:
+            @staticmethod
+            def section(name):
+                return object()
+
+    fake_server = FakeServer()
+
+    class FakePlexServerFactory:
+        def __call__(self, endpoint, token=None):
+            return fake_server
+
+    monkeypatch.setattr("repositories.plex_repository.PlexServer", FakePlexServerFactory())
+
+    repo = PlexRepository(
+        session=object(),
+        config={
+            "endpoint": "http://plex.local:32400",
+            "token": "token",
+            "library": "Music",
+            "playlist_id": "1234",
+        },
+    )
+
+    snapshot = repo.get_playlist_snapshot("1234")
+
+    assert snapshot is not None
+    assert snapshot.name == "Renamed Plex Playlist"
+    assert fake_server.fetch_item_calls == ["/playlists/1234"]
+    assert fake_server.playlist_calls == []
+    assert repo.playlist_id == "1234"
 
 def test_get_playlists_empty(client):
     response = client.get("/api/playlists")
