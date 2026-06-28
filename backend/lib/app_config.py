@@ -37,6 +37,28 @@ def set_music_paths(paths: List[str]) -> None:
     save_app_config(config)
 
 
+def get_lastfm_username() -> str:
+    config_value = load_app_config().get("lastfm_username")
+    if isinstance(config_value, str) and config_value.strip():
+        return config_value.strip()
+
+    env_value = os.getenv("LASTFM_USERNAME", "")
+    return env_value.strip()
+
+
+def set_lastfm_username(username: str) -> str:
+    normalized_username = username.strip() if isinstance(username, str) else ""
+
+    config = load_app_config()
+    if normalized_username:
+        config["lastfm_username"] = normalized_username
+    else:
+        config.pop("lastfm_username", None)
+    save_app_config(config)
+
+    return normalized_username
+
+
 def get_playlist_sync_defaults() -> Dict[str, Any]:
     raw_defaults = load_app_config().get("playlist_sync_defaults", {})
     raw_services = raw_defaults.get("services", {}) if isinstance(raw_defaults, dict) else {}

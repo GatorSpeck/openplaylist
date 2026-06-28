@@ -49,7 +49,7 @@ from routes import router
 from routes.spotify_router import spotify_router
 from routes.scheduled_tasks import scheduled_tasks_router, playlist_sync_router
 from task_scheduler import task_scheduler
-from lib.app_config import get_music_paths, get_playlist_sync_defaults, set_music_paths, set_playlist_sync_defaults
+from lib.app_config import get_music_paths, get_playlist_sync_defaults, get_lastfm_username, set_lastfm_username, set_music_paths, set_playlist_sync_defaults
 
 # Create a router for job management
 job_router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -815,6 +815,86 @@ async def get_stats():
         missingTracks=missing_tracks
     )
 
+
+@router.get("/landing/activity", response_model=LandingActivityResponse)
+def get_landing_activity(
+    limit: int = Query(10, ge=1, le=50),
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+):
+    def _to_landing_activity_entry(entry):
+        details_obj = entry.get("details")
+        details = None
+        title = None
+        artist = None
+        album = None
+
+        if details_obj is not None and hasattr(details_obj, "title"):
+            title = details_obj.title
+        if details_obj is not None and hasattr(details_obj, "artist"):
+            artist = details_obj.artist
+        if details_obj is not None and hasattr(details_obj, "album"):
+            album = details_obj.album
+
+        if details_obj is not None:
+            if hasattr(details_obj, "to_json"):
+                details = details_obj.to_json()
+            else:
+                details = {
+                    key: value
+                    for key, value in details_obj.__dict__.items()
+                    if not key.startswith("_")
+                }
+
+        return LandingActivityEntry(
+            id=entry["id"],
+            entry_type=entry["entry_type"],
+            date_added=entry["date_added"],
+            playlist_id=entry["playlist_id"],
+            playlist_name=entry["playlist_name"],
+            title=title,
+            artist=artist,
+            album=album,
+            notes=entry["notes"],
+            details=details,
+        )
+
+    api_key = os.getenv("LASTFM_API_KEY")
+    lastfm_username = get_lastfm_username()
+    lastfm_entries = []
+
+    if api_key and lastfm_username:
+        lastfm_repo = last_fm_repository(api_key, requests_cache_session, redis_session=redis_session)
+        recent_tracks = lastfm_repo.get_recent_tracks(lastfm_username, limit=limit)
+
+        lastfm_entries = [
+            LandingActivityEntry(
+                id=index + 1,
+                entry_type="lastfm",
+                date_added=track.get("date_added"),
+                playlist_id=None,
+                playlist_name=f"Last.fm: {lastfm_username}",
+                title=track.get("title"),
+                artist=track.get("artist"),
+                album=track.get("album"),
+                notes="Recently played on Last.fm",
+                details={
+                    "title": track.get("title"),
+                    "artist": track.get("artist"),
+                    "album": track.get("album"),
+                    "last_fm_url": track.get("last_fm_url"),
+                    "date_added": track.get("date_added").isoformat() if track.get("date_added") else None,
+                },
+            )
+            for index, track in enumerate(recent_tracks)
+        ]
+
+    open_playlist_entries = [
+        _to_landing_activity_entry(entry)
+        for entry in repo.get_recent_activity_entries(limit=limit)
+    ]
+
+    return LandingActivityResponse(lastfmEntries=lastfm_entries, openPlaylistEntries=open_playlist_entries)
+
 @router.post("/library/findlocals")
 def find_local_files(tracks: List[MusicFile], repo: MusicFileRepository = Depends(get_music_file_repository)):
     return repo.find_local_files(tracks)
@@ -930,6 +1010,7 @@ class PlaylistSyncDefaultsPayload(BaseModel):
 
 class SettingsPayload(BaseModel):
     playlistSyncDefaults: Optional[PlaylistSyncDefaultsPayload] = None
+    lastFmUsername: Optional[str] = None
 
 @router.get("/settings/paths")
 def get_index_paths():
@@ -946,6 +1027,7 @@ def save_index_paths(paths: List[str]):
 def get_settings():
     return {
         "lastFmApiKeyConfigured": all([os.getenv("LASTFM_API_KEY"), os.getenv("LASTFM_SHARED_SECRET")]),
+        "lastFmUsername": get_lastfm_username(),
         "openAiApiKeyConfigured": os.getenv("OPENAI_API_KEY") is not None,
         "plexConfigured": all([os.getenv("PLEX_TOKEN"), os.getenv("PLEX_ENDPOINT"), os.getenv("PLEX_LIBRARY")]),
         "spotifyConfigured": all([os.getenv("SPOTIFY_CLIENT_ID"), os.getenv("SPOTIFY_CLIENT_SECRET")]),
@@ -963,6 +1045,9 @@ def save_settings(payload: SettingsPayload):
 
     if payload.playlistSyncDefaults is not None:
         result["playlistSyncDefaults"] = set_playlist_sync_defaults(payload.playlistSyncDefaults.model_dump())
+
+    if payload.lastFmUsername is not None:
+        result["lastFmUsername"] = set_lastfm_username(payload.lastFmUsername)
 
     return result
 

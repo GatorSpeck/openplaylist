@@ -1491,6 +1491,53 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         )
 
         return [Playlist(id=p.id, name=p.name, entries=[]) for p in query.all()]
+
+    def get_recent_activity_entries(self, limit: int = 10, entry_type: Optional[str] = None):
+        playlist_entries = PlaylistEntryDB.__table__
+        playlists = PlaylistDB.__table__
+        music_file_entries = MusicFileEntryDB.__table__
+
+        query = (
+            self.session.query(
+                playlist_entries.c.id.label("id"),
+                playlist_entries.c.entry_type.label("entry_type"),
+                playlist_entries.c.date_added.label("date_added"),
+                playlist_entries.c.playlist_id.label("playlist_id"),
+                playlists.c.name.label("playlist_name"),
+                playlist_entries.c.notes.label("notes"),
+                playlist_entries.c.details_id.label("details_id"),
+                music_file_entries.c.music_file_id.label("music_file_id"),
+            )
+            .select_from(
+                playlist_entries.join(playlists, playlist_entries.c.playlist_id == playlists.c.id)
+                .outerjoin(music_file_entries, music_file_entries.c.id == playlist_entries.c.id)
+            )
+            .order_by(playlist_entries.c.date_added.desc(), playlist_entries.c.id.desc())
+        )
+
+        if entry_type is not None:
+            query = query.filter(playlist_entries.c.entry_type == entry_type)
+
+        if limit is not None:
+            query = query.limit(limit)
+
+        rows = query.all()
+
+        recent_entries = []
+        for row in rows:
+            details_id = row.details_id if row.details_id is not None else row.music_file_id
+            details = self.session.get(BaseNode, details_id) if details_id is not None else None
+            recent_entries.append({
+                "id": row.id,
+                "entry_type": row.entry_type,
+                "date_added": row.date_added,
+                "playlist_id": row.playlist_id,
+                "playlist_name": row.playlist_name,
+                "notes": row.notes,
+                "details": details,
+            })
+
+        return recent_entries
     
     def update_pin(self, playlist_id, pinned):
         logging.info(f"Updating pinned status for playlist {playlist_id} to {pinned}")

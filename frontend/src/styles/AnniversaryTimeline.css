@@ -114,13 +114,12 @@
   position: relative;
   scroll-behavior: smooth;
   flex: 1;
-  /* Hide scrollbar */
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* Internet Explorer 10+ */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .timeline-content::-webkit-scrollbar {
-  display: none; /* WebKit */
+  display: none;
 }
 
 .timeline-day {
@@ -257,21 +256,20 @@
   align-self: flex-start;
 }
 
-/* Anniversary badge color classes */
 .years-badge.anniversary-new {
-  background-color: #22c55e; /* Green for new releases (0 years) */
+  background-color: #22c55e;
 }
 
 .years-badge.anniversary-decade {
-  background-color: #eab308; /* Gold for decade milestones (10, 20, 30, etc.) */
+  background-color: #eab308;
 }
 
 .years-badge.anniversary-half-decade {
-  background-color: #9ca3af; /* Silver for half-decade milestones (5, 15, 25, etc.) */
+  background-color: #9ca3af;
 }
 
 .years-badge.anniversary-regular {
-  background-color: #d97706; /* Bronze/orange for regular anniversaries */
+  background-color: #d97706;
 }
 
 .original-date {
@@ -295,7 +293,9 @@
   border-radius: 4px;
 }
 
-.loading-message, .error-message, .empty-message {
+.loading-message,
+.error-message,
+.empty-message {
   text-align: center;
   padding: 32px;
   color: var(--text-color-secondary, #666);
@@ -343,46 +343,52 @@
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 768px) {
   .anniversary-timeline {
     padding: 12px;
   }
-  
+
   .timeline-day {
     min-width: 240px;
   }
-  
+
   .timeline-content {
     gap: 16px;
   }
-  
+
   .timeline-arrow {
     width: 36px;
     height: 36px;
     font-size: 16px;
   }
-  
+
   .left-arrow {
     margin-right: 8px;
   }
-  
+
   .right-arrow {
     margin-left: 8px;
   }
-  
+
   .anniversary-item {
     min-height: 100px;
   }
-  
-  .album-title, .album-artist {
+
+  .album-title,
+  .album-artist {
     font-size: 0.8em;
   }
-  
-  .years-badge, .original-date {
+
+  .years-badge,
+  .original-date {
     font-size: 0.65em;
   }
 }
@@ -391,27 +397,26 @@
   .timeline-day {
     min-width: 200px;
   }
-  
+
   .timeline-content {
     gap: 12px;
   }
-  
+
   .timeline-arrow {
     width: 32px;
     height: 32px;
     font-size: 14px;
   }
-  
+
   .left-arrow {
     margin-right: 6px;
   }
-  
+
   .right-arrow {
     margin-left: 6px;
   }
 }
 
-/* Dark mode */
 html.dark .anniversary-timeline {
   --background-color: #2a2a2a;
   --border-color: rgba(255, 255, 255, 0.12);

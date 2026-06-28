@@ -8,6 +8,10 @@ import mapToTrackModel from '../../lib/mapToTrackModel';
 import { useParams, useNavigate } from 'react-router-dom';
 import playlistRepository from '../../repositories/PlaylistRepository';
 import libraryRepository from '../../repositories/LibraryRepository';
+import SelectPlaylistModal from '../playlist/SelectPlaylistModal';
+import LandingActivityFeed, { LandingActivityEntry } from './LandingActivityFeed';
+import LandingStatsSummary from './LandingStatsSummary';
+import PlaylistEntry from '../../lib/PlaylistEntry';
 
 const Playlists = () => {
   const [playlists, setPlaylists] = useState([]);
@@ -19,6 +23,14 @@ const Playlists = () => {
   const [cloneModalVisible, setCloneModalVisible] = useState(false);
   const [clonePlaylistName, setClonePlaylistName] = useState('');
   const [playlistToClone, setPlaylistToClone] = useState(null);
+  const [selectedEntriesToAdd, setSelectedEntriesToAdd] = useState([]);
+  const [landingActivity, setLandingActivity] = useState({
+    lastfmEntries: [],
+    openPlaylistEntries: [],
+  });
+  const [landingStats, setLandingStats] = useState(null);
+  const [landingLoading, setLandingLoading] = useState(false);
+  const [landingError, setLandingError] = useState('');
 
   // Add backend status state
   const [backendReady, setBackendReady] = useState(false);
@@ -107,6 +119,51 @@ const Playlists = () => {
       setSelectedPlaylistID(null);
     }
   }, [playlistName, playlists]);
+
+  useEffect(() => {
+    if (!backendReady || selectedPlaylistID) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadLandingData = async () => {
+      setLandingLoading(true);
+      setLandingError('');
+
+      try {
+        const [statsResponse, activityResponse] = await Promise.all([
+          libraryRepository.getStats(),
+          libraryRepository.getLandingActivity(),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setLandingStats(statsResponse);
+        setLandingActivity({
+          lastfmEntries: activityResponse?.lastfmEntries || [],
+          openPlaylistEntries: activityResponse?.openPlaylistEntries || [],
+        });
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Error loading landing page data:', error);
+          setLandingError('Failed to load landing activity and stats.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLandingLoading(false);
+        }
+      }
+    };
+
+    loadLandingData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [backendReady, selectedPlaylistID]);
 
   // Show loading/error state while waiting for backend
   if (!backendReady) {
@@ -276,6 +333,16 @@ const Playlists = () => {
     });
   };
 
+  const handleQuickAddLandingEntry = (entry: LandingActivityEntry) => {
+    setSelectedEntriesToAdd([new PlaylistEntry(entry)]);
+    setShowPlaylistSelectModal(true);
+  };
+
+  const handleQuickAddModalClose = () => {
+    setShowPlaylistSelectModal(false);
+    setSelectedEntriesToAdd([]);
+  };
+
   const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistID);
  
   return (
@@ -295,25 +362,72 @@ const Playlists = () => {
         reorderPinnedPlaylist={reorderPinnedPlaylist}
       />
       
-      <div className="flex-1 px-4 pb-4 pt-20">
+      <div className="flex-1 min-w-0 px-4 pb-4 pt-20">
         {selectedPlaylist ? (
           <PlaylistGrid
             playlistID={selectedPlaylistID}
           />
         ) : (
-          <div className="mx-auto flex max-w-6xl flex-col gap-6">
-            <div className="rounded-lg border border-border bg-surface-subtle p-6 dark:border-border-dark dark:bg-surface-dark-elevated">
+          <div className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6">
+            <div className="rounded-2xl border border-border bg-surface-subtle p-6 shadow-sm dark:border-border-dark dark:bg-surface-dark-elevated">
               <h1 className="mb-2 text-3xl font-bold">Welcome to Your Music Library</h1>
-              <p className="text-sm opacity-85">Select a playlist from the sidebar to get started, or check out upcoming album anniversaries below.</p>
+              <p className="max-w-3xl text-sm leading-6 text-text/80 dark:text-text-dark/80">
+                Recent Last.fm activity, recent OpenPlaylist activity, a compact library summary, and the anniversary tracker appear here when no playlist is selected.
+              </p>
             </div>
-            <AnniversaryTimeline 
-              daysAhead={7}
-              daysBehind={7}
-              onAlbumClick={handleAlbumClick}
-            />
+
+            <LandingStatsSummary stats={landingStats} loading={landingLoading && !landingStats} />
+
+            <div className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-surface/95 shadow-sm dark:border-border-dark dark:bg-surface-dark-elevated">
+              <div className="border-b border-border px-5 py-4 dark:border-border-dark">
+                <h2 className="text-lg font-semibold text-text dark:text-text-dark">Anniversary tracker</h2>
+                <p className="mt-1 text-sm text-text/70 dark:text-text-dark/70">
+                  Browse upcoming and recent album anniversaries on the same landing page.
+                </p>
+              </div>
+              <div className="min-w-0 p-4">
+                <AnniversaryTimeline
+                  onAlbumClick={handleAlbumClick}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-2">
+              <LandingActivityFeed
+                title="Last.fm activity"
+                description="Recent activity imported from Last.fm-linked entries."
+                entries={landingActivity.lastfmEntries}
+                emptyMessage={landingLoading ? 'Loading Last.fm activity...' : 'No recent Last.fm activity yet.'}
+                onQuickAdd={handleQuickAddLandingEntry}
+                quickAddLabel="Add to playlist"
+              />
+
+              <LandingActivityFeed
+                title="OpenPlaylist activity"
+                description="The most recent entries added anywhere in your library."
+                entries={landingActivity.openPlaylistEntries}
+                emptyMessage={landingLoading ? 'Loading library activity...' : 'No recent library activity yet.'}
+                onQuickAdd={handleQuickAddLandingEntry}
+                quickAddLabel="Add to playlist"
+              />
+            </div>
+
+            {landingError && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+                {landingError}
+              </div>
+            )}
           </div>
         )}
       </div>
+      {showPlaylistSelectModal && (
+        <SelectPlaylistModal
+          isOpen={showPlaylistSelectModal}
+          onClose={handleQuickAddModalClose}
+          selectedEntries={selectedEntriesToAdd}
+          setSnackbar={setSnackbar}
+        />
+      )}
       {newPlaylistModalVisible && (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-surface-muted0 px-4">
           <div className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-lg dark:border-border-dark dark:bg-surface-dark-elevated dark:text-text-dark">
