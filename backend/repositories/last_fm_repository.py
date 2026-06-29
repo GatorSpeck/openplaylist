@@ -6,6 +6,7 @@ from response_models import Album, AlbumTrack, AlbumAndArtist, Artist, AlbumSear
 import os
 import warnings
 import json
+from datetime import datetime
 from typing import Optional, List
 from lib.match import AlbumStub, get_album_match_score, get_artist_match_score
 
@@ -81,6 +82,39 @@ class last_fm_repository:
         similar_tracks = similar_data.get("similartracks", {}).get("track", [])
 
         return [MusicFile(title=track.get("name", ""), artist=track.get("artist", {}).get("name", ""), last_fm_url=track.get("url")) for track in similar_tracks]
+
+    def get_recent_tracks(self, username: str, limit: int = 10, page: int = 1):
+        if not username or not username.strip():
+            raise HTTPException(status_code=400, detail="Last.FM username must be configured")
+
+        encoded_username = urllib.parse.quote(username.strip())
+        recent_url = (
+            f"http://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks"
+            f"&user={encoded_username}&api_key={self.api_key}&format=json&limit={limit}&page={page}"
+        )
+
+        recent_response = self.get_with_retries(recent_url)
+        if recent_response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to fetch recent tracks from Last.FM")
+
+        recent_data = recent_response.json()
+        recent_tracks = recent_data.get("recenttracks", {}).get("track", [])
+        if isinstance(recent_tracks, dict):
+            recent_tracks = [recent_tracks]
+
+        results = []
+        for track in recent_tracks:
+            date_info = track.get("date", {}) if isinstance(track, dict) else {}
+            results.append({
+                "title": track.get("name", ""),
+                "artist": track.get("artist", {}).get("#text", "") if isinstance(track.get("artist"), dict) else track.get("artist", ""),
+                "album": track.get("album", {}).get("#text", "") if isinstance(track.get("album"), dict) else track.get("album", ""),
+                "last_fm_url": track.get("url"),
+                "date_added": datetime.fromtimestamp(int(date_info.get("uts"))) if date_info.get("uts") else None,
+                "now_playing": track.get("@attr", {}).get("nowplaying") == "true" if isinstance(track.get("@attr"), dict) else False,
+            })
+
+        return results[:limit]
 
     def search_track(self, title: Optional[str] = None, artist: Optional[str] = None, limit: int=10, page: int=1) -> List[MusicFile]:
         # URL encode parameters

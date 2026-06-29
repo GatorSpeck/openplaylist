@@ -5,6 +5,8 @@ This folder contains high-level screen components that compose major app surface
 ## Current Component
 
 - `Playlists.tsx`: main playlists view shell and coordination surface
+- `LandingActivityFeed.tsx`: scrollable landing-page activity feed card
+- `LandingStatsSummary.tsx`: compact library stats summary for the landing page
 
 ## Notes
 

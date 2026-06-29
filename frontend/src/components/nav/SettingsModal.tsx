@@ -517,6 +517,7 @@ const SettingsModal = ({ open, onClose }) => {
   const [indexPaths, setIndexPaths] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [settings, setSettings] = useState({});
+  const [lastFmUsername, setLastFmUsername] = useState('');
   const [playlistSyncDefaults, setPlaylistSyncDefaults] = useState(DEFAULT_PLAYLIST_SYNC_DEFAULTS);
 
   useEffect(() => {
@@ -532,6 +533,7 @@ const SettingsModal = ({ open, onClose }) => {
       setIndexPaths(response.data || []);
       const settingsResp = await axios.get('/api/settings');
       setSettings(settingsResp.data || {});
+      setLastFmUsername(settingsResp.data?.lastFmUsername || '');
       setPlaylistSyncDefaults({
         ...DEFAULT_PLAYLIST_SYNC_DEFAULTS,
         ...(settingsResp.data?.playlistSyncDefaults || {}),
@@ -554,6 +556,7 @@ const SettingsModal = ({ open, onClose }) => {
         axios.post('/api/settings/paths', indexPaths),
         axios.post('/api/settings', {
           playlistSyncDefaults,
+          lastFmUsername,
         }),
       ]);
       onClose();
@@ -606,11 +609,27 @@ const SettingsModal = ({ open, onClose }) => {
         )}
         {activeTab === 3 && <DatabaseMigrationsPanel />}
         {activeTab === 4 && (
-          <div className="space-y-2">
+          <div className="space-y-4">
             <h3 className="text-base font-semibold text-text dark:text-text-dark">Last.fm Settings</h3>
             <p className="text-sm text-text/80 dark:text-text-dark/80">
               <strong>Last.fm API Configured:</strong>{settings.lastFmApiKeyConfigured ? ' Yes' : ' No'}
             </p>
+            <div className="space-y-2 rounded border border-border bg-surface-subtle p-4 dark:border-border-dark dark:bg-surface-dark">
+              <label htmlFor="lastfm-username" className="block text-sm font-medium text-text dark:text-text-dark">
+                Last.fm Username
+              </label>
+              <input
+                id="lastfm-username"
+                type="text"
+                value={lastFmUsername}
+                onChange={(event) => setLastFmUsername(event.target.value)}
+                placeholder="Configured Last.fm username"
+                className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
+              />
+              <p className="text-xs text-text/60 dark:text-text-dark/60">
+                Used to load recent tracks on the landing page.
+              </p>
+            </div>
           </div>
         )}
         {activeTab === 5 && (

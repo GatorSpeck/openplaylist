@@ -637,6 +637,24 @@ class ScanResults(BaseModel):
     files_missing: int = 0
     progress: float = 0
 
+
+class LandingActivityEntry(BaseModel):
+    id: int
+    entry_type: str
+    date_added: Optional[datetime] = None
+    playlist_id: Optional[int] = None
+    playlist_name: Optional[str] = None
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    album: Optional[str] = None
+    notes: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
+
+
+class LandingActivityResponse(BaseModel):
+    lastfmEntries: List[LandingActivityEntry] = []
+    openPlaylistEntries: List[LandingActivityEntry] = []
+
 class LibraryStats(BaseModel):
     trackCount: int
     albumCount: int

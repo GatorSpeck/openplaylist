@@ -114,6 +114,22 @@ def test_create_playlist_applies_global_sync_defaults(client, monkeypatch, tmp_p
     assert all(target["config"]["playlist_name"] == "Auto Sync Playlist" for target in sync_targets)
 
 
+def test_save_settings_persists_lastfm_username(client, monkeypatch, tmp_path):
+    monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+
+    response = client.post(
+        "/api/settings",
+        json={"lastFmUsername": "  test-user  "},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["lastFmUsername"] == "test-user"
+
+    settings_response = client.get("/api/settings")
+    assert settings_response.status_code == 200
+    assert settings_response.json()["lastFmUsername"] == "test-user"
+
+
 def test_playlist_sync_backfills_remote_playlist_id(client, monkeypatch):
     monkeypatch.setenv("CONFIG_DIR", "/tmp/playlist-test-config")
 

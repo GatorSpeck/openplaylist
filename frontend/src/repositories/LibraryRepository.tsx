@@ -35,6 +35,20 @@ export class LibraryRepository {
         }
     }
 
+    async getLandingActivity(limit = 10) {
+        try {
+            const response = await axios.get(`/api/landing/activity`, {
+                params: {
+                    limit
+                }
+            });
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching landing activity:', error);
+            throw error;
+        }
+    }
+
     async findLocalFiles(tracks: PlaylistEntry[]) {
         try {
             const details = tracks.map(track => track.details);
