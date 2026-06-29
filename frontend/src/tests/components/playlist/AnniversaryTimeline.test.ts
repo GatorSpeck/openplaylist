@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { mergeAnniversaryGroups, sortAnniversaryGroups } from '../../../components/playlist/anniversaryTimelineUtils';
+import {
+  buildCarouselColumns,
+  buildDateRange,
+  getAnniversaryBadgeMeta,
+  mergeAnniversaryGroups,
+  sortAnniversaryGroups,
+  sortAnniversariesWithinDate,
+} from '../../../components/playlist/anniversaryTimelineUtils';
 
-const buildAnniversary = (date: string, id: number) => ({
+const buildAnniversary = (date: string, id: number, originalReleaseDate = '2000-01-01') => ({
   id,
   album: `Album ${id}`,
   artist: `Artist ${id}`,
-  original_release_date: '2000-01-01',
+  original_release_date: originalReleaseDate,
   anniversary_date: date,
   years_since_release: 1,
 });
@@ -40,6 +47,45 @@ describe('AnniversaryTimeline windowing', () => {
       '2026-06-14',
       '2026-06-15',
       '2026-06-16',
+    ]);
+  });
+
+  it('builds a fixed date range with empty columns preserved', () => {
+    const columns = buildCarouselColumns(new Date('2026-06-13T00:00:00'), new Date('2026-06-15T00:00:00'), [
+      buildAnniversary('2026-06-14', 2),
+    ]);
+
+    expect(columns.map((column) => column.date)).toEqual([
+      '2026-06-13',
+      '2026-06-14',
+      '2026-06-15',
+    ]);
+    expect(columns[0]?.anniversaries).toHaveLength(0);
+    expect(columns[1]?.anniversaries.map((anniversary) => anniversary.id)).toEqual([2]);
+  });
+
+  it('sorts anniversaries within a date by original release date', () => {
+    const sorted = sortAnniversariesWithinDate([
+      { ...buildAnniversary('2026-06-14', 3), original_release_date: '2004-01-01' },
+      { ...buildAnniversary('2026-06-14', 4), original_release_date: '2001-01-01' },
+    ]);
+
+    expect(sorted.map((item) => item.id)).toEqual([4, 3]);
+  });
+
+  it('provides the expected anniversary badge styles', () => {
+    expect(getAnniversaryBadgeMeta(0).title).toBe('New release anniversary');
+    expect(getAnniversaryBadgeMeta(5).title).toBe('Silver milestone anniversary');
+    expect(getAnniversaryBadgeMeta(10).title).toBe('Gold milestone anniversary');
+    expect(getAnniversaryBadgeMeta(25).title).toBe('Gold milestone anniversary');
+    expect(getAnniversaryBadgeMeta(2).title).toBe('Bronze anniversary');
+  });
+
+  it('builds inclusive date ranges', () => {
+    expect(buildDateRange(new Date('2026-06-13T00:00:00'), new Date('2026-06-15T00:00:00'))).toEqual([
+      '2026-06-13',
+      '2026-06-14',
+      '2026-06-15',
     ]);
   });
 });

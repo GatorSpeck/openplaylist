@@ -380,9 +380,9 @@ const Playlists = () => {
 
             <div className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-surface/95 shadow-sm dark:border-border-dark dark:bg-surface-dark-elevated">
               <div className="border-b border-border px-5 py-4 dark:border-border-dark">
-                <h2 className="text-lg font-semibold text-text dark:text-text-dark">Anniversary tracker</h2>
+                <h2 className="text-lg font-semibold text-text dark:text-text-dark">Anniversary carousel</h2>
                 <p className="mt-1 text-sm text-text/70 dark:text-text-dark/70">
-                  Browse upcoming and recent album anniversaries on the same landing page.
+                  Browse upcoming and recent album anniversaries in an infinite horizontal carousel.
                 </p>
               </div>
               <div className="min-w-0 p-4">
