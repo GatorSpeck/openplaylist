@@ -157,7 +157,7 @@ export function getAnniversaryBadgeMeta(years: number): { className: string; mar
     return {
       className: 'inline-flex w-fit items-center rounded-full bg-emerald-500 px-2.5 py-1 text-[11px] font-semibold text-white ring-1 ring-emerald-300/70 shadow-sm',
       marker: '●',
-      title: 'Current year anniversary',
+      title: 'New release anniversary',
     };
   }
 
