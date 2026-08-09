@@ -1,8 +1,9 @@
 """Route-level tests for playlist remote sync (`GET /api/playlists/{id}/sync`).
 
-These exercise the real orchestration in routes/playlists.py:sync_playlist rather than
-RemotePlaylistRepository's base-class sync_playlist()/apply_sync_plan(), which are not
-called from that route and are not reachable from any live code path.
+These exercise the real orchestration in routes/playlists.py:sync_playlist. An older,
+parallel implementation used to live directly on RemotePlaylistRepository as
+sync_playlist()/apply_sync_plan(), but it was never called from that route or reachable from
+any live code path, so it was deleted rather than kept in sync with this one.
 
 Remote services are faked via MockRemotePlaylistRepository, injected by monkeypatching
 routes.playlists.create_remote_repository. Snapshot persistence (get_current_snapshot /
@@ -34,9 +35,10 @@ def install_mock_remote_repos(monkeypatch, seed=None):
 
     def fake_create_remote_repository(service, session, config=None, music_file_repo=None):
         repo = MockRemotePlaylistRepository(session, config, music_file_repo=music_file_repo)
-        state = remote_state.setdefault(service, {"playlists": {}, "updates": {}})
+        state = remote_state.setdefault(service, {"playlists": {}, "updates": {}, "flags": {}})
         repo.remote_playlists = state["playlists"]
         repo.remote_snapshot_updates = state["updates"]
+        repo._flags = state["flags"]
         repos_by_service[service] = repo
         if seed and service not in seeded_services:
             seeded_services.add(service)
@@ -297,6 +299,100 @@ def test_multi_target_sync_applies_changes_to_each_targets_own_remote_playlist(c
 
     assert spotify_titles == {"Title A"}
     assert plex_titles == {"Title A"}
+
+
+def test_remote_add_on_one_target_is_not_logged_against_sibling_targets(client, test_db, mock_remote_repos):
+    """Regression test: a track added directly on one remote used to show up in the sync log as
+    an "add" against every target that has receiveEntryAdds enabled, not just the one it was
+    actually observed on, because SyncChange didn't track which target's remote snapshot a
+    'remote' sourced change came from - only that it was 'remote'. Once merged into the unified
+    plan, that single change got fanned out to every sibling target's apply step, which had no way
+    to tell it apart from a genuine receive on that target (fixed via SyncChange.origin_target_ids).
+    """
+    track_a = add_local_track(test_db, "a.mp3", "Artist A", "Title A")
+    playlist = create_playlist(
+        client, "Local Playlist",
+        entries=[{"order": 0, "music_file_id": track_a.id, "entry_type": "music_file"}],
+    )
+    add_sync_target(client, playlist["id"], "plex", "Plex List")
+    add_sync_target(client, playlist["id"], "youtube", "YouTube List")
+
+    assert sync(client, playlist["id"]).status_code == 200
+    time.sleep(0.05)
+
+    # Simulate the track being added directly on YouTube only, behind our backs.
+    youtube_repo = mock_remote_repos["youtube"]
+    youtube_repo.add_items("YouTube List", [PlaylistItem(artist="Bob Dylan", title="She Belongs to Me")])
+
+    response = sync(client, playlist["id"])
+    assert response.status_code == 200
+
+    add_log_targets = {
+        entry["target"] for entry in response.json()["log"]
+        if entry["action"] == "add" and "She Belongs to Me" in entry["track"]
+    }
+    assert add_log_targets == {"local", "youtube"}
+
+    # And it must not have actually been pushed to Plex either.
+    plex_titles = {i.title for i in mock_remote_repos["plex"].remote_playlists["Plex List"]}
+    assert "She Belongs to Me" not in plex_titles
+
+
+def test_unreachable_target_is_skipped_instead_of_recreated(client, test_db, mock_remote_repos):
+    """Regression test: get_playlist_snapshot() returning None used to mean either "confirmed no
+    such remote playlist" or "couldn't check right now" - the sync route couldn't tell them apart
+    and treated both as "remote playlist doesn't exist, create/reset it". For Plex specifically,
+    since create_playlist() clears-then-reseeds an existing playlist it finds on a second look, a
+    transient outage could resolve between the two lookups and wipe the real playlist. Remote
+    repos now raise RemoteUnavailableError instead of returning None for that case, and the sync
+    route must skip the target entirely rather than touching it.
+    """
+    track_a = add_local_track(test_db, "a.mp3", "Artist A", "Title A")
+    playlist = create_playlist(
+        client, "Local Playlist",
+        entries=[{"order": 0, "music_file_id": track_a.id, "entry_type": "music_file"}],
+    )
+    add_sync_target(client, playlist["id"], "plex", "Plex List")
+    add_sync_target(client, playlist["id"], "spotify", "Spotify List")
+
+    # First sync succeeds normally and seeds both remotes.
+    first = sync(client, playlist["id"])
+    assert first.status_code == 200
+    plex_repo = mock_remote_repos["plex"]
+    assert plex_repo.create_playlist_called == 1
+    assert [i.title for i in plex_repo.remote_playlists["Plex List"]] == ["Title A"]
+
+    time.sleep(0.05)
+
+    # Add a second local track, then simulate Plex being unreachable for this sync (Spotify stays
+    # healthy, so the sync as a whole still succeeds - just partially, same as any other
+    # per-target init failure).
+    track_b = add_local_track(test_db, "b.mp3", "Artist B", "Title B")
+    add_track_response = client.post(
+        f"/api/playlists/{playlist['id']}/add",
+        json=[{"order": 1, "music_file_id": track_b.id, "entry_type": "music_file"}],
+    )
+    assert add_track_response.status_code == 200
+
+    plex_repo.unavailable = True
+    response = sync(client, playlist["id"])
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "partial"
+
+    # Must not have attempted to (re)create or otherwise touch the remote playlist.
+    assert plex_repo.create_playlist_called == 1
+    assert plex_repo.add_items_called == 0
+    assert [i.title for i in plex_repo.remote_playlists["Plex List"]] == ["Title A"]
+
+    # Spotify, unaffected, still got the new track normally.
+    assert {i.title for i in mock_remote_repos["spotify"].remote_playlists["Spotify List"]} == {"Title A", "Title B"}
+
+    assert body["summary"]["failed"] == 1
+    assert any(
+        entry["action"] == "skip" and entry["target"] == "plex"
+        for entry in body["log"]
+    )
 
 
 def test_receive_adds_disabled_skips_remote_only_track_on_ongoing_sync(client, test_db, mock_remote_repos):

@@ -5,7 +5,7 @@ from datetime import datetime
 import ytmusicapi
 from ytmusicapi import YTMusic, OAuthCredentials
 
-from repositories.remote_playlist_repository import RemotePlaylistRepository, get_local_tz
+from repositories.remote_playlist_repository import RemotePlaylistRepository, get_local_tz, RemoteUnavailableError
 from response_models import PlaylistSnapshot, PlaylistItem
 from lib.normalize import normalize_title
 from lib.match import TrackStub, get_match_score
@@ -402,24 +402,36 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             return None
     
     def get_playlist_snapshot(self, playlist_name: str) -> Optional[PlaylistSnapshot]:
-        """Get a snapshot of a YouTube Music playlist"""
+        """Get a snapshot of a YouTube Music playlist.
+
+        Returns None only when the lookup itself succeeded and confirmed there's no such
+        playlist. Any exception raised while trying to fetch it - network errors, rate limits,
+        API errors - propagates as RemoteUnavailableError instead of being folded into None:
+        ytmusicapi doesn't expose a reliable way to tell "confirmed missing" apart from
+        "couldn't check right now", and the sync route treats None as license to (re)create the
+        playlist, which must never happen just because a request failed.
+        """
         if not self.ytmusic:
             logging.error("Not authenticated with YouTube Music")
             return None
-        
+
         if not self.playlist_id:
             logging.error("No playlist ID configured for YouTube Music")
             return None
-            
-        try:
-            # For YouTube Music, we ignore playlist_name and use the ID from config
-            playlist, resolved_id = self._fetch_playlist_with_fallback_ids(self.playlist_id, limit=None)
-            if resolved_id:
-                self.playlist_id = resolved_id
-            
-            if not playlist:
-                return None
 
+        # For YouTube Music, we ignore playlist_name and use the ID from config
+        try:
+            playlist, resolved_id = self._fetch_playlist_with_fallback_ids(self.playlist_id, limit=None)
+        except Exception as e:
+            raise RemoteUnavailableError(f"Error fetching YouTube Music playlist '{playlist_name}': {e}") from e
+
+        if resolved_id:
+            self.playlist_id = resolved_id
+
+        if not playlist:
+            return None
+
+        try:
             tracks = playlist.get("tracks") or []
 
             if not tracks and self.playlist_id:
@@ -467,11 +479,11 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
                 len(result.items),
             )
             return result
-            
+
         except Exception as e:
             logging.error(f"Error fetching YouTube Music playlist: {e}")
-            return None
-    
+            raise RemoteUnavailableError(f"Error fetching YouTube Music playlist '{playlist_name}': {e}") from e
+
     def add_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
         """Add tracks to a YouTube Music playlist"""
         # Validate authentication and permissions before making changes

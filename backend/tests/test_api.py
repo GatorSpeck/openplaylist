@@ -293,15 +293,16 @@ def test_plex_add_items_refuses_to_create_playlist_when_target_missing(monkeypat
     loudly instead of ever creating anything here - playlist creation is handled explicitly,
     earlier in the sync, by create_playlist().
     """
+    import plexapi.exceptions
     import repositories.plex_repository as plex_repo_module
     from response_models import PlaylistItem
 
     class FakeServer:
         def fetchItem(self, key):
-            raise Exception("not found")
+            raise plexapi.exceptions.NotFound("not found")
 
         def playlist(self, title):
-            raise Exception("not found")
+            raise plexapi.exceptions.NotFound("not found")
 
         def playlists(self, **kwargs):
             return []

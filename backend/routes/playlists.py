@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from typing import Dict, Optional, List, Union, Any
 from datetime import datetime
 from repositories.remote_repository_factory import create_remote_repository
-from repositories.remote_playlist_repository import SyncChange, create_snapshot
+from repositories.remote_playlist_repository import SyncChange, create_snapshot, RemoteUnavailableError
 
 router = APIRouter()
 
@@ -614,6 +614,11 @@ def sync_playlist(
                 
                 target_ref = _get_remote_playlist_ref(config, playlist.name)
                 target_create_title = _get_remote_playlist_create_title(config, playlist.name)
+                # Bookkeeping snapshots (our own record of "what did we last sync") are keyed by
+                # this instead of target_ref: target_ref can change out from under us once the
+                # remote playlist id gets persisted (see _persist_remote_playlist_id), which would
+                # otherwise orphan the previous snapshot row and force a full re-diff every sync.
+                snapshot_key = f"synctarget:{target.id}"
                 
                 # Create the appropriate repository
                 remote_repo = create_remote_repository(
@@ -635,10 +640,11 @@ def sync_playlist(
                     'target': target,
                     'target_ref': target_ref or f"{target.service}_playlist",
                     'target_name': _get_remote_playlist_display_name(target.config, playlist.name),
+                    'snapshot_key': snapshot_key,
                 }
                 
                 # Get current and old snapshots for unified planning
-                old_snapshots[target.id] = remote_repo.get_current_snapshot(remote_repos[target.id]['target_ref'])
+                old_snapshots[target.id] = remote_repo.get_current_snapshot(remote_repos[target.id]['snapshot_key'])
                 current_snapshots[target.id] = remote_repo.get_playlist_snapshot(remote_repos[target.id]['target_ref'])
 
                 _persist_remote_playlist_id(db, target, playlist_id, getattr(remote_repo, "playlist_id", None))
@@ -671,7 +677,28 @@ def sync_playlist(
                     _persist_remote_playlist_id(db, target, playlist_id, getattr(remote_repo, "playlist_id", None))
 
                 logging.info(f"Initialized {target.service} repository for target {target.id}")
-                
+
+            except RemoteUnavailableError as e:
+                # The remote couldn't be reached/queried this sync - skip it entirely rather than
+                # falling through to the "remote playlist doesn't exist" create/reset path above,
+                # which would otherwise treat "couldn't check" as "confirmed empty".
+                logging.warning(f"Skipping {target.service} target {target.id} for this sync - remote unavailable: {e}")
+                remote_repos.pop(target.id, None)
+                sync_log.append(SyncLogEntry(
+                    action="skip",
+                    track=f"Target '{target.service}'",
+                    target=target.service,
+                    target_name=_get_remote_playlist_display_name(target.config, playlist.name),
+                    reason=f"Remote unavailable, skipped this sync: {e}",
+                    success=False,
+                    eventKind="system"
+                ))
+                results["failed"].append({
+                    "service": target.service,
+                    "target_id": target.id,
+                    "error": f"Remote unavailable: {str(e)}"
+                })
+
             except Exception as e:
                 logging.error(f"Failed to initialize {target.service} target {target.id}: {e}", exc_info=True)
                 results["failed"].append({
@@ -892,8 +919,10 @@ def sync_playlist(
                                 if should_add:
                                     pending_remote_ops[target_id]["add"].append(change)
                             
-                            # Receive adds from remote if enabled
-                            elif target.receiveEntryAdds and change.source == "remote":
+                            # Receive adds from remote if enabled - only log this against the
+                            # target(s) the add was actually observed on, not every target that
+                            # happens to have receiveEntryAdds set (see SyncChange.origin_target_ids)
+                            elif target.receiveEntryAdds and change.source == "remote" and target_id in change.origin_target_ids:
                                 sync_log.append(SyncLogEntry(
                                     action="add",
                                     track=change.item.to_string(),
@@ -910,8 +939,8 @@ def sync_playlist(
                                 if (not this_snapshot) or this_snapshot.has(change.item):
                                     pending_remote_ops[target_id]["remove"].append(change)
                             
-                            # Receive removes from remote if enabled
-                            elif target.receiveEntryRemovals and change.source == "remote":
+                            # Receive removes from remote if enabled - same origin restriction as adds above
+                            elif target.receiveEntryRemovals and change.source == "remote" and target_id in change.origin_target_ids:
                                 sync_log.append(SyncLogEntry(
                                     action="remove",
                                     track=change.item.to_string(),
@@ -1027,6 +1056,9 @@ def sync_playlist(
                 # Get the new snapshot after applying changes
                 new_snapshot = remote_repo.get_playlist_snapshot(target_ref)
                 if new_snapshot:
+                    # Persist under snapshot_key (stable), not new_snapshot.name (the remote's own,
+                    # possibly-changing title) - see snapshot_key comment above.
+                    new_snapshot.name = repo_info['snapshot_key']
                     remote_repo.write_snapshot(new_snapshot)
                     results["success"].append({
                         "service": repo_info['target'].service,
@@ -1157,15 +1189,22 @@ def get_playlist_sync_log(
 
 def merge_sync_plans(plan1, plan2):
     """Merge two sync plans (lists of SyncChange instances) into a unified plan"""
-    changes_seen = set()
-    for change in plan1:
-        changes_seen.add(change.item.to_string())
+    index_by_key = {change.item.to_string(): i for i, change in enumerate(plan1)}
 
     for change in plan2:
-        if change.item.to_string() in changes_seen:
-            continue
-        plan1.append(change)
-        
+        key = change.item.to_string()
+        existing_index = index_by_key.get(key)
+        if existing_index is None:
+            index_by_key[key] = len(plan1)
+            plan1.append(change)
+        else:
+            # Same item surfaced from more than one target's plan (e.g. added remotely on both
+            # Plex and YouTube) - keep a single change but remember every target it came from, so
+            # a 'remote' change isn't later misattributed to a target that never actually saw it.
+            existing = plan1[existing_index]
+            merged_origins = tuple(set(existing.origin_target_ids) | set(change.origin_target_ids))
+            plan1[existing_index] = existing._replace(origin_target_ids=merged_origins)
+
     return plan1
 
 @router.put("/{playlist_id}/update-entry")

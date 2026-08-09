@@ -2,7 +2,7 @@ import datetime
 from typing import Any, Dict, List, Optional
 
 from models import PlaylistDB
-from repositories.remote_playlist_repository import RemotePlaylistRepository
+from repositories.remote_playlist_repository import RemotePlaylistRepository, RemoteUnavailableError
 from response_models import PlaylistItem, PlaylistSnapshot
 
 
@@ -15,6 +15,12 @@ class MockRemotePlaylistRepository(RemotePlaylistRepository):
         self.remote_playlists: Dict[str, List[PlaylistItem]] = {}
         self.remote_snapshot_updates: Dict[str, datetime.datetime] = {}
         self.playlist_id: Optional[str] = None
+        # Simulates the remote being unreachable this sync (network error, service down, etc.)
+        # rather than confirmed-empty/missing - see RemoteUnavailableError. Backed by a dict
+        # (like remote_playlists above) rather than a plain bool so a test harness that swaps in
+        # a shared dict here can toggle it and have every repo instance created against the same
+        # service - including ones created for a *later* sync call - see the change.
+        self._flags: Dict[str, bool] = {}
 
         self.get_playlist_snapshot_called = 0
         self.create_playlist_called = 0
@@ -34,6 +40,14 @@ class MockRemotePlaylistRepository(RemotePlaylistRepository):
     def _reset_counters(self) -> None:
         self.reset_counters()
 
+    @property
+    def unavailable(self) -> bool:
+        return self._flags.get("unavailable", False)
+
+    @unavailable.setter
+    def unavailable(self, value: bool) -> None:
+        self._flags["unavailable"] = value
+
     def set_remote_playlist(
         self,
         playlist_name: str,
@@ -45,6 +59,8 @@ class MockRemotePlaylistRepository(RemotePlaylistRepository):
 
     def get_playlist_snapshot(self, playlist_name: str) -> Optional[PlaylistSnapshot]:
         self.get_playlist_snapshot_called += 1
+        if self.unavailable:
+            raise RemoteUnavailableError(f"Simulated outage fetching '{playlist_name}'")
         if playlist_name not in self.remote_playlists:
             return None
 

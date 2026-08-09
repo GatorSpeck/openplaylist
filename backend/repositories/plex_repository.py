@@ -1,7 +1,6 @@
 import os
 import dotenv
 dotenv.load_dotenv(override=True)
-from fastapi.exceptions import HTTPException
 import logging
 from plexapi.server import PlexServer
 from plexapi.playlist import Playlist as PlexPlaylist
@@ -12,7 +11,7 @@ from lib.normalize   import normalize_title
 from lib.match import TrackStub, get_match_score
 from lib.timing import timing
 
-from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz
+from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz, RemoteUnavailableError
 
 class PlexRepository(RemotePlaylistRepository):
     """Repository for Plex playlists"""
@@ -46,6 +45,9 @@ class PlexRepository(RemotePlaylistRepository):
         return playlist_id_str or None
 
     def _find_playlist_by_id(self, playlist_id: Optional[Any]) -> Optional[PlexPlaylist]:
+        """Returns None only once Plex has confirmed no such playlist exists. Any other failure
+        (e.g. the server being unreachable) raises RemoteUnavailableError rather than being
+        swallowed to None, which is indistinguishable from a confirmed absence to callers."""
         playlist_id_str = self._coerce_playlist_id(playlist_id)
         if not playlist_id_str:
             return None
@@ -55,8 +57,7 @@ class PlexRepository(RemotePlaylistRepository):
         except plexapi.exceptions.NotFound:
             return None
         except Exception as e:
-            logging.warning(f"Error looking up Plex playlist by ratingKey '{playlist_id_str}': {e}")
-            return None
+            raise RemoteUnavailableError(f"Error looking up Plex playlist by ratingKey '{playlist_id_str}': {e}") from e
 
     def _normalize_playlist_name(self, playlist_name: str) -> str:
         if not playlist_name:
@@ -64,20 +65,34 @@ class PlexRepository(RemotePlaylistRepository):
         return " ".join(playlist_name.strip().split()).casefold()
 
     def _find_matching_playlists(self, playlist_name: str) -> List[PlexPlaylist]:
-        """Find all Plex playlists matching a name using normalized comparison."""
+        """Find all Plex playlists matching a name using normalized comparison.
+
+        Raises RemoteUnavailableError if the playlist listing itself fails - an empty result here
+        must mean "checked and there aren't any", never "couldn't check".
+        """
         normalized_name = self._normalize_playlist_name(playlist_name)
         if not normalized_name:
             return []
 
-        matches: List[PlexPlaylist] = []
-        for playlist in self.server.playlists():
-            if self._normalize_playlist_name(getattr(playlist, "title", "")) == normalized_name:
-                matches.append(playlist)
+        try:
+            playlists = self.server.playlists()
+        except Exception as e:
+            raise RemoteUnavailableError(f"Error listing Plex playlists while looking up '{playlist_name}': {e}") from e
 
-        return matches
+        return [
+            playlist for playlist in playlists
+            if self._normalize_playlist_name(getattr(playlist, "title", "")) == normalized_name
+        ]
 
     def _find_playlist(self, playlist_name: str) -> Optional[PlexPlaylist]:
-        """Find a Plex playlist by name with normalized duplicate detection."""
+        """Find a Plex playlist by name with normalized duplicate detection.
+
+        Returns None only when Plex has confirmed there's no matching playlist. Raises
+        RemoteUnavailableError if the server couldn't be reached/queried, so callers never treat
+        "we don't actually know" as "this playlist doesn't exist" - which previously led
+        create_playlist() to recreate (and, since it clears existing items first, effectively
+        wipe) a playlist that was merely unreachable for a moment.
+        """
         if not playlist_name:
             return None
 
@@ -85,27 +100,22 @@ class PlexRepository(RemotePlaylistRepository):
         if playlist is not None:
             return playlist
 
-        try:
-            matches = self._find_matching_playlists(playlist_name)
-            if len(matches) > 1:
-                logging.warning(
-                    "Detected %d Plex playlists with duplicate name '%s'; using the first match",
-                    len(matches),
-                    playlist_name,
-                )
-            if matches:
-                return matches[0]
-        except Exception as e:
-            logging.warning(f"Error listing Plex playlists while looking up '{playlist_name}': {e}")
+        matches = self._find_matching_playlists(playlist_name)
+        if len(matches) > 1:
+            logging.warning(
+                "Detected %d Plex playlists with duplicate name '%s'; using the first match",
+                len(matches),
+                playlist_name,
+            )
+        if matches:
+            return matches[0]
 
         try:
             return self.server.playlist(playlist_name)
         except plexapi.exceptions.NotFound:
             return None
         except Exception as e:
-            logging.warning(f"Error looking up Plex playlist '{playlist_name}' by direct query: {e}")
-
-        return None
+            raise RemoteUnavailableError(f"Error looking up Plex playlist '{playlist_name}' by direct query: {e}") from e
 
     @timing
     def fetch_media_item(self, item: PlaylistItem) -> Any:
@@ -295,18 +305,20 @@ class PlexRepository(RemotePlaylistRepository):
     
     @timing
     def get_playlist_snapshot(self, playlist_name: str) -> Optional[PlaylistSnapshot]:
-        """Get a snapshot of a Plex playlist"""
+        """Get a snapshot of a Plex playlist.
+
+        Note: _find_playlist raises RemoteUnavailableError on lookup failure rather than
+        returning None - that's deliberately left unhandled here so it propagates to the caller
+        as-is, rather than being caught below and turned into an equally-unavailable-but-
+        differently-typed error.
+        """
+        logging.info(f"Fetching playlist {playlist_name} from Plex")
+        playlist = self._find_playlist(playlist_name)
+
+        if playlist is None:
+            return None
+
         try:
-            logging.info(f"Fetching playlist {playlist_name} from Plex")
-            playlist = None
-            try:
-                playlist = self._find_playlist(playlist_name)
-            except plexapi.exceptions.NotFound:
-                return None
-
-            if playlist is None:
-                return None
-
             self.playlist_id = self._coerce_playlist_id(getattr(playlist, "ratingKey", self.playlist_id))
 
             # TODO: assume same as Plex server's TZ
@@ -335,7 +347,7 @@ class PlexRepository(RemotePlaylistRepository):
             return result
         except Exception as e:
             logging.error(f"Error fetching playlist {playlist_name}: {e}")
-            raise HTTPException(status_code=500, detail=f"Error fetching playlist {playlist_name}")
+            raise RemoteUnavailableError(f"Error fetching playlist {playlist_name}: {e}") from e
     
     def add_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
         """Add items to a Plex playlist"""
