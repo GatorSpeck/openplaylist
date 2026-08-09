@@ -550,6 +550,8 @@ def scan_directory(directory: str, full=False, job_id: str = None):
         
         except Exception as e:
             logging.error(f"Failed to scan file {full_path}: {e}", exc_info=True)
+            db.rollback()
+            ops = 0
 
     # Mark-and-sweep for deleted files: any active file under scanned roots that
     # was not touched during this scan run is now considered missing.
