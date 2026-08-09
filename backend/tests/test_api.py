@@ -284,6 +284,55 @@ def test_plex_sync_uses_rating_key_for_renamed_playlist(monkeypatch):
     assert fake_server.playlist_calls == []
     assert repo.playlist_id == "1234"
 
+
+def test_plex_add_items_refuses_to_create_playlist_when_target_missing(monkeypatch):
+    """Regression test: add_items() used to fall back to creating a brand-new Plex playlist
+    (titled with whatever ref string it was given) whenever it couldn't find the target
+    playlist. Combined with a bug elsewhere that could hand it the wrong ref, this silently
+    spawned stray playlists seeded with whatever tracks were being pushed. It should now fail
+    loudly instead of ever creating anything here - playlist creation is handled explicitly,
+    earlier in the sync, by create_playlist().
+    """
+    import plexapi.exceptions
+    import repositories.plex_repository as plex_repo_module
+    from response_models import PlaylistItem
+
+    class FakeServer:
+        def fetchItem(self, key):
+            raise plexapi.exceptions.NotFound("not found")
+
+        def playlist(self, title):
+            raise plexapi.exceptions.NotFound("not found")
+
+        def playlists(self, **kwargs):
+            return []
+
+        def account(self):
+            return object()
+
+        class library:
+            @staticmethod
+            def section(name):
+                return object()
+
+    class ExplodingPlexPlaylist:
+        @staticmethod
+        def create(*args, **kwargs):
+            raise AssertionError("PlexPlaylist.create should not be called from add_items()")
+
+    monkeypatch.setattr("repositories.plex_repository.PlexServer", lambda endpoint, token=None: FakeServer())
+    monkeypatch.setattr(plex_repo_module, "PlexPlaylist", ExplodingPlexPlaylist)
+
+    repo = plex_repo_module.PlexRepository(
+        session=object(),
+        config={"endpoint": "http://plex.local:32400", "token": "token", "library": "Music"},
+    )
+    monkeypatch.setattr(repo, "fetch_media_items", lambda items: {id(item): object() for item in items})
+
+    with pytest.raises(ValueError):
+        repo.add_items("some-stale-ref-that-does-not-exist", [PlaylistItem(artist="Artist", title="Title")])
+
+
 def test_get_playlists_empty(client):
     response = client.get("/api/playlists")
     assert response.status_code == 200

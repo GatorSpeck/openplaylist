@@ -10,6 +10,7 @@ This folder contains backend unit and integration tests.
 - `test_remote_playlist_repository.py`: remote service repository behavior
 - `test_playlist_performance.py`: performance-sensitive playlist checks
 - `test_lib_normalize.py`, `test_normalize_title.py`, `test_match.py`: normalization/matching logic
+- `test_remote_sync.py`: playlist sync route behavior against faked Plex/Spotify/YouTube services
 
 ## Running
 

@@ -2,7 +2,7 @@ import os
 import logging
 import json
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Set, NamedTuple
+from typing import List, Optional, Dict, Any, Set, NamedTuple, Tuple, Callable, TypeVar
 from fastapi.exceptions import HTTPException
 from pydantic import BaseModel
 from abc import ABC, abstractmethod
@@ -14,6 +14,16 @@ from response_models import PlaylistItem, PlaylistSnapshot, SyncTarget
 
 def get_local_tz():
     return datetime.now().astimezone().tzinfo
+
+
+class RemoteUnavailableError(Exception):
+    """A remote service couldn't be reached/queried right now, as distinct from it giving a
+    definitive "this playlist doesn't exist" answer. Repository lookups must raise this instead
+    of returning None on connectivity/transient failures - the sync route treats None as
+    confirmation there's nothing there yet and will create (or, worse, recreate) a playlist from
+    local content, which must never happen just because a request timed out.
+    """
+    pass
 
 def diff_snapshots(left: PlaylistSnapshot, right: PlaylistSnapshot):
     logging.info(f"Left timestamp: {left.last_updated}, Right timestamp: {right.last_updated}")
@@ -40,6 +50,11 @@ class SyncChange(NamedTuple):
     item: PlaylistItem
     source: str  # 'local' or 'remote'
     reason: str  # description of why this change is needed
+    # Which sync target(s) this 'remote' change was actually observed on. Empty for 'local'
+    # changes, which are meant to fan out to every target. Lets the per-target apply step in
+    # routes/playlists.py tell a genuine receive from THIS target apart from a receive that
+    # happened on a sibling target and merely passed through the unified plan.
+    origin_target_ids: Tuple[int, ...] = ()
 
 def create_snapshot(playlist: PlaylistDB) -> PlaylistSnapshot:
     """Create a snapshot from a local playlist"""
@@ -72,20 +87,46 @@ def create_snapshot(playlist: PlaylistDB) -> PlaylistSnapshot:
     
     return result
 
+T = TypeVar("T")
+
+
 class RemotePlaylistRepository(ABC):
     """Base class for remote playlist repositories"""
-    
+
     def __init__(self, session, config: Dict[str, str] = None):
         """
         Initialize the repository
-        
+
         Args:
             session: Database session
             config: Configuration dictionary with service-specific settings
         """
         self.session = session
         self.config = config or {}
-        
+
+    def _guarded_remote_call(
+        self,
+        fn: Callable[[], T],
+        *,
+        is_not_found: Optional[Callable[[Exception], bool]] = None,
+        context: str,
+    ) -> Optional[T]:
+        """Call fn(), classifying any failure as "confirmed absent" vs. "unavailable".
+
+        Returns None only when fn() raises and is_not_found(exc) says the service gave a
+        definitive "no such thing" answer. Any other failure raises RemoteUnavailableError
+        instead of being swallowed - see that class's docstring for why this distinction
+        matters. If is_not_found is omitted (a service with no reliable not-found signal),
+        every exception becomes RemoteUnavailableError; a confirmed-absent result must then
+        come from fn() returning normally, never from this path.
+        """
+        try:
+            return fn()
+        except Exception as e:
+            if is_not_found is not None and is_not_found(e):
+                return None
+            raise RemoteUnavailableError(f"{context}: {e}") from e
+
     def get_current_snapshot(self, playlist_name: str) -> Optional[PlaylistSnapshot]:
         """Get the current snapshot from the database"""
         this_playlist = self.session.query(PlaylistSnapshotModel).filter_by(name=playlist_name).first()
@@ -242,7 +283,7 @@ class RemotePlaylistRepository(ABC):
                 if receive_adds:
                     for item in new_remote_snapshot.items:
                         if not new_local_snapshot.has(item):
-                            plan.append(SyncChange('add', item, 'remote', 'Initial sync: item exists remotely but not locally'))
+                            plan.append(SyncChange('add', item, 'remote', 'Initial sync: item exists remotely but not locally', origin_target_ids=((sync_target.id,) if sync_target else ())))
             else:
                 # No remote playlist exists, send everything local to remote
                 if send_adds:
@@ -313,7 +354,7 @@ class RemotePlaylistRepository(ABC):
                         # Item was added remotely since last sync
                         if not index_has(new_local_index, item):
                             # Item doesn't exist locally, safe to add
-                            plan.append(SyncChange('add', item, 'remote', f'Item added to {target_name} since last sync'))
+                            plan.append(SyncChange('add', item, 'remote', f'Item added to {target_name} since last sync', origin_target_ids=((sync_target.id,) if sync_target else ())))
                         else:
                             logging.debug(f"Item {item.to_string(normalize=True)} already exists locally, skipping add")
             
@@ -324,7 +365,7 @@ class RemotePlaylistRepository(ABC):
                         # Item was removed remotely since last sync
                         if index_has(new_local_index, item):
                             # Item still exists locally, safe to remove
-                            plan.append(SyncChange('remove', item, 'remote', f'Item removed from {target_name} since last sync'))
+                            plan.append(SyncChange('remove', item, 'remote', f'Item removed from {target_name} since last sync', origin_target_ids=((sync_target.id,) if sync_target else ())))
                         else:
                             logging.debug(f"Item {item.to_string(normalize=True)} already removed locally, skipping remove")
         
@@ -337,71 +378,6 @@ class RemotePlaylistRepository(ABC):
             pass
 
         return plan
-    
-    def apply_sync_plan(self, repo, playlist_id: int, remote_playlist_name: str, plan: List[SyncChange]):
-        """
-        Apply the unified sync plan to both local and remote playlists
-        """
-        for change in plan:
-            logging.info(f"Sync change: {change.action} {change.item.to_string()} from {change.source} - {change.reason}")
-        
-        # Apply remote changes
-        remote_adds = [change for change in plan if change.action == 'add' and change.source == 'local']
-        if remote_adds:
-            try:
-                items_to_add = [change.item for change in remote_adds]
-                self.add_items(remote_playlist_name, items_to_add)
-                logging.info(f"Added {len(remote_adds)} tracks to remote playlist")
-            except Exception as e:
-                logging.error(f"Error adding tracks to remote playlist: {e}")
-
-        remote_removes = [change for change in plan if change.action == 'remove' and change.source == 'local']
-        if remote_removes:
-            removed_count = 0
-            for change in remote_removes:
-                try:
-                    self.remove_items(remote_playlist_name, [change.item])
-                    removed_count += 1
-                except Exception as e:
-                    logging.error(f"Error removing {change.item.to_string()} from remote playlist: {e}")
-            
-            if removed_count > 0:
-                logging.info(f"Removed {removed_count} tracks from remote playlist")
-        
-        logging.info(f"Applying local changes to playlist {playlist_id}")
-        
-        # Apply local changes (from remote source)
-        local_adds = [change for change in plan if change.action == 'add' and change.source == 'remote']
-        if local_adds:
-            for change in local_adds:
-                try:
-                    # Convert PlaylistItem to a format the local repo can handle
-                    # This would typically involve calling something like repo.add_music_file or similar
-                    if hasattr(repo, 'add_music_file'):
-                        # Create a basic music file object from the playlist item
-                        from response_models import MusicFile
-                        music_file = MusicFile(
-                            title=change.item.title,
-                            artist=change.item.artist,
-                            album=change.item.album,
-                            spotify_uri=change.item.spotify_uri,
-                            youtube_url=change.item.youtube_url,
-                            plex_rating_key=change.item.plex_rating_key
-                        )
-                        repo.add_music_file(playlist_id, music_file)
-                        logging.info(f"Added track {change.item.to_string()} to local playlist")
-                except Exception as e:
-                    logging.error(f"Error adding {change.item.to_string()} to local playlist: {e}")
-        
-        local_removes = [change for change in plan if change.action == 'remove' and change.source == 'remote']
-        if local_removes:
-            for change in local_removes:
-                try:
-                    if hasattr(repo, 'remove_music_file'):
-                        repo.remove_music_file(playlist_id, change.item)
-                        logging.info(f"Removed track {change.item.to_string()} from local playlist")
-                except Exception as e:
-                    logging.error(f"Error removing {change.item.to_string()} from local playlist: {e}")
 
     def _apply_local_removal_guardrails(
         self,
@@ -507,83 +483,3 @@ class RemotePlaylistRepository(ABC):
             sync_target=sync_target,
             target_name=target_name,
         )
-    
-    def sync_playlist(self, local_repo, playlist_id: int, sync_target: SyncTarget):
-        """
-        Sync a playlist with the remote service
-        
-        Args:
-            local_repo: Local playlist repository
-            playlist_id: ID of the playlist to sync
-            sync_target: Sync target configuration
-        """
-        if not sync_target.enabled:
-            logging.info(f"Sync target {sync_target.id} is disabled, skipping sync")
-            return
-        
-        # Get the local playlist
-        playlist = local_repo.get_by_id(playlist_id)
-        if not playlist:
-            raise ValueError(f"Playlist {playlist_id} not found")
-        
-        # Create local snapshot
-        local_snapshot = create_snapshot(playlist)
-        
-        # Get target name from config
-        target_name = sync_target.config.get('playlist_name') or playlist.name
-        
-        # Get current remote snapshot and stored snapshot
-        current_remote_snapshot = self.get_playlist_snapshot(target_name)
-        stored_remote_snapshot = self.get_current_snapshot(target_name)
-        
-        # If no remote playlist exists, create it
-        if not current_remote_snapshot:
-            logging.info(f"Creating remote playlist '{target_name}'")
-            if sync_target.sendEntryAdds:
-                # Create with current local items
-                self.create_playlist(target_name, local_snapshot)
-                # Update stored snapshot - create new snapshot with correct name
-                new_snapshot = PlaylistSnapshot(
-                    name=target_name[-49:],
-                    last_updated=local_snapshot.last_updated,
-                    items=local_snapshot.items
-                )
-            else:
-                # Create empty playlist when sendEntryAdds is False
-                empty_snapshot = PlaylistSnapshot(
-                    name=target_name[-49:],
-                    last_updated=local_snapshot.last_updated,
-                    items=[]
-                )
-                self.create_playlist(target_name, empty_snapshot)
-                new_snapshot = empty_snapshot
-
-            refreshed_snapshot = self.get_playlist_snapshot(target_name)
-            self.write_snapshot(refreshed_snapshot or new_snapshot)
-            return
-        
-        # Create sync plan
-        sync_plan = self.create_sync_plan(
-            old_remote_snapshot=stored_remote_snapshot,
-            new_remote_snapshot=current_remote_snapshot,
-            new_local_snapshot=local_snapshot,
-            sync_target=sync_target
-        )
-
-        sync_plan = self.apply_sync_guardrails(
-            plan=sync_plan,
-            new_local_snapshot=local_snapshot,
-            sync_target=sync_target,
-            target_name=target_name,
-        )
-        
-        # Apply sync plan
-        self.apply_sync_plan(local_repo, playlist_id, target_name, sync_plan)
-        
-        # Update stored snapshot with current remote state
-        if current_remote_snapshot:
-            if any(change.source == 'local' for change in sync_plan):
-                refreshed_snapshot = self.get_playlist_snapshot(target_name)
-                self.write_snapshot(refreshed_snapshot or current_remote_snapshot)
-            else:
-                self.write_snapshot(current_remote_snapshot)

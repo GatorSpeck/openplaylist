@@ -3,7 +3,7 @@ from sqlalchemy.orm import joinedload
 from fastapi.responses import StreamingResponse
 from repositories.playlist_repository import PlaylistRepository, PlaylistFilter, PlaylistSortCriteria, PlaylistSortDirection
 from fastapi import Query, APIRouter, Depends, Body, File, UploadFile
-from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, LinkChangeRequest, MusicFileEntry, RequestedAlbumEntry, Album, TrackDetails, PlaylistEntryStub, SyncTarget, SyncLogEntry, PersistentSyncLogEntry
+from response_models import Playlist, PlaylistEntry, PlaylistEntriesResponse, AlterPlaylistDetails, LinkChangeRequest, MusicFileEntry, RequestedAlbumEntry, Album, TrackDetails, PlaylistEntryStub, SyncTarget, SyncLogEntry, PersistentSyncLogEntry, PlaylistSnapshot
 import json
 from repositories.playlist_repository import PlaylistRepository
 from repositories.music_file import MusicFileRepository
@@ -19,10 +19,11 @@ import pathlib
 import os
 from repositories.requests_cache_session import requests_cache_session
 from pydantic import BaseModel
-from typing import Dict, Optional, List, Union, Any
+from typing import Dict, Optional, List, Union, Any, Tuple
 from datetime import datetime
 from repositories.remote_repository_factory import create_remote_repository
-from repositories.remote_playlist_repository import SyncChange, create_snapshot
+from repositories.remote_playlist_repository import SyncChange, create_snapshot, RemoteUnavailableError
+from dataclasses import dataclass, field
 
 router = APIRouter()
 
@@ -60,6 +61,27 @@ def _persist_remote_playlist_id(db, target: SyncTarget, playlist_id: int, remote
     db_target.config = json.dumps(config)
     db.commit()
     target.config = config
+
+
+def _get_enabled_sync_targets(repo: PlaylistRepository, playlist_id: int) -> List[SyncTarget]:
+    """Raises 404 if there are no sync targets configured at all, or a distinct 404 if there are
+    some but none are enabled - same two checks sync_playlist has always done, just named."""
+    sync_targets = repo.get_sync_targets(playlist_id)
+
+    if not sync_targets:
+        raise HTTPException(status_code=404, detail="No sync targets configured for this playlist")
+
+    sync_targets = [target for target in sync_targets if target.enabled]
+    if not sync_targets:
+        raise HTTPException(status_code=404, detail="No enabled sync targets found for this playlist")
+
+    return sync_targets
+
+
+def _chunk_changes(changes: List[SyncChange], chunk_size: int):
+    for idx in range(0, len(changes), chunk_size):
+        yield changes[idx:idx + chunk_size]
+
 
 @router.post("/", response_model=Playlist)
 def create_playlist(
@@ -537,7 +559,6 @@ def sync_playlist(
         playlist_id: The ID of the playlist to sync
     """
     sync_log = []  # Initialize sync log
-    remote_batch_size = 100
     db = None
     sync_run = None
 
@@ -561,36 +582,17 @@ def sync_playlist(
                 event_metadata=event.metadata
             ))
 
-    def _chunk_changes(changes: List[SyncChange], chunk_size: int):
-        for idx in range(0, len(changes), chunk_size):
-            yield changes[idx:idx + chunk_size]
-    
     try:
-        # Get all enabled sync targets for this playlist
-        sync_targets = repo.get_sync_targets(playlist_id)
-        
-        if not sync_targets:
-            raise HTTPException(status_code=404, detail="No sync targets configured for this playlist")
-        
-        # Just get enabled targets
-        sync_targets = [target for target in sync_targets if target.enabled]
-        if not sync_targets:
-            raise HTTPException(status_code=404, detail="No enabled sync targets found for this playlist")
-        
+        sync_targets = _get_enabled_sync_targets(repo, playlist_id)
+
         # Initialize success and error counters
         results = {
             "success": [],
             "failed": []
         }
-        
+
         db = Database.get_session()
-        
-        # Step 1: Initialize all remote repositories and collect current snapshots
-        remote_repos = {}
-        current_snapshots = {}
-        old_snapshots = {}
-        
-        # Step 2: Get the current local snapshot
+
         playlist = repo.get_by_id(playlist_id)
         if not playlist:
             raise HTTPException(status_code=404, detail="Playlist not found")
@@ -604,448 +606,58 @@ def sync_playlist(
         db.add(sync_run)
         db.commit()
         db.refresh(sync_run)
-    
+
         local_snapshot = create_snapshot(playlist)
-        
-        for target in sync_targets:
-            try:
-                # Parse the config
-                config = target.config
-                
-                target_ref = _get_remote_playlist_ref(config, playlist.name)
-                target_create_title = _get_remote_playlist_create_title(config, playlist.name)
-                
-                # Create the appropriate repository
-                remote_repo = create_remote_repository(
-                    service=target.service,
-                    session=db,
-                    config=config,
-                    music_file_repo=get_music_file_repository(db)
-                )
 
-                if remote_repo is None:
-                    raise Exception(f"Unsupported service: {target.service}")
-                
-                if not remote_repo.is_authenticated():
-                    raise Exception(f"Authentication failed for service: {target.service}")
+        # Step 1+2: Initialize all remote repositories and collect current/old snapshots
+        init_result = _initialize_target_contexts(db, sync_targets, playlist, playlist_id, local_snapshot)
+        sync_log.extend(init_result.log_entries)
+        results["failed"].extend(init_result.failures)
 
-                # Store the repository and separate remote ref/display name for later use
-                remote_repos[target.id] = {
-                    'repo': remote_repo,
-                    'target': target,
-                    'target_ref': target_ref or f"{target.service}_playlist",
-                    'target_name': _get_remote_playlist_display_name(target.config, playlist.name),
-                }
-                
-                # Get current and old snapshots for unified planning
-                old_snapshots[target.id] = remote_repo.get_current_snapshot(remote_repos[target.id]['target_ref'])
-                current_snapshots[target.id] = remote_repo.get_playlist_snapshot(remote_repos[target.id]['target_ref'])
-
-                _persist_remote_playlist_id(db, target, playlist_id, getattr(remote_repo, "playlist_id", None))
-
-                if not current_snapshots[target.id]:
-                    # remote playlist doesn't exist - let's create it
-                    sync_log.append(SyncLogEntry(
-                        action="create",
-                        track=f"Playlist '{remote_repos[target.id]['target_name']}'",
-                        target=target.service,
-                        target_name=remote_repos[target.id]['target_name'],
-                        reason="Remote playlist did not exist",
-                        success=True,
-                        eventKind="system"
-                    ))
-                    logging.info(f"Creating new remote playlist for {target.service} target {target.id}")
-
-                    created_playlist = remote_repo.create_playlist(target_create_title, local_snapshot)
-
-                    remote_playlist_id = getattr(remote_repo, "playlist_id", None)
-                    if not remote_playlist_id:
-                        if isinstance(created_playlist, dict):
-                            remote_playlist_id = created_playlist.get("id") or created_playlist.get("playlist_id")
-                        else:
-                            remote_playlist_id = getattr(created_playlist, "id", None) or getattr(created_playlist, "playlist_id", None)
-
-                    _persist_remote_playlist_id(db, target, playlist_id, remote_playlist_id)
-
-                    current_snapshots[target.id] = remote_repo.get_playlist_snapshot(remote_repos[target.id]['target_ref'])
-                    _persist_remote_playlist_id(db, target, playlist_id, getattr(remote_repo, "playlist_id", None))
-
-                logging.info(f"Initialized {target.service} repository for target {target.id}")
-                
-            except Exception as e:
-                logging.error(f"Failed to initialize {target.service} target {target.id}: {e}", exc_info=True)
-                results["failed"].append({
-                    "service": target.service,
-                    "target_id": target.id,
-                    "error": f"Failed to initialize: {str(e)}"
-                })
-        
         # If no repositories were successfully initialized, return early
-        if not remote_repos:
+        if not init_result.contexts:
             raise HTTPException(status_code=500, detail="Failed to initialize any remote repositories")
-        
+
         # Step 3: Create individual sync plans and combine into unified plan
-        individual_plans = {}
-        unified_plan = None
-        
-        if force_push:
-            logging.info("🔥 FORCE PUSH SYNC requested - all remote playlists will be completely replaced with local content")
-            sync_log.append(SyncLogEntry(
-                action="force_push",
-                track="FORCE PUSH SYNC",
-                target="system",
-                target_name="All targets",
-                reason="Force push sync initiated - all remote content will be replaced",
-                success=True,
-                eventKind="system"
-            ))
-        
-        for target_id, repo_info in remote_repos.items():
-            try:
-                remote_repo = repo_info['repo']
-                target = repo_info['target']
-                target_name = repo_info['target_name']
-                
-                # Create sync plan for this target
-                if force_push:
-                    # Validate that target supports force push
-                    if not target.sendEntryAdds or not target.sendEntryRemovals:
-                        logging.warning(f"Skipping force push for target {target_id} ({target.service}): requires both sendEntryAdds and sendEntryRemovals to be enabled")
-                        results["failed"].append({
-                            "service": target.service,
-                            "target_id": target_id,
-                            "error": "Force push requires both send adds and send removes to be enabled"
-                        })
-                        continue
-                    
-                    # Use force push sync plan
-                    logging.info(f"Creating force push sync plan for {target.service} target {target_id}")
-                    sync_plan = remote_repo.create_force_push_sync_plan(
-                        new_remote_snapshot=current_snapshots.get(target_id),
-                        new_local_snapshot=local_snapshot,
-                        sync_target=target
-                    )
+        plan_result = _build_unified_sync_plan(
+            init_result.contexts, init_result.current_snapshots, init_result.old_snapshots, local_snapshot, force_push
+        )
+        sync_log.extend(plan_result.log_entries)
+        results["failed"].extend(plan_result.failures)
 
-                    logging.info("Clearing remote playlist for force push")
-                    remote_repo.clear_playlist()
-                else:
-                    # Use normal sync plan
-                    sync_plan = remote_repo.create_sync_plan(
-                        old_remote_snapshot=old_snapshots.get(target_id),
-                        new_remote_snapshot=current_snapshots.get(target_id),
-                        new_local_snapshot=local_snapshot,
-                        sync_target=target
-                    )
-                
-                individual_plans[target_id] = {
-                    'plan': sync_plan,
-                    'repo_info': repo_info
-                }
-
-                if not target.receiveEntryAdds:
-                    # remove sync changes with a source of remote
-                    sync_plan = [
-                        change for change in sync_plan
-                        if change.action != 'add' or change.source != 'remote'
-                    ]
-                
-                if not target.receiveEntryRemovals:
-                    # remove sync changes with a source of remote
-                    sync_plan = [
-                        change for change in sync_plan
-                        if change.action != 'remove' or change.source != 'remote'
-                    ]
-
-                sync_plan = remote_repo.apply_sync_guardrails(
-                    plan=sync_plan,
-                    new_local_snapshot=local_snapshot,
-                    sync_target=target,
-                    target_name=target_name,
-                )
-                
-                # Create or merge into unified plan
-                if unified_plan is None:
-                    # Use the first plan as the base unified plan
-                    unified_plan = sync_plan
-                else:
-                    # Merge this plan with the unified plan
-                    unified_plan = merge_sync_plans(unified_plan, sync_plan)
-                
-                logging.info(f"Created sync plan for {target.service} target {target_id}")
-                
-            except Exception as e:
-                logging.error(f"Failed to create sync plan for target {target_id}: {e}", exc_info=True)
-                results["failed"].append({
-                    "service": repo_info['target'].service,
-                    "target_id": target_id,
-                    "error": f"Failed to create sync plan: {str(e)}"
-                })
-        
         # If we don't have a unified plan, we can't proceed
-        if unified_plan is None:
+        if plan_result.unified_plan is None:
             raise HTTPException(status_code=500, detail="Failed to create any sync plans")
-        
+
         logging.info("Unified sync plan:")
-        for change in unified_plan:
+        for change in plan_result.unified_plan:
             logging.info(f"{change.action} {change.item.to_string()} (source: {change.source}, reason: {change.reason})")
 
-        pending_remote_ops = {
-            target_id: {
-                "add": [],
-                "remove": []
-            }
-            for target_id in individual_plans.keys()
+        # Step 4: Decide what applying the unified plan means for local + each target (pure -
+        # see decide_sync_plan_application), then actually perform the local mutations.
+        target_infos = {
+            target_id: TargetSyncInfo(target=plan_info['repo_info']['target'], target_name=plan_info['repo_info']['target_name'])
+            for target_id, plan_info in plan_result.individual_plans.items()
         }
-        
-        # Step 4: Apply the unified sync plan
-        for change in unified_plan:
-            logging.info(f"Processing change: {change.action} {change.item.to_string()} (source: {change.source}, reason: {change.reason})")
+        decision = decide_sync_plan_application(plan_result.unified_plan, target_infos, init_result.current_snapshots, force_push)
 
-            # apply local changes first, only if the change is not from a remote source
-            if change.source != "local":
-                try:
-                    if change.action == 'add':
-                        logging.info(f"Adding {change.item.to_string()} to local playlist")
-                        result = repo.add_music_file(playlist_id, change.item, normalize=True)
-                        if not result:
-                            logging.info(f"Could not find music file for {change.item.to_string()}, adding as requested track")
-                            repo.add_requested_track(playlist_id, change.item)
-                        else:
-                            unmatched_entries = [entry for entry in result if not getattr(entry, "music_file_id", None)]
-                            for unmatched_entry in unmatched_entries:
-                                unmatched_details = getattr(unmatched_entry, "details", None)
-                                unmatched_track = change.item.to_string()
-                                if unmatched_details and unmatched_details.artist and unmatched_details.title:
-                                    unmatched_track = f"{unmatched_details.artist} - {unmatched_details.title}"
+        for change in decision.local_changes:
+            sync_log.extend(_apply_local_change(repo, playlist_id, playlist.name, change))
 
-                                sync_log.append(SyncLogEntry(
-                                    action="failed_match",
-                                    track=unmatched_track,
-                                    target="local",
-                                    target_name=playlist.name,
-                                    reason="No local library match found; added as requested track",
-                                    success=False,
-                                    eventKind="failed_match",
-                                    metadata={
-                                        "source": change.source,
-                                        "original_reason": change.reason
-                                    }
-                                ))
-                        
-                        sync_log.append(SyncLogEntry(
-                            action="add",
-                            track=change.item.to_string(),
-                            target="local",
-                            target_name=playlist.name,
-                            reason=change.reason,
-                            success=True,
-                            eventKind="change"
-                        ))
+        sync_log.extend(decision.receive_log_entries)
 
-                    if change.action == 'remove':
-                        logging.info(f"Removing {change.item.to_string()} from local playlist")
-                        repo.remove_music_file(playlist_id, change.item)
-                        
-                        sync_log.append(SyncLogEntry(
-                            action="remove",
-                            track=change.item.to_string(),
-                            target="local",
-                            target_name=playlist.name,
-                            reason=change.reason,
-                            success=True,
-                            eventKind="change"
-                        ))
-                        
-                except Exception as e:
-                    logging.error(f"Failed to apply local change: {e}", exc_info=True)
-                    sync_log.append(SyncLogEntry(
-                        action=change.action,
-                        track=change.item.to_string(),
-                        target="local",
-                        target_name=playlist.name,
-                        reason=change.reason,
-                        success=False,
-                        error=str(e),
-                        eventKind="error"
-                    ))
+        # Step 5: Flush batched remote operations for each target
+        flush_log_entries, flush_failures = _flush_remote_operations(decision.remote_ops, plan_result.individual_plans)
+        sync_log.extend(flush_log_entries)
+        results["failed"].extend(flush_failures)
 
-            # Apply changes to each remote target
-            for target_id, plan_info in individual_plans.items():
-                try:
-                    repo_info = plan_info['repo_info']
-                    remote_repo = repo_info['repo']
-                    target = repo_info['target']
-                    target_name = repo_info['target_name']
-                    target_ref = repo_info['target_ref']
+        # Step 6: Write back each target's post-apply snapshot, plus the local snapshot
+        snapshot_successes, snapshot_failures = _persist_post_sync_snapshots(
+            plan_result.individual_plans, init_result.contexts, playlist
+        )
+        results["success"].extend(snapshot_successes)
+        results["failed"].extend(snapshot_failures)
 
-                    logging.info(f"Syncing with target: {target_name}")
-
-                    this_snapshot = current_snapshots[target_id]
-
-                    if change.source == "local" or change.source == "remote":
-                        if change.action == "add":
-                            # Send adds to remote if enabled
-                            if target.sendEntryAdds and change.source == "local":
-                                # For force push, always add items without checking snapshot
-                                # For regular sync, check if the item is already in the remote snapshot
-                                should_add = force_push or (not this_snapshot) or (not this_snapshot.has(change.item))
-                                
-                                if should_add:
-                                    pending_remote_ops[target_id]["add"].append(change)
-                            
-                            # Receive adds from remote if enabled
-                            elif target.receiveEntryAdds and change.source == "remote":
-                                sync_log.append(SyncLogEntry(
-                                    action="add",
-                                    track=change.item.to_string(),
-                                    target=target.service,
-                                    target_name=target_name,
-                                    reason=change.reason,
-                                    success=True,
-                                    eventKind="change"
-                                ))
-
-                        elif change.action == "remove":
-                            # Send removes to remote if enabled
-                            if target.sendEntryRemovals and change.source == "local":
-                                if (not this_snapshot) or this_snapshot.has(change.item):
-                                    pending_remote_ops[target_id]["remove"].append(change)
-                            
-                            # Receive removes from remote if enabled
-                            elif target.receiveEntryRemovals and change.source == "remote":
-                                sync_log.append(SyncLogEntry(
-                                    action="remove",
-                                    track=change.item.to_string(),
-                                    target=target.service,
-                                    target_name=target_name,
-                                    reason=change.reason,
-                                    success=True,
-                                    eventKind="change"
-                                ))
-                
-                except Exception as e:
-                    logging.error(f"Failed to apply sync plan for target {target_id}: {e}", exc_info=True)
-                    sync_log.append(SyncLogEntry(
-                        action=change.action,
-                        track=change.item.to_string(),
-                        target=repo_info['target'].service,
-                        target_name=repo_info['target_name'],
-                        reason=change.reason,
-                        success=False,
-                        error=str(e),
-                        eventKind="error"
-                    ))
-                    results["failed"].append({
-                        "service": repo_info['target'].service,
-                        "target_id": target_id,
-                        "error": f"Failed to apply sync plan: {str(e)}"
-                    })
-
-        # Flush batched remote operations for each target
-        for target_id, batched_ops in pending_remote_ops.items():
-            repo_info = individual_plans[target_id]['repo_info']
-            remote_repo = repo_info['repo']
-            target = repo_info['target']
-            target_name = repo_info['target_name']
-
-            add_changes = batched_ops["add"]
-            if add_changes:
-                try:
-                    for change_chunk in _chunk_changes(add_changes, remote_batch_size):
-                        remote_repo.add_items(target_ref, [change.item for change in change_chunk])
-                        for change in change_chunk:
-                            sync_log.append(SyncLogEntry(
-                                action="add",
-                                track=change.item.to_string(),
-                                target=target.service,
-                                target_name=target_name,
-                                reason=change.reason,
-                                success=True,
-                                eventKind="change"
-                            ))
-                except Exception as e:
-                    logging.error(f"Failed to apply batched add sync for target {target_id}: {e}", exc_info=True)
-                    for change in add_changes:
-                        sync_log.append(SyncLogEntry(
-                            action="add",
-                            track=change.item.to_string(),
-                            target=target.service,
-                            target_name=target_name,
-                            reason=change.reason,
-                            success=False,
-                            error=str(e),
-                            eventKind="error"
-                        ))
-                    results["failed"].append({
-                        "service": target.service,
-                        "target_id": target_id,
-                        "error": f"Failed to apply batched adds: {str(e)}"
-                    })
-
-            remove_changes = batched_ops["remove"]
-            if remove_changes:
-                try:
-                    for change_chunk in _chunk_changes(remove_changes, remote_batch_size):
-                        remote_repo.remove_items(target_ref, [change.item for change in change_chunk])
-                        for change in change_chunk:
-                            sync_log.append(SyncLogEntry(
-                                action="remove",
-                                track=change.item.to_string(),
-                                target=target.service,
-                                target_name=target_name,
-                                reason=change.reason,
-                                success=True,
-                                eventKind="change"
-                            ))
-                except Exception as e:
-                    logging.error(f"Failed to apply batched remove sync for target {target_id}: {e}", exc_info=True)
-                    for change in remove_changes:
-                        sync_log.append(SyncLogEntry(
-                            action="remove",
-                            track=change.item.to_string(),
-                            target=target.service,
-                            target_name=target_name,
-                            reason=change.reason,
-                            success=False,
-                            error=str(e),
-                            eventKind="error"
-                        ))
-                    results["failed"].append({
-                        "service": target.service,
-                        "target_id": target_id,
-                        "error": f"Failed to apply batched removes: {str(e)}"
-                    })
-                    
-        # write all remote snapshots
-        for target_id, plan_info in individual_plans.items():
-            try:
-                repo_info = plan_info['repo_info']
-                remote_repo = repo_info['repo']
-                target_name = repo_info['target_name']
-                target_ref = repo_info['target_ref']
-
-                # Get the new snapshot after applying changes
-                new_snapshot = remote_repo.get_playlist_snapshot(target_ref)
-                if new_snapshot:
-                    remote_repo.write_snapshot(new_snapshot)
-                    results["success"].append({
-                        "service": repo_info['target'].service,
-                        "target_id": target_id,
-                        "target_name": target_name
-                    })
-            except Exception as e:
-                logging.error(f"Failed to write snapshot for target {target_id}: {e}", exc_info=True)
-                results["failed"].append({
-                    "service": repo_info['target'].service,
-                    "target_id": target_id,
-                    "error": f"Failed to write snapshot: {str(e)}"
-                })
-        
-        # write local snapshot
-        new_local_snapshot = create_snapshot(playlist)
-        first_repo = next(iter(remote_repos.values()))['repo']
-        first_repo.write_snapshot(new_local_snapshot)
-        
         status = "success" if not results["failed"] else "partial"
         response_payload = {
             "status": status,
@@ -1157,16 +769,569 @@ def get_playlist_sync_log(
 
 def merge_sync_plans(plan1, plan2):
     """Merge two sync plans (lists of SyncChange instances) into a unified plan"""
-    changes_seen = set()
-    for change in plan1:
-        changes_seen.add(change.item.to_string())
+    index_by_key = {change.item.to_string(): i for i, change in enumerate(plan1)}
 
     for change in plan2:
-        if change.item.to_string() in changes_seen:
-            continue
-        plan1.append(change)
-        
+        key = change.item.to_string()
+        existing_index = index_by_key.get(key)
+        if existing_index is None:
+            index_by_key[key] = len(plan1)
+            plan1.append(change)
+        else:
+            # Same item surfaced from more than one target's plan (e.g. added remotely on both
+            # Plex and YouTube) - keep a single change but remember every target it came from, so
+            # a 'remote' change isn't later misattributed to a target that never actually saw it.
+            existing = plan1[existing_index]
+            merged_origins = tuple(set(existing.origin_target_ids) | set(change.origin_target_ids))
+            plan1[existing_index] = existing._replace(origin_target_ids=merged_origins)
+
     return plan1
+
+
+@dataclass
+class TargetInitResult:
+    """Result of initializing every configured sync target for one sync run."""
+    contexts: Dict[int, Dict[str, Any]] = field(default_factory=dict)
+    current_snapshots: Dict[int, Optional[PlaylistSnapshot]] = field(default_factory=dict)
+    old_snapshots: Dict[int, Optional[PlaylistSnapshot]] = field(default_factory=dict)
+    log_entries: List[SyncLogEntry] = field(default_factory=list)
+    failures: List[Dict[str, str]] = field(default_factory=list)
+
+
+def _initialize_target_contexts(
+    db,
+    sync_targets: List[SyncTarget],
+    playlist: PlaylistDB,
+    playlist_id: int,
+    local_snapshot: PlaylistSnapshot,
+) -> TargetInitResult:
+    """Build a remote repo and fetch its snapshots for each target, auto-creating the remote
+    playlist if it doesn't exist yet. Catches RemoteUnavailableError (skip target, log 'skip')
+    and any other exception (skip target, record failure) per-target - nothing here aborts the
+    sync for the other targets.
+
+    The three _persist_remote_playlist_id call sites below (after the initial fetch, after
+    create_playlist, after the post-creation re-fetch) are a distinct commit point each and must
+    stay in this order/count: if a later one throws, the earlier persisted id must remain in
+    place, same as before this was extracted into its own function.
+    """
+    result = TargetInitResult()
+
+    for target in sync_targets:
+        try:
+            config = target.config
+
+            target_ref = _get_remote_playlist_ref(config, playlist.name)
+            target_create_title = _get_remote_playlist_create_title(config, playlist.name)
+            # Bookkeeping snapshots (our own record of "what did we last sync") are keyed by
+            # this instead of target_ref: target_ref can change out from under us once the
+            # remote playlist id gets persisted (see _persist_remote_playlist_id), which would
+            # otherwise orphan the previous snapshot row and force a full re-diff every sync.
+            snapshot_key = f"synctarget:{target.id}"
+
+            remote_repo = create_remote_repository(
+                service=target.service,
+                session=db,
+                config=config,
+                music_file_repo=get_music_file_repository(db)
+            )
+
+            if remote_repo is None:
+                raise Exception(f"Unsupported service: {target.service}")
+
+            if not remote_repo.is_authenticated():
+                raise Exception(f"Authentication failed for service: {target.service}")
+
+            context = {
+                'repo': remote_repo,
+                'target': target,
+                'target_ref': target_ref or f"{target.service}_playlist",
+                'target_name': _get_remote_playlist_display_name(target.config, playlist.name),
+                'snapshot_key': snapshot_key,
+            }
+            result.contexts[target.id] = context
+
+            result.old_snapshots[target.id] = remote_repo.get_current_snapshot(context['snapshot_key'])
+            result.current_snapshots[target.id] = remote_repo.get_playlist_snapshot(context['target_ref'])
+
+            _persist_remote_playlist_id(db, target, playlist_id, getattr(remote_repo, "playlist_id", None))
+
+            if not result.current_snapshots[target.id]:
+                # remote playlist doesn't exist - let's create it
+                result.log_entries.append(SyncLogEntry(
+                    action="create",
+                    track=f"Playlist '{context['target_name']}'",
+                    target=target.service,
+                    target_name=context['target_name'],
+                    reason="Remote playlist did not exist",
+                    success=True,
+                    eventKind="system"
+                ))
+                logging.info(f"Creating new remote playlist for {target.service} target {target.id}")
+
+                created_playlist = remote_repo.create_playlist(target_create_title, local_snapshot)
+
+                remote_playlist_id = getattr(remote_repo, "playlist_id", None)
+                if not remote_playlist_id:
+                    if isinstance(created_playlist, dict):
+                        remote_playlist_id = created_playlist.get("id") or created_playlist.get("playlist_id")
+                    else:
+                        remote_playlist_id = getattr(created_playlist, "id", None) or getattr(created_playlist, "playlist_id", None)
+
+                _persist_remote_playlist_id(db, target, playlist_id, remote_playlist_id)
+
+                result.current_snapshots[target.id] = remote_repo.get_playlist_snapshot(context['target_ref'])
+                _persist_remote_playlist_id(db, target, playlist_id, getattr(remote_repo, "playlist_id", None))
+
+            logging.info(f"Initialized {target.service} repository for target {target.id}")
+
+        except RemoteUnavailableError as e:
+            # The remote couldn't be reached/queried this sync - skip it entirely rather than
+            # falling through to the "remote playlist doesn't exist" create/reset path above,
+            # which would otherwise treat "couldn't check" as "confirmed empty".
+            logging.warning(f"Skipping {target.service} target {target.id} for this sync - remote unavailable: {e}")
+            result.contexts.pop(target.id, None)
+            result.log_entries.append(SyncLogEntry(
+                action="skip",
+                track=f"Target '{target.service}'",
+                target=target.service,
+                target_name=_get_remote_playlist_display_name(target.config, playlist.name),
+                reason=f"Remote unavailable, skipped this sync: {e}",
+                success=False,
+                eventKind="system"
+            ))
+            result.failures.append({
+                "service": target.service,
+                "target_id": target.id,
+                "error": f"Remote unavailable: {str(e)}"
+            })
+
+        except Exception as e:
+            logging.error(f"Failed to initialize {target.service} target {target.id}: {e}", exc_info=True)
+            result.failures.append({
+                "service": target.service,
+                "target_id": target.id,
+                "error": f"Failed to initialize: {str(e)}"
+            })
+
+    return result
+
+
+@dataclass
+class PlanBuildResult:
+    """Result of building and merging every target's own sync plan into one unified plan."""
+    unified_plan: Optional[List[SyncChange]] = None
+    individual_plans: Dict[int, Dict[str, Any]] = field(default_factory=dict)
+    log_entries: List[SyncLogEntry] = field(default_factory=list)
+    failures: List[Dict[str, str]] = field(default_factory=list)
+
+
+def _build_unified_sync_plan(
+    target_contexts: Dict[int, Dict[str, Any]],
+    current_snapshots: Dict[int, Optional[PlaylistSnapshot]],
+    old_snapshots: Dict[int, Optional[PlaylistSnapshot]],
+    local_snapshot: PlaylistSnapshot,
+    force_push: bool,
+) -> PlanBuildResult:
+    """Build each target's own sync plan and merge them into one unified plan.
+
+    Order matters and must not change: build plan -> filter out changes for disabled
+    receiveEntryAdds/receiveEntryRemovals -> apply_sync_guardrails -> merge. The guardrail's
+    removal-percentage check runs AFTER disabled-target removes are already filtered out, so
+    reordering these steps changes what the guardrail sees.
+
+    Force-push's clear_playlist() call is deliberately kept here, mid-loop, matching prior
+    behavior exactly: it's a real destructive remote mutation embedded in an otherwise
+    plan-building phase, by design - not something to "clean up" as part of this refactor.
+    """
+    result = PlanBuildResult()
+
+    if force_push:
+        logging.info("🔥 FORCE PUSH SYNC requested - all remote playlists will be completely replaced with local content")
+        result.log_entries.append(SyncLogEntry(
+            action="force_push",
+            track="FORCE PUSH SYNC",
+            target="system",
+            target_name="All targets",
+            reason="Force push sync initiated - all remote content will be replaced",
+            success=True,
+            eventKind="system"
+        ))
+
+    for target_id, repo_info in target_contexts.items():
+        try:
+            remote_repo = repo_info['repo']
+            target = repo_info['target']
+            target_name = repo_info['target_name']
+
+            if force_push:
+                if not target.sendEntryAdds or not target.sendEntryRemovals:
+                    logging.warning(f"Skipping force push for target {target_id} ({target.service}): requires both sendEntryAdds and sendEntryRemovals to be enabled")
+                    result.failures.append({
+                        "service": target.service,
+                        "target_id": target_id,
+                        "error": "Force push requires both send adds and send removes to be enabled"
+                    })
+                    continue
+
+                logging.info(f"Creating force push sync plan for {target.service} target {target_id}")
+                sync_plan = remote_repo.create_force_push_sync_plan(
+                    new_remote_snapshot=current_snapshots.get(target_id),
+                    new_local_snapshot=local_snapshot,
+                    sync_target=target
+                )
+
+                logging.info("Clearing remote playlist for force push")
+                remote_repo.clear_playlist()
+            else:
+                sync_plan = remote_repo.create_sync_plan(
+                    old_remote_snapshot=old_snapshots.get(target_id),
+                    new_remote_snapshot=current_snapshots.get(target_id),
+                    new_local_snapshot=local_snapshot,
+                    sync_target=target
+                )
+
+            result.individual_plans[target_id] = {
+                'plan': sync_plan,
+                'repo_info': repo_info
+            }
+
+            if not target.receiveEntryAdds:
+                # remove sync changes with a source of remote
+                sync_plan = [
+                    change for change in sync_plan
+                    if change.action != 'add' or change.source != 'remote'
+                ]
+
+            if not target.receiveEntryRemovals:
+                # remove sync changes with a source of remote
+                sync_plan = [
+                    change for change in sync_plan
+                    if change.action != 'remove' or change.source != 'remote'
+                ]
+
+            sync_plan = remote_repo.apply_sync_guardrails(
+                plan=sync_plan,
+                new_local_snapshot=local_snapshot,
+                sync_target=target,
+                target_name=target_name,
+            )
+
+            if result.unified_plan is None:
+                result.unified_plan = sync_plan
+            else:
+                result.unified_plan = merge_sync_plans(result.unified_plan, sync_plan)
+
+            logging.info(f"Created sync plan for {target.service} target {target_id}")
+
+        except Exception as e:
+            logging.error(f"Failed to create sync plan for target {target_id}: {e}", exc_info=True)
+            result.failures.append({
+                "service": repo_info['target'].service,
+                "target_id": target_id,
+                "error": f"Failed to create sync plan: {str(e)}"
+            })
+
+    return result
+
+
+@dataclass(frozen=True)
+class TargetSyncInfo:
+    """Minimal, I/O-free view of a sync target - deliberately excludes the repo/session so this
+    stays constructible with plain data in tests, independent of decide_sync_plan_application's
+    other callers needing the full repo_info dict for actual network calls."""
+    target: SyncTarget
+    target_name: str
+
+
+@dataclass
+class SyncPlanApplyDecision:
+    """Result of deciding what to do with each change in a unified sync plan, before anything
+    is actually applied."""
+    local_changes: List[SyncChange] = field(default_factory=list)
+    remote_ops: Dict[int, Dict[str, List[SyncChange]]] = field(default_factory=dict)
+    receive_log_entries: List[SyncLogEntry] = field(default_factory=list)
+
+
+def decide_sync_plan_application(
+    unified_plan: List[SyncChange],
+    target_infos: Dict[int, TargetSyncInfo],
+    current_snapshots: Dict[int, Optional[PlaylistSnapshot]],
+    force_push: bool,
+) -> SyncPlanApplyDecision:
+    """Pure decision logic for applying a unified sync plan - no db/session/network access.
+
+    For every change, selects it for local application if it didn't originate locally. Then,
+    for every (change, target) pair, decides whether to queue the change as a pending remote
+    add/remove for that target (respecting sendEntryAdds/sendEntryRemovals, force_push, and
+    whether current_snapshots[target_id] already/still has the item) or to emit a "receive" log
+    entry crediting that target (respecting receiveEntryAdds/receiveEntryRemovals AND
+    target_id in change.origin_target_ids - a 'remote' change must only be credited to the
+    target(s) it was actually observed on, never to every target with receiveEntryAdds set).
+    """
+    decision = SyncPlanApplyDecision(
+        remote_ops={target_id: {"add": [], "remove": []} for target_id in target_infos}
+    )
+
+    for change in unified_plan:
+        if change.source != "local":
+            decision.local_changes.append(change)
+
+        for target_id, info in target_infos.items():
+            target = info.target
+            this_snapshot = current_snapshots.get(target_id)
+
+            if change.action == "add":
+                if target.sendEntryAdds and change.source == "local":
+                    should_add = force_push or (not this_snapshot) or (not this_snapshot.has(change.item))
+                    if should_add:
+                        decision.remote_ops[target_id]["add"].append(change)
+                elif target.receiveEntryAdds and change.source == "remote" and target_id in change.origin_target_ids:
+                    decision.receive_log_entries.append(SyncLogEntry(
+                        action="add",
+                        track=change.item.to_string(),
+                        target=target.service,
+                        target_name=info.target_name,
+                        reason=change.reason,
+                        success=True,
+                        eventKind="change"
+                    ))
+
+            elif change.action == "remove":
+                if target.sendEntryRemovals and change.source == "local":
+                    if (not this_snapshot) or this_snapshot.has(change.item):
+                        decision.remote_ops[target_id]["remove"].append(change)
+                elif target.receiveEntryRemovals and change.source == "remote" and target_id in change.origin_target_ids:
+                    decision.receive_log_entries.append(SyncLogEntry(
+                        action="remove",
+                        track=change.item.to_string(),
+                        target=target.service,
+                        target_name=info.target_name,
+                        reason=change.reason,
+                        success=True,
+                        eventKind="change"
+                    ))
+
+    return decision
+
+
+def _apply_local_change(repo: PlaylistRepository, playlist_id: int, playlist_name: str, change: SyncChange) -> List[SyncLogEntry]:
+    """Perform one local add/remove mutation. Never raises - returns an 'error' log entry
+    instead, matching the try/except this replaced."""
+    entries: List[SyncLogEntry] = []
+
+    try:
+        if change.action == 'add':
+            logging.info(f"Adding {change.item.to_string()} to local playlist")
+            result = repo.add_music_file(playlist_id, change.item, normalize=True)
+            if not result:
+                logging.info(f"Could not find music file for {change.item.to_string()}, adding as requested track")
+                repo.add_requested_track(playlist_id, change.item)
+            else:
+                unmatched_entries = [entry for entry in result if not getattr(entry, "music_file_id", None)]
+                for unmatched_entry in unmatched_entries:
+                    unmatched_details = getattr(unmatched_entry, "details", None)
+                    unmatched_track = change.item.to_string()
+                    if unmatched_details and unmatched_details.artist and unmatched_details.title:
+                        unmatched_track = f"{unmatched_details.artist} - {unmatched_details.title}"
+
+                    entries.append(SyncLogEntry(
+                        action="failed_match",
+                        track=unmatched_track,
+                        target="local",
+                        target_name=playlist_name,
+                        reason="No local library match found; added as requested track",
+                        success=False,
+                        eventKind="failed_match",
+                        metadata={
+                            "source": change.source,
+                            "original_reason": change.reason
+                        }
+                    ))
+
+            entries.append(SyncLogEntry(
+                action="add",
+                track=change.item.to_string(),
+                target="local",
+                target_name=playlist_name,
+                reason=change.reason,
+                success=True,
+                eventKind="change"
+            ))
+
+        if change.action == 'remove':
+            logging.info(f"Removing {change.item.to_string()} from local playlist")
+            repo.remove_music_file(playlist_id, change.item)
+
+            entries.append(SyncLogEntry(
+                action="remove",
+                track=change.item.to_string(),
+                target="local",
+                target_name=playlist_name,
+                reason=change.reason,
+                success=True,
+                eventKind="change"
+            ))
+
+    except Exception as e:
+        logging.error(f"Failed to apply local change: {e}", exc_info=True)
+        entries.append(SyncLogEntry(
+            action=change.action,
+            track=change.item.to_string(),
+            target="local",
+            target_name=playlist_name,
+            reason=change.reason,
+            success=False,
+            error=str(e),
+            eventKind="error"
+        ))
+
+    return entries
+
+
+def _flush_remote_operations(
+    pending_remote_ops: Dict[int, Dict[str, List[SyncChange]]],
+    individual_plans: Dict[int, Dict[str, Any]],
+    remote_batch_size: int = 100,
+) -> Tuple[List[SyncLogEntry], List[Dict[str, str]]]:
+    """Push each target's queued adds/removes to its remote, in chunks.
+
+    target_ref always comes from that target's own individual_plans[target_id]['repo_info'] -
+    never a variable left over from a previous loop iteration. This is exactly the shape of an
+    already-fixed bug; test_multi_target_sync_applies_changes_to_each_targets_own_remote_playlist
+    is the canary for this.
+    """
+    log_entries: List[SyncLogEntry] = []
+    failures: List[Dict[str, str]] = []
+
+    for target_id, batched_ops in pending_remote_ops.items():
+        repo_info = individual_plans[target_id]['repo_info']
+        remote_repo = repo_info['repo']
+        target = repo_info['target']
+        target_name = repo_info['target_name']
+        target_ref = repo_info['target_ref']
+
+        add_changes = batched_ops["add"]
+        if add_changes:
+            try:
+                for change_chunk in _chunk_changes(add_changes, remote_batch_size):
+                    remote_repo.add_items(target_ref, [change.item for change in change_chunk])
+                    for change in change_chunk:
+                        log_entries.append(SyncLogEntry(
+                            action="add",
+                            track=change.item.to_string(),
+                            target=target.service,
+                            target_name=target_name,
+                            reason=change.reason,
+                            success=True,
+                            eventKind="change"
+                        ))
+            except Exception as e:
+                logging.error(f"Failed to apply batched add sync for target {target_id}: {e}", exc_info=True)
+                for change in add_changes:
+                    log_entries.append(SyncLogEntry(
+                        action="add",
+                        track=change.item.to_string(),
+                        target=target.service,
+                        target_name=target_name,
+                        reason=change.reason,
+                        success=False,
+                        error=str(e),
+                        eventKind="error"
+                    ))
+                failures.append({
+                    "service": target.service,
+                    "target_id": target_id,
+                    "error": f"Failed to apply batched adds: {str(e)}"
+                })
+
+        remove_changes = batched_ops["remove"]
+        if remove_changes:
+            try:
+                for change_chunk in _chunk_changes(remove_changes, remote_batch_size):
+                    remote_repo.remove_items(target_ref, [change.item for change in change_chunk])
+                    for change in change_chunk:
+                        log_entries.append(SyncLogEntry(
+                            action="remove",
+                            track=change.item.to_string(),
+                            target=target.service,
+                            target_name=target_name,
+                            reason=change.reason,
+                            success=True,
+                            eventKind="change"
+                        ))
+            except Exception as e:
+                logging.error(f"Failed to apply batched remove sync for target {target_id}: {e}", exc_info=True)
+                for change in remove_changes:
+                    log_entries.append(SyncLogEntry(
+                        action="remove",
+                        track=change.item.to_string(),
+                        target=target.service,
+                        target_name=target_name,
+                        reason=change.reason,
+                        success=False,
+                        error=str(e),
+                        eventKind="error"
+                    ))
+                failures.append({
+                    "service": target.service,
+                    "target_id": target_id,
+                    "error": f"Failed to apply batched removes: {str(e)}"
+                })
+
+    return log_entries, failures
+
+
+def _persist_post_sync_snapshots(
+    individual_plans: Dict[int, Dict[str, Any]],
+    target_contexts: Dict[int, Dict[str, Any]],
+    playlist: PlaylistDB,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Fetch and write each target's post-apply remote snapshot (keyed by snapshot_key - the
+    stable key, not the remote's own possibly-changing name), then write the local snapshot via
+    the first available repo.
+
+    Deliberately reads that "first available repo" from target_contexts (every target that
+    initialized successfully in Phase B), not individual_plans (the subset that made it through
+    Phase C, which can be smaller - e.g. a force-push target skipped there for missing
+    send flags). This matches prior behavior exactly, which is guaranteed non-empty by the
+    caller's earlier check on target_contexts.
+    """
+    successes: List[Dict[str, Any]] = []
+    failures: List[Dict[str, Any]] = []
+
+    for target_id, plan_info in individual_plans.items():
+        try:
+            repo_info = plan_info['repo_info']
+            remote_repo = repo_info['repo']
+            target_name = repo_info['target_name']
+            target_ref = repo_info['target_ref']
+
+            new_snapshot = remote_repo.get_playlist_snapshot(target_ref)
+            if new_snapshot:
+                # Persist under snapshot_key (stable), not new_snapshot.name (the remote's own,
+                # possibly-changing title) - see snapshot_key comment in _initialize_target_contexts.
+                new_snapshot.name = repo_info['snapshot_key']
+                remote_repo.write_snapshot(new_snapshot)
+                successes.append({
+                    "service": repo_info['target'].service,
+                    "target_id": target_id,
+                    "target_name": target_name
+                })
+        except Exception as e:
+            logging.error(f"Failed to write snapshot for target {target_id}: {e}", exc_info=True)
+            failures.append({
+                "service": repo_info['target'].service,
+                "target_id": target_id,
+                "error": f"Failed to write snapshot: {str(e)}"
+            })
+
+    new_local_snapshot = create_snapshot(playlist)
+    first_repo = next(iter(target_contexts.values()))['repo']
+    first_repo.write_snapshot(new_local_snapshot)
+
+    return successes, failures
+
 
 @router.put("/{playlist_id}/update-entry")
 def update_entry_details(
