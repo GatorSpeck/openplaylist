@@ -6,7 +6,7 @@ import logging
 from plexapi.server import PlexServer
 from plexapi.playlist import Playlist as PlexPlaylist
 import plexapi
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any
 from tqdm import tqdm
 from lib.normalize   import normalize_title
 from lib.match import TrackStub, get_match_score
@@ -106,35 +106,6 @@ class PlexRepository(RemotePlaylistRepository):
             logging.warning(f"Error looking up Plex playlist '{playlist_name}' by direct query: {e}")
 
         return None
-
-    def _ensure_playlist(self, playlist_name: str, seed_items: Optional[List[Any]] = None) -> Tuple[Optional[PlexPlaylist], bool]:
-        """Ensure playlist exists in Plex; returns (playlist, created_with_seed)."""
-        playlist = self._find_playlist(playlist_name)
-        if playlist is not None:
-            self.playlist_id = self._coerce_playlist_id(getattr(playlist, "ratingKey", self.playlist_id))
-            return playlist, False
-
-        if not seed_items:
-            logging.warning(
-                "Cannot create missing Plex playlist '%s' without seed items; Plex requires items at creation time",
-                playlist_name,
-            )
-            return None, False
-
-        try:
-            duplicate_matches = self._find_matching_playlists(playlist_name)
-            if duplicate_matches:
-                logging.info(
-                    "Found existing Plex playlist '%s' during ensure; reusing existing playlist",
-                    playlist_name,
-                )
-                return duplicate_matches[0], False
-            created_playlist = PlexPlaylist.create(self.server, title=playlist_name, items=seed_items)
-            self.playlist_id = self._coerce_playlist_id(getattr(created_playlist, "ratingKey", self.playlist_id))
-            return created_playlist, True
-        except Exception as e:
-            logging.error(f"Failed to create Plex playlist '{playlist_name}': {e}")
-            return None, False
 
     @timing
     def fetch_media_item(self, item: PlaylistItem) -> Any:
@@ -368,6 +339,16 @@ class PlexRepository(RemotePlaylistRepository):
     
     def add_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
         """Add items to a Plex playlist"""
+        playlist = self._find_playlist(playlist_name)
+        if playlist is None:
+            # The playlist is expected to already exist by this point in the sync (creation is
+            # handled explicitly, earlier, by create_playlist()). Silently creating one here on a
+            # lookup miss - e.g. because playlist_name was ever wrong for this target - would spawn
+            # a stray playlist titled with whatever ref string we were given instead of surfacing
+            # the problem, so fail loudly and let the sync log report it instead. Checked before
+            # matching items so a stale ref fails fast without doing pointless Plex lookups.
+            raise ValueError(f"Plex playlist '{playlist_name}' not found; refusing to add items")
+
         media_by_item = self.fetch_media_items(items)
         plex_items = []
         for item in items:
@@ -375,18 +356,11 @@ class PlexRepository(RemotePlaylistRepository):
             if plex_item:
                 item.plex_rating_key = str(plex_item.ratingKey)  # enrich the item with Plex rating key
                 plex_items.append(plex_item)
-        
-        if plex_items:
-            playlist = self._find_playlist(playlist_name)
-            if playlist is None:
-                playlist, created_with_seed = self._ensure_playlist(playlist_name, seed_items=plex_items)
-                if created_with_seed:
-                    return
 
-            if playlist is None:
-                logging.error(f"Unable to add items; Plex playlist '{playlist_name}' could not be created or found")
-                return
-            playlist.addItems(plex_items)
+        if not plex_items:
+            return
+
+        playlist.addItems(plex_items)
     
     def remove_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
         """Remove items from a Plex playlist"""

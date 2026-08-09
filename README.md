@@ -101,7 +101,7 @@ ALLOW_ORIGINS=localhost  # for CORS
 # REDIS_HOST=localhost
 # REDIS_PORT=6379
 
-## Spotify configuration (for playlist import)
+## Spotify configuration (for playlist import, requires Spotify Premium to work!)
 # SPOTIFY_CLIENT_ID=foo  # https://developer.spotify.com/documentation/web-api/tutorials/getting-started
 # SPOTIFY_CLIENT_SECRET=foo
 

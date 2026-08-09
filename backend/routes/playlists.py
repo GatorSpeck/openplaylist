@@ -876,7 +876,6 @@ def sync_playlist(
                     remote_repo = repo_info['repo']
                     target = repo_info['target']
                     target_name = repo_info['target_name']
-                    target_ref = repo_info['target_ref']
 
                     logging.info(f"Syncing with target: {target_name}")
 
@@ -947,6 +946,7 @@ def sync_playlist(
             remote_repo = repo_info['repo']
             target = repo_info['target']
             target_name = repo_info['target_name']
+            target_ref = repo_info['target_ref']
 
             add_changes = batched_ops["add"]
             if add_changes:

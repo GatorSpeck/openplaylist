@@ -1,3 +1,5 @@
+import colors from 'tailwindcss/colors';
+
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: 'class',
@@ -8,6 +10,7 @@ export default {
   theme: {
     extend: {
       colors: {
+        ...colors,
         accent: '#646cff',
         'accent-hover': '#535bf2',
         surface: '#ffffff',

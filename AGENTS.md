@@ -144,6 +144,7 @@ When adding a new external service:
 
 ### Documentation Maintenance
 
+- Refer to the top-level `specs/` directory for project-wide design specs, and keep it up to date
 - Keep folder-level `README.md` documentation up to date whenever you add, remove, or significantly reshape code in that folder.
 - For any new significant folder, add a `README.md` in the same change that introduces the folder.
 - Update neighboring folder READMEs when ownership or boundaries move between areas.
