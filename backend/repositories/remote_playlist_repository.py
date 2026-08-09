@@ -2,7 +2,7 @@ import os
 import logging
 import json
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Set, NamedTuple, Tuple
+from typing import List, Optional, Dict, Any, Set, NamedTuple, Tuple, Callable, TypeVar
 from fastapi.exceptions import HTTPException
 from pydantic import BaseModel
 from abc import ABC, abstractmethod
@@ -87,20 +87,46 @@ def create_snapshot(playlist: PlaylistDB) -> PlaylistSnapshot:
     
     return result
 
+T = TypeVar("T")
+
+
 class RemotePlaylistRepository(ABC):
     """Base class for remote playlist repositories"""
-    
+
     def __init__(self, session, config: Dict[str, str] = None):
         """
         Initialize the repository
-        
+
         Args:
             session: Database session
             config: Configuration dictionary with service-specific settings
         """
         self.session = session
         self.config = config or {}
-        
+
+    def _guarded_remote_call(
+        self,
+        fn: Callable[[], T],
+        *,
+        is_not_found: Optional[Callable[[Exception], bool]] = None,
+        context: str,
+    ) -> Optional[T]:
+        """Call fn(), classifying any failure as "confirmed absent" vs. "unavailable".
+
+        Returns None only when fn() raises and is_not_found(exc) says the service gave a
+        definitive "no such thing" answer. Any other failure raises RemoteUnavailableError
+        instead of being swallowed - see that class's docstring for why this distinction
+        matters. If is_not_found is omitted (a service with no reliable not-found signal),
+        every exception becomes RemoteUnavailableError; a confirmed-absent result must then
+        come from fn() returning normally, never from this path.
+        """
+        try:
+            return fn()
+        except Exception as e:
+            if is_not_found is not None and is_not_found(e):
+                return None
+            raise RemoteUnavailableError(f"{context}: {e}") from e
+
     def get_current_snapshot(self, playlist_name: str) -> Optional[PlaylistSnapshot]:
         """Get the current snapshot from the database"""
         this_playlist = self.session.query(PlaylistSnapshotModel).filter_by(name=playlist_name).first()

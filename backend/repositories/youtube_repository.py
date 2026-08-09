@@ -5,7 +5,7 @@ from datetime import datetime
 import ytmusicapi
 from ytmusicapi import YTMusic, OAuthCredentials
 
-from repositories.remote_playlist_repository import RemotePlaylistRepository, get_local_tz, RemoteUnavailableError
+from repositories.remote_playlist_repository import RemotePlaylistRepository, get_local_tz
 from response_models import PlaylistSnapshot, PlaylistItem
 from lib.normalize import normalize_title
 from lib.match import TrackStub, get_match_score
@@ -419,11 +419,14 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             logging.error("No playlist ID configured for YouTube Music")
             return None
 
-        # For YouTube Music, we ignore playlist_name and use the ID from config
-        try:
-            playlist, resolved_id = self._fetch_playlist_with_fallback_ids(self.playlist_id, limit=None)
-        except Exception as e:
-            raise RemoteUnavailableError(f"Error fetching YouTube Music playlist '{playlist_name}': {e}") from e
+        # For YouTube Music, we ignore playlist_name and use the ID from config. No
+        # is_not_found predicate: ytmusicapi gives us no reliable "confirmed missing" signal,
+        # so any failure here means unavailable - only a falsy-but-successful return (below)
+        # counts as confirmed absence.
+        playlist, resolved_id = self._guarded_remote_call(
+            lambda: self._fetch_playlist_with_fallback_ids(self.playlist_id, limit=None),
+            context=f"Error fetching YouTube Music playlist '{playlist_name}'",
+        )
 
         if resolved_id:
             self.playlist_id = resolved_id
@@ -431,7 +434,8 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
         if not playlist:
             return None
 
-        try:
+        def build_snapshot() -> PlaylistSnapshot:
+            nonlocal playlist
             tracks = playlist.get("tracks") or []
 
             if not tracks and self.playlist_id:
@@ -480,9 +484,10 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             )
             return result
 
-        except Exception as e:
-            logging.error(f"Error fetching YouTube Music playlist: {e}")
-            raise RemoteUnavailableError(f"Error fetching YouTube Music playlist '{playlist_name}': {e}") from e
+        return self._guarded_remote_call(
+            build_snapshot,
+            context=f"Error fetching YouTube Music playlist '{playlist_name}'",
+        )
 
     def add_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
         """Add tracks to a YouTube Music playlist"""

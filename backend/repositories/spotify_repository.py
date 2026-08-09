@@ -12,7 +12,7 @@ from repositories.plex_repository import normalize_title
 import urllib
 from lib.match import TrackStub, get_match_score
 
-from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz, RemoteUnavailableError
+from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz
 from repositories.requests_cache_session import requests_cache_session
 
 dotenv.load_dotenv(override=True)
@@ -367,6 +367,10 @@ class SpotifyRepository(RemotePlaylistRepository):
             
         return None
     
+    def _is_not_found(self, exc: Exception) -> bool:
+        """True only for a confirmed "no such playlist" response from Spotify's API."""
+        return isinstance(exc, spotipy.SpotifyException) and exc.http_status == 404
+
     def get_playlist_snapshot(self, playlist_id: str) -> Optional[PlaylistSnapshot]:
         """Get a snapshot of a Spotify playlist for sync.
 
@@ -375,14 +379,11 @@ class SpotifyRepository(RemotePlaylistRepository):
         RemoteUnavailableError instead of being swallowed to None, which the sync route would
         otherwise treat as confirmation the playlist doesn't exist and try to (re)create it.
         """
-        def is_not_found(exc: Exception) -> bool:
-            return isinstance(exc, spotipy.SpotifyException) and exc.http_status == 404
-
         if not self.sp:
             logging.error("Not authenticated with Spotify")
             return None
 
-        try:
+        def fetch() -> Optional[PlaylistSnapshot]:
             resolved_playlist_id = None
 
             # First try explicit ID/URI formats
@@ -396,13 +397,12 @@ class SpotifyRepository(RemotePlaylistRepository):
                     # Try direct ID first, then fallback to name lookup - but only fall back on a
                     # confirmed 404, not on any old error (a network blip here must not be
                     # misread as "not an ID, must be a name" and silently swallowed either way).
-                    try:
-                        self.sp.playlist(playlist_id)
-                        resolved_playlist_id = playlist_id
-                    except Exception as e:
-                        if not is_not_found(e):
-                            raise
-                        resolved_playlist_id = self.get_playlist_id_by_name(playlist_id)
+                    confirmed = self._guarded_remote_call(
+                        lambda: self.sp.playlist(playlist_id),
+                        is_not_found=self._is_not_found,
+                        context=f"Error looking up Spotify playlist '{playlist_id}'",
+                    )
+                    resolved_playlist_id = playlist_id if confirmed is not None else self.get_playlist_id_by_name(playlist_id)
 
             if not resolved_playlist_id:
                 logging.info(f"Spotify playlist not found for identifier: {playlist_id}")
@@ -415,7 +415,7 @@ class SpotifyRepository(RemotePlaylistRepository):
             )
 
             self.playlist_id = resolved_playlist_id
-            
+
             # Get all tracks (handle pagination)
             tracks = []
             results_page = self.sp.playlist_tracks(self.playlist_id)
@@ -423,22 +423,22 @@ class SpotifyRepository(RemotePlaylistRepository):
             if not results_page or "items" not in results_page:
                 logging.error(f"Failed to fetch tracks for playlist: {playlist_id}")
                 return None
-            
+
             while True:
                 tracks.extend(results_page.get("items", []))
                 if results_page.get("next"):
                     results_page = self.sp.next(results_page)
                 else:
                     break
-                
+
             for item in tracks:
                 track = item.get("track")
                 if not track:  # Skip local files or unavailable tracks
                     continue
-                
+
                 artist = track.get("artists", [{}])[0].get("name", "Unknown Artist") if track.get("artists") else "Unknown Artist"
                 album = track.get("album", {}).get("name")
-                
+
                 playlist_item = PlaylistItem(
                     artist=artist,
                     album=album,
@@ -450,16 +450,16 @@ class SpotifyRepository(RemotePlaylistRepository):
                 )
 
                 result.add_item(playlist_item)
-            
+
             self.playlist_snapshots[playlist_id] = result
 
             return result
-        except Exception as e:
-            if is_not_found(e):
-                logging.info(f"Spotify playlist not found for identifier: {playlist_id}")
-                return None
-            logging.error(f"Error fetching Spotify playlist snapshot: {e}")
-            raise RemoteUnavailableError(f"Error fetching Spotify playlist snapshot for '{playlist_id}': {e}") from e
+
+        return self._guarded_remote_call(
+            fetch,
+            is_not_found=self._is_not_found,
+            context=f"Error fetching Spotify playlist snapshot for '{playlist_id}'",
+        )
 
     def add_items(self, playlist_name: str, items: List[PlaylistItem]) -> None:
         """Add tracks to a Spotify playlist"""

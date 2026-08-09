@@ -52,12 +52,11 @@ class PlexRepository(RemotePlaylistRepository):
         if not playlist_id_str:
             return None
 
-        try:
-            return self.server.fetchItem(f"/playlists/{playlist_id_str}")
-        except plexapi.exceptions.NotFound:
-            return None
-        except Exception as e:
-            raise RemoteUnavailableError(f"Error looking up Plex playlist by ratingKey '{playlist_id_str}': {e}") from e
+        return self._guarded_remote_call(
+            lambda: self.server.fetchItem(f"/playlists/{playlist_id_str}"),
+            is_not_found=lambda e: isinstance(e, plexapi.exceptions.NotFound),
+            context=f"Error looking up Plex playlist by ratingKey '{playlist_id_str}'",
+        )
 
     def _normalize_playlist_name(self, playlist_name: str) -> str:
         if not playlist_name:
@@ -74,10 +73,14 @@ class PlexRepository(RemotePlaylistRepository):
         if not normalized_name:
             return []
 
-        try:
-            playlists = self.server.playlists()
-        except Exception as e:
-            raise RemoteUnavailableError(f"Error listing Plex playlists while looking up '{playlist_name}': {e}") from e
+        # No is_not_found predicate here: there's no such thing as Plex "confirming" no
+        # playlists exist versus a listing call simply failing - a failure here always means
+        # unavailable, never confirmed-empty (an empty list from a successful call is already
+        # a normal return, handled below).
+        playlists = self._guarded_remote_call(
+            lambda: self.server.playlists(),
+            context=f"Error listing Plex playlists while looking up '{playlist_name}'",
+        )
 
         return [
             playlist for playlist in playlists
@@ -110,12 +113,11 @@ class PlexRepository(RemotePlaylistRepository):
         if matches:
             return matches[0]
 
-        try:
-            return self.server.playlist(playlist_name)
-        except plexapi.exceptions.NotFound:
-            return None
-        except Exception as e:
-            raise RemoteUnavailableError(f"Error looking up Plex playlist '{playlist_name}' by direct query: {e}") from e
+        return self._guarded_remote_call(
+            lambda: self.server.playlist(playlist_name),
+            is_not_found=lambda e: isinstance(e, plexapi.exceptions.NotFound),
+            context=f"Error looking up Plex playlist '{playlist_name}' by direct query",
+        )
 
     @timing
     def fetch_media_item(self, item: PlaylistItem) -> Any:
