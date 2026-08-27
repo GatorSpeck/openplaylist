@@ -77,7 +77,9 @@ describe('AnniversaryTimeline windowing', () => {
     expect(getAnniversaryBadgeMeta(0).title).toBe('New release anniversary');
     expect(getAnniversaryBadgeMeta(5).title).toBe('Silver milestone anniversary');
     expect(getAnniversaryBadgeMeta(10).title).toBe('Gold milestone anniversary');
-    expect(getAnniversaryBadgeMeta(25).title).toBe('Gold milestone anniversary');
+    expect(getAnniversaryBadgeMeta(20).title).toBe('Gold milestone anniversary');
+    expect(getAnniversaryBadgeMeta(25).title).toBe('Silver milestone anniversary');
+    expect(getAnniversaryBadgeMeta(30).title).toBe('Gold milestone anniversary');
     expect(getAnniversaryBadgeMeta(2).title).toBe('Bronze anniversary');
   });
 

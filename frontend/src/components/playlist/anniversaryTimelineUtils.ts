@@ -153,7 +153,7 @@ export const mergeAnniversaryGroups = <T extends { id: number; anniversary_date:
 };
 
 export function getAnniversaryBadgeMeta(years: number): { className: string; marker: string; title: string } {
-  if (years === 0) {
+  if (years <= 0) {
     return {
       className: 'inline-flex w-fit items-center rounded-full bg-emerald-500 px-2.5 py-1 text-[11px] font-semibold text-white ring-1 ring-emerald-300/70 shadow-sm',
       marker: '●',
@@ -161,19 +161,19 @@ export function getAnniversaryBadgeMeta(years: number): { className: string; mar
     };
   }
 
-  if (years === 5) {
-    return {
-      className: 'inline-flex w-fit items-center rounded-full bg-gradient-to-r from-slate-200 via-slate-300 to-slate-400 px-2.5 py-1 text-[11px] font-semibold text-slate-900 ring-1 ring-slate-200/80 shadow-sm',
-      marker: '🥈',
-      title: 'Silver milestone anniversary',
-    };
-  }
-
-  if (years === 10 || years === 25) {
+  if (years % 10 === 0) {
     return {
       className: 'inline-flex w-fit items-center rounded-full bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 px-2.5 py-1 text-[11px] font-semibold text-amber-950 ring-1 ring-amber-200/90 shadow-sm',
       marker: '🥇',
       title: 'Gold milestone anniversary',
+    };
+  }
+
+  if (years % 5 === 0) {
+    return {
+      className: 'inline-flex w-fit items-center rounded-full bg-gradient-to-r from-slate-200 via-slate-300 to-slate-400 px-2.5 py-1 text-[11px] font-semibold text-slate-900 ring-1 ring-slate-200/80 shadow-sm',
+      marker: '🥈',
+      title: 'Silver milestone anniversary',
     };
   }
 
