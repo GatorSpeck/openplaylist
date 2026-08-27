@@ -46,6 +46,7 @@ const PlaylistSidebar = ({
   const [renameDialog, setRenameDialog] = useState({ open: false, playlist: null });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [filter, setFilter] = useState('');
 
   const sidebarRef = useRef(null);
   const hamburgerRef = useRef(null);
@@ -101,6 +102,10 @@ const PlaylistSidebar = ({
     window.location.reload(); // Simple approach; could be more elegant with proper state management
   };
 
+  const filteredPlaylists = playlists.filter((playlist) =>
+    playlist.name.toLowerCase().includes(filter.toLowerCase())
+  );
+
   return (
     <>
       <button
@@ -138,15 +143,28 @@ const PlaylistSidebar = ({
                 Import
               </button>
             </div>
+            <div className="mb-2">
+              <input
+                type="text"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter playlists..."
+                className="w-full rounded border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
+              />
+            </div>
             <div className="mb-2 flex items-center justify-between px-1 text-xs text-text/60 dark:text-text-dark/60">
               <span>Playlists</span>
-              <span>{playlists.length}</span>
+              <span>{filter ? `${filteredPlaylists.length} / ${playlists.length}` : playlists.length}</span>
             </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4">
             <div className="space-y-1.5">
-            {playlists
+            {filteredPlaylists.length === 0 ? (
+              <div className="px-2 py-4 text-center text-sm text-text/60 dark:text-text-dark/60">
+                No playlists match "{filter}"
+              </div>
+            ) : filteredPlaylists
               .sort((a, b) => {
                 // First sort by pinned status
                 if (a.pinned && !b.pinned) return -1;
