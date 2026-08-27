@@ -10,7 +10,7 @@ from mutagen.wave import WAVE
 from mutagen.mp4 import MP4
 from mutagen import File as MutagenFile
 import dotenv
-from typing import Optional, List, Callable
+from typing import Optional, List, Callable, Dict
 import time
 from tqdm import tqdm
 from datetime import datetime
@@ -214,6 +214,13 @@ if REDIS_HOST and REDIS_PORT:
     redis_session = Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
 
 CONFIG_DIR = pathlib.Path(os.getenv("CONFIG_DIR", "/config"))
+
+from lib.app_config import (
+    get_lastfm_username,
+    set_lastfm_username,
+    get_playlist_sync_defaults,
+    set_playlist_sync_defaults,
+)
 
 def extract_tag(dict, options, squash_list=True, to_string=True):
     for option in options:
@@ -937,6 +944,16 @@ def save_index_paths(paths: List[str]):
         json.dump({'music_paths': paths}, f)
     return {"success": True}
 
+class PlaylistSyncDefaultsPayload(BaseModel):
+    enabled: bool = False
+    services: Dict[str, bool] = {}
+
+
+class SettingsUpdate(BaseModel):
+    playlistSyncDefaults: Optional[PlaylistSyncDefaultsPayload] = None
+    lastFmUsername: Optional[str] = None
+
+
 @router.get("/settings")
 def get_settings():
     return {
@@ -948,7 +965,22 @@ def get_settings():
         "redisConfigured": redis_session is not None,
         "configDir": str(CONFIG_DIR),
         "logLevel": log_level,
+        "lastFmUsername": get_lastfm_username(),
+        "playlistSyncDefaults": get_playlist_sync_defaults(),
     }
+
+
+@router.post("/settings")
+def update_settings(payload: SettingsUpdate):
+    result = {}
+
+    if payload.playlistSyncDefaults is not None:
+        result["playlistSyncDefaults"] = set_playlist_sync_defaults(payload.playlistSyncDefaults.model_dump())
+
+    if payload.lastFmUsername is not None:
+        result["lastFmUsername"] = set_lastfm_username(payload.lastFmUsername)
+
+    return result
 
 @router.get("/settings/migrations/status")
 def get_migration_status():
