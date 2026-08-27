@@ -206,6 +206,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const [totalCount, setTotalCount] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [tracksToAddToOtherPlaylist, setTracksToAddToOtherPlaylist] = useState([]);
+  const [onAddToOtherPlaylistSuccess, setOnAddToOtherPlaylistSuccess] = useState<(() => void) | null>(null);
   const [syncLogModalOpen, setSyncLogModalOpen] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
 
@@ -1077,10 +1078,16 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     setTimeout(() => setShowTrackDetails(true), 0);
   }
 
-  const handleAddToOtherPlaylist = (tracks: PlaylistEntry[]) => {
+  const handleAddToOtherPlaylist = (tracks: PlaylistEntry[], onSuccess: (() => void) | null = null) => {
     setTracksToAddToOtherPlaylist(tracks);
+    setOnAddToOtherPlaylistSuccess(() => onSuccess);
     setSelectPlaylistModalVisible(true);
   }
+
+  const addSelectedTracksToOtherPlaylist = () => {
+    const tracksToAdd = entries.filter((e) => selectedEntries.includes(e.id));
+    handleAddToOtherPlaylist(tracksToAdd, clearTrackSelection);
+  };
 
   const handleContextMenu = (e, track: PlaylistEntry) => {
     e.preventDefault();
@@ -1453,7 +1460,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const [batchActionsModalVisible, setBatchActionsModalVisible] = useState(false);
 
   // Update BatchActions to be a modal component
-  const BatchActionsModal = ({ selectedCount, onRemove, onClear, onHide, visible, onClose }) => {
+  const BatchActionsModal = ({ selectedCount, onRemove, onClear, onHide, onAddToPlaylist, visible, onClose }) => {
     return (
       <Modal
         open={visible}
@@ -1461,8 +1468,17 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         title={`Batch Actions (${selectedCount} selected)`}
       >
         <div className="batch-actions-modal-content">
-          <button 
-            className="batch-action-button hide-button" 
+          <button
+            className="batch-action-button add-button"
+            onClick={() => {
+              onAddToPlaylist();
+              onClose();
+            }}
+          >
+            Add {selectedCount} Selected Entries to Playlist...
+          </button>
+          <button
+            className="batch-action-button hide-button"
             onClick={() => {
               onHide();
               onClose();
@@ -1470,8 +1486,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           >
             Hide {selectedCount} Selected Entries
           </button>
-          <button 
-            className="batch-action-button remove-button" 
+          <button
+            className="batch-action-button remove-button"
             onClick={() => {
               onRemove();
               onClose();
@@ -1479,8 +1495,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           >
             Remove {selectedCount} Selected Entries
           </button>
-          <button 
-            className="batch-action-button clear-button" 
+          <button
+            className="batch-action-button clear-button"
             onClick={() => {
               onClear();
               onClose();
@@ -1493,8 +1509,11 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     );
   };
 
-  const BatchActions = ({ selectedCount, onRemove, onClear, onHide }) => (
+  const BatchActions = ({ selectedCount, onRemove, onClear, onHide, onAddToPlaylist }) => (
     <div className="batch-actions" style={{ minHeight: '40px', visibility: selectedCount > 0 ? 'visible' : 'hidden' }}>
+      <button onClick={onAddToPlaylist}>
+        Add {selectedCount} Selected Entries to Playlist...
+      </button>
       <button onClick={onHide}>
         Hide {selectedCount} Selected Entries
       </button>
@@ -1660,6 +1679,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             onRemove={removeSelectedTracks}
             onClear={clearTrackSelection}
             onHide={hideSelectedTracks}
+            onAddToPlaylist={addSelectedTracksToOtherPlaylist}
           />
         </div>
 
@@ -1871,6 +1891,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         onRemove={removeSelectedTracks}
         onClear={clearTrackSelection}
         onHide={hideSelectedTracks} // Add this line
+        onAddToPlaylist={addSelectedTracksToOtherPlaylist}
       />
 
       <SearchResultsGrid
@@ -2016,6 +2037,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           onClose={() => setSelectPlaylistModalVisible(false)}
           selectedEntries={tracksToAddToOtherPlaylist}
           setSnackbar={setSnackbar}
+          onSuccess={onAddToOtherPlaylistSuccess}
         />
       )}
 
@@ -2058,6 +2080,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         onRemove={removeSelectedTracks}
         onClear={clearTrackSelection}
         onHide={hideSelectedTracks}
+        onAddToPlaylist={addSelectedTracksToOtherPlaylist}
         visible={batchActionsModalVisible}
         onClose={() => setBatchActionsModalVisible(false)}
       />

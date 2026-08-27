@@ -667,6 +667,15 @@ html.dark {
   justify-content: center;
 }
 
+.batch-action-button.add-button {
+  background: #4caf50;
+  color: white;
+}
+
+.batch-action-button.add-button:hover {
+  background: #388e3c;
+}
+
 .batch-action-button.hide-button {
   background: #ff9800;
   color: white;
@@ -754,6 +763,15 @@ html.dark {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.batch-action-button.add-button {
+  background: #4caf50;
+  color: white;
+}
+
+.batch-action-button.add-button:hover {
+  background: #388e3c;
 }
 
 .batch-action-button.hide-button {

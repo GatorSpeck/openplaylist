@@ -175,5 +175,9 @@ When adding a new external service:
 ## Before Finishing
 
 - Run the narrowest relevant validation available
+    - Changes touching only `frontend/`: run frontend tests only
+    - Changes touching only `backend/`: run backend tests only
+    - Changes touching both: run both
+- Don't start dev servers, check ports, or manually exercise the app to verify changes — rely on the test suites above
 - Avoid reverting unrelated user changes
 - If you change behavior that spans backend and frontend, verify both sides still agree on payloads and field names

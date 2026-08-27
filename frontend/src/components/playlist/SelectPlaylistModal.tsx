@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
 import playlistRepository from '../../repositories/PlaylistRepository';
 
-const SelectPlaylistModal = ({ isOpen, onClose, selectedEntries, setSnackbar }) => {
+const SelectPlaylistModal = ({ isOpen, onClose, selectedEntries, setSnackbar, onSuccess }) => {
     const [playlists, setPlaylists] = useState([]);
     const [filteredPlaylists, setFilteredPlaylists] = useState([]);
     const [filter, setFilter] = useState('');
@@ -51,6 +51,7 @@ const SelectPlaylistModal = ({ isOpen, onClose, selectedEntries, setSnackbar }) 
                 open: true,
             });
 
+            onSuccess?.();
             onClose();
         } catch (error) {
             console.error('Error adding tracks to playlist:', error);
