@@ -77,13 +77,16 @@ const Row = memo(({ data, index, style }) => {
       <div 
         style={{
           ...style,
+          height: 50,
+          minHeight: 50,
+          maxHeight: 50,
           gridTemplateColumns: gridTemplate,
         }}
-        className={`playlist-grid-row loading-row ${index % 2 === 0 ? 'even-row' : 'odd-row'}`}
+        className={`playlist-grid-row loading-row grid !h-[50px] !min-h-[50px] !max-h-[50px] items-center overflow-hidden border-b border-border px-1 text-sm !text-text ${index % 2 === 0 ? '!bg-surface dark:!bg-surface-dark-elevated' : '!bg-surface-subtle dark:!bg-surface-dark'} dark:!text-text-dark dark:border-border-dark`}
       >
-        <div className="grid-cell">{selectedEntries.includes(index) ? "✔" : index + 1}</div>
+        <div className="grid-cell px-2 py-1">{selectedEntries.includes(index) ? "✔" : index + 1}</div>
         {visibleColumns.map((column, columnIndex) => (
-          <div key={`loading-${column}-${columnIndex}`} className="grid-cell">
+          <div key={`loading-${column}-${columnIndex}`} className="grid-cell px-2 py-1">
             {columnIndex === 0 ? "Loading..." : ""}
           </div>
         ))}
@@ -105,9 +108,12 @@ const Row = memo(({ data, index, style }) => {
           style={{
             ...style,
             ...provided.draggableProps.style,
+            height: 50,
+            minHeight: 50,
+            maxHeight: 50,
             gridTemplateColumns: gridTemplate,
           }}
-          className={`playlist-grid-row ${track.order % 2 === 0 ? 'even-row' : 'odd-row'} ${sortColumn !== 'order' ? 'drag-disabled' : ''}`}
+          className={`playlist-grid-row ${track.order % 2 === 0 ? '!bg-surface dark:!bg-surface-dark-elevated' : '!bg-surface-subtle dark:!bg-surface-dark'} !text-text dark:!text-text-dark ${sortColumn !== 'order' ? 'cursor-default' : 'cursor-move'}`}
           isDragging={snapshot.isDragging}
           onToggle={() => toggleTrackSelection(track.id)} // Use track.id consistently
           onContextMenu={(e) => handleContextMenu(e, track)}
@@ -283,12 +289,16 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const getGridTemplate = () => {
     const baseColumns = ['80px']; // Fixed width for checkbox/art column
     
-    visibleColumns.forEach(col => {
+    visibleColumns.forEach((col) => {
       const width = columnWidths[col] || defaultColumnWidths[col];
       baseColumns.push(`${width}px`);
     });
     
     return baseColumns.join(' ');
+  };
+
+  const getGridMinWidth = () => {
+    return 80 + visibleColumns.reduce((sum, col) => sum + (columnWidths[col] || defaultColumnWidths[col]), 0);
   };
 
   // Apply debouncing to the filter
@@ -584,30 +594,134 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
     }
   };
 
+  const matchesCurrentPlaylistView = (entry: any) => {
+    if (!showHidden && entry.is_hidden) {
+      return false;
+    }
+
+    const activeFilter = debouncedFilter.trim().toLowerCase();
+    if (!activeFilter) {
+      return true;
+    }
+
+    const searchableValues = [
+      entry.getTitle(),
+      entry.getArtist(),
+      entry.getAlbum(),
+      entry.getNotes(),
+    ];
+
+    return searchableValues.some((value: any) =>
+      typeof value === 'string' && value.toLowerCase().includes(activeFilter)
+    );
+  };
+
+  const getEntrySortText = (entry: any, column: string) => {
+    if (column === 'title') {
+      return entry.getTitle?.() || '';
+    }
+    if (column === 'artist') {
+      return entry.getArtist?.() || '';
+    }
+    if (column === 'album') {
+      return entry.getAlbum?.() || '';
+    }
+    if (column === 'notes') {
+      return entry.getNotes?.() || '';
+    }
+    return '';
+  };
+
+  const getRandomSortKey = (entry: any) => {
+    const titleHash = ((entry.getTitle?.() || '').length || 0) * 31;
+    const artistHash = ((entry.getArtist?.() || '').length || 0) * 37;
+    const rawValue =
+      Math.imul(entry.id || 0, 1664525) +
+      Math.imul(titleHash, 2654435761) +
+      Math.imul(artistHash, 3266489917) +
+      Math.imul(randomSeed || 0, 1013904223);
+
+    return ((rawValue % 2147483647) + 2147483647) % 2147483647;
+  };
+
+  const compareVisibleEntries = (left: any, right: any) => {
+    if (sortColumn === 'random') {
+      const leftKey = getRandomSortKey(left);
+      const rightKey = getRandomSortKey(right);
+      if (leftKey < rightKey) return -1;
+      if (leftKey > rightKey) return 1;
+      return (left.id || 0) - (right.id || 0);
+    }
+
+    if (sortColumn === 'order' || !sortColumn) {
+      const leftOrder = left.order || 0;
+      const rightOrder = right.order || 0;
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+      return (left.id || 0) - (right.id || 0);
+    }
+
+    const leftText = getEntrySortText(left, sortColumn).toLowerCase();
+    const rightText = getEntrySortText(right, sortColumn).toLowerCase();
+    const textComparison = leftText.localeCompare(rightText);
+    if (textComparison !== 0) {
+      return textComparison;
+    }
+
+    const leftOrder = left.order || 0;
+    const rightOrder = right.order || 0;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+
+    return (left.id || 0) - (right.id || 0);
+  };
+
+  const insertVisibleTracksInCurrentSort = (currentEntries: any[], newVisibleTracks: any[]) => {
+    const canSortLoadedEntries = currentEntries.every((entry) => typeof entry?.getTitle === 'function');
+    if (!canSortLoadedEntries || sortColumn === 'order' && sortDirection === 'asc') {
+      return [...currentEntries, ...newVisibleTracks];
+    }
+
+    const sortedEntries = [...currentEntries, ...newVisibleTracks].sort(compareVisibleEntries);
+    if (sortColumn === 'random' || sortDirection === 'asc') {
+      return sortedEntries;
+    }
+
+    return sortedEntries.reverse();
+  };
+
   const addTracksToPlaylist = async (tracks: PlaylistEntry[]) => {
     const newOrder = entries.length ? entries[entries.length - 1].order + 1 : 0;
 
-    const tracksToAdd = (Array.isArray(tracks) ? tracks : [tracks]).map((track, idx) => {
-      let thisTrack = track;
+    const tracksToAdd = await Promise.all((Array.isArray(tracks) ? tracks : [tracks]).map(async (track, idx) => {
+      const entryType = track.entry_type || 'music_file';
+      const reservedEntry = await playlistRepository.reserveEntryId(
+        playlistID,
+        entryType
+      );
+      const thisTrack = new PlaylistEntry(track);
       thisTrack.order = idx + newOrder;
-      thisTrack.music_file_id = track.id;
+      // Keep only a real music_file_id from the source track; do not infer from UI ids.
+      thisTrack.music_file_id = track.music_file_id ?? null;
 
-      // set ID to a random number if not set
-      thisTrack.id = track.id || Math.floor(Math.random() * (10000000 - 1000000) + 1000000);
-      
-      thisTrack.entry_type = track.entry_type || 'requested';
+      thisTrack.id = reservedEntry.id;
+
+      thisTrack.entry_type = entryType;
       return thisTrack;
-    });
+    }));
+
+    const visibleTracksToAdd = tracksToAdd.filter(matchesCurrentPlaylistView);
 
     pushToHistory(entries);
 
-    const newEntries = [
-      ...entries,
-      ...tracksToAdd
-    ];
-    
-    setEntries(newEntries);
-    setTotalCount(prevCount => prevCount + tracksToAdd.length);
+    if (visibleTracksToAdd.length > 0) {
+      const newEntries = insertVisibleTracksInCurrentSort(entries as any[], visibleTracksToAdd);
+
+      setEntries(newEntries);
+      setTotalCount(prevCount => prevCount + visibleTracksToAdd.length);
+    }
 
     playlistRepository.addTracks(playlistID, tracksToAdd, false);
         
@@ -959,7 +1073,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   const handleShowDetails = (track: PlaylistEntry) => {
     setSelectedTrack(track);
-    setShowTrackDetails(true);
+    // Defer open so the originating context-menu click cannot also dismiss the modal backdrop.
+    setTimeout(() => setShowTrackDetails(true), 0);
   }
 
   const handleAddToOtherPlaylist = (tracks: PlaylistEntry[]) => {
@@ -1074,6 +1189,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
   const historyControls = (
     <div className="history-controls">
       <button 
+        className="rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
         onClick={undo} 
         disabled={historyIndex <= 0}
         title="Undo"
@@ -1081,6 +1197,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         <FaUndo />
       </button>
       <button 
+        className="rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
         onClick={redo} 
         disabled={historyIndex >= history.length - 1}
         title="Redo"
@@ -1392,27 +1509,27 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
   // Update the render to include the show hidden checkbox and updated batch actions
   return (
-    <div className="main-playlist-view">
-      <div className="playlist-header">
+    <div className="main-playlist-view flex flex-col gap-3">
+      <div className="playlist-header flex items-center gap-3 rounded border border-border bg-surface-subtle px-3 py-2 dark:border-border-dark dark:bg-surface-dark-elevated">
         <AlbumArtGrid
           artList={
             albumArtList ? albumArtList.map((album) => album.image_url) : []
           }
         />
-        <h2 className="playlist-name">{name}</h2>
+        <h2 className="playlist-name m-0 text-lg font-semibold">{name}</h2>
       </div>
-      <div className="playlist-controls">
-        <div className="playlist-controls-top">
+      <div className="playlist-controls rounded border border-border bg-surface px-3 py-2 dark:border-border-dark dark:bg-surface-dark-elevated">
+        <div className="playlist-controls-top flex flex-wrap items-center gap-2">
           {historyEnabled && historyControls}
           <button
-            className="playlist-options"
+            className="playlist-options rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
             onClick={() => setPlaylistModalVisible(true)}
           >
             ...
           </button>
           
           <button
-            className="column-config-btn"
+            className="column-config-btn rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
             onClick={() => {
               console.log('Column config button clicked');
               console.log('Current columnConfigOpen state:', columnConfigOpen);
@@ -1425,7 +1542,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           </button>
 
           <button
-            className={`random-button ${isRandomOrder ? "active" : ""}`}
+            className={`random-button rounded border border-border px-2 py-1 text-sm !text-text transition dark:border-border-dark dark:!text-text-dark ${isRandomOrder ? "active bg-accent/10 text-accent dark:bg-accent/20" : "bg-surface-subtle hover:bg-surface-muted dark:bg-surface-dark dark:hover:bg-surface-dark-elevated"}`}
             onClick={() => {
               if (isRandomOrder) {
                 // Return to original order
@@ -1451,7 +1568,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           </button>
 
           <button
-            className="refresh-button"
+            className="refresh-button rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
             onClick={() => {
               window.location.reload();
             }}
@@ -1461,7 +1578,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           </button>
 
           <button
-            className="scroll-button"
+            className="scroll-button rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
             onClick={() => {
               if (listRef.current) {
                 listRef.current.scrollToItem(0, 'start');
@@ -1474,7 +1591,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           </button>
 
           <button
-            className="scroll-button"
+            className="scroll-button rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
             onClick={() => {
               if (listRef.current && totalCount > 0) {
                 listRef.current.scrollToItem(totalCount - 1, 'end');
@@ -1487,7 +1604,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           </button>
         </div>
 
-        <div className="filter-container">
+        <div className="filter-container mt-2 flex flex-wrap items-center justify-center gap-2">
           <input
             type="text"
             placeholder="Filter playlist..."
@@ -1495,12 +1612,12 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             onChange={(e) => {
               setFilter(e.target.value);
             }}
-            className="filter-input"
+            className="filter-input w-64 rounded border border-border bg-surface px-3 py-1.5 text-sm text-text placeholder-text/40 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:placeholder-text-dark/40"
           />
 
           {filter && (
             <button
-              className="clear-filter"
+              className="clear-filter rounded border border-border bg-surface-subtle px-2 py-1 text-sm !text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated"
               onClick={() => {
                 setFilter("");
               }}
@@ -1510,8 +1627,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           )}
 
           <label 
-            className="show-hidden-label"
-            style={{ display: 'inline-block' }}
+            className="show-hidden-label inline-flex items-center gap-2 text-sm"
+            style={{ display: 'inline-flex' }}
           >
             <input
               type="checkbox"
@@ -1525,9 +1642,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             Show Hidden
           </label>
 
-          <br />
-
-          <span className="filter-count">
+          <span className="filter-count text-xs opacity-80">
             {totalCount} tracks{" "}
             {filter
               ? filter.trim() !== debouncedFilter.trim()
@@ -1550,16 +1665,18 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
 
       </div>
 
-      <div className={`playlist-container ${isAtBottom ? 'at-bottom' : ''}`} ref={gridRef}>
+      <div className={`playlist-container ${isAtBottom ? 'at-bottom' : ''} overflow-hidden rounded border border-border bg-surface dark:border-border-dark dark:bg-surface-dark-elevated`} ref={gridRef}>
         <DragDropContext onDragEnd={onDragEnd}>
+          <div className="playlist-grid-scroll">
+            <div className="playlist-grid-inner" style={{ minWidth: `${getGridMinWidth()}px`, width: '100%' }}>
           <div className="playlist-grid-header-row" style={{ gridTemplateColumns: getGridTemplate() }}>
-            <div className="grid-cell" style={{ overflow: 'visible' }}>
+            <div className="grid-cell px-2 py-2 text-sm font-semibold" style={{ overflow: 'visible' }}>
               <input
                 type="checkbox"
                 checked={allPlaylistEntriesSelected}
                 onChange={toggleAllTracks}
               />
-              <span className="clickable" onClick={() => handleSort("order")}>
+              <span className="clickable ml-2" onClick={() => handleSort("order")}>
                 # {getSortIndicator("order")}
               </span>
             </div>
@@ -1605,7 +1722,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
               })();
               
               return (
-                <div key={column} className="grid-cell resizable-header" style={{ position: 'relative' }}>
+                <div key={column} className="grid-cell resizable-header px-2 py-2 text-sm font-semibold" style={{ position: 'relative' }}>
                   {headerContent}
                   {(!isLastColumn || column === 'notes') && (
                     <div 
@@ -1744,6 +1861,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
               </div>
             )}
           </Droppable>
+            </div>
+          </div>
         </DragDropContext>
       </div>
 
@@ -1813,7 +1932,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
         />
       )}
 
-      {playlistModalVisible && (
+      {playlistModalVisible && !syncConfigOpen && !syncLogModalOpen && (
         <BaseModal
           title="Playlist Options"
           options={[
@@ -1828,13 +1947,23 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             {
               label: "Sync Options",
               action: () => {
-                setSyncConfigOpen(true);
+                setPlaylistModalVisible(false);
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    setSyncConfigOpen(true);
+                  });
+                });
               },
             },
             {
               label: "View Sync Log",
               action: () => {
-                setSyncLogModalOpen(true);
+                setPlaylistModalVisible(false);
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    setSyncLogModalOpen(true);
+                  });
+                });
               },
             },
             { label: "Sync Now", action: () => onSyncToPlex(false) },
@@ -1948,9 +2077,8 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
           zIndex: 10000
         }} onClick={() => setColumnConfigOpen(false)}>
           <div 
-            className="column-config-modal"
+            className="column-config-modal rounded border border-border bg-surface text-text dark:border-border-dark dark:bg-surface-dark-elevated dark:text-text-dark"
             style={{
-              background: 'white',
               borderRadius: '8px',
               padding: '0',
               maxWidth: '500px',
@@ -1961,7 +2089,7 @@ const PlaylistGrid: React.FC<PlaylistGridProps> = ({ playlistID }) => {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ padding: '20px', borderBottom: '1px solid #eee' }}>
+            <div className="border-b border-border p-5 dark:border-border-dark">
               <h3 style={{ margin: '0', fontSize: '18px' }}>Configure Columns</h3>
             </div>
             <div className="column-config-content">

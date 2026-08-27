@@ -1,6 +1,27 @@
+:root {
+  --op-surface: #ffffff;
+  --op-surface-subtle: #f5f5f5;
+  --op-surface-muted: #e5e7eb;
+  --op-text: #213547;
+  --op-text-muted: rgba(33, 53, 71, 0.7);
+  --op-border: rgba(0, 0, 0, 0.14);
+  --op-on-accent: rgba(255, 255, 255, 0.9);
+}
+
+html.dark {
+  --op-surface: #242424;
+  --op-surface-subtle: #1f1f1f;
+  --op-surface-muted: #374151;
+  --op-text: rgba(255, 255, 255, 0.87);
+  --op-text-muted: rgba(255, 255, 255, 0.7);
+  --op-border: rgba(255, 255, 255, 0.2);
+  --op-on-accent: rgba(255, 255, 255, 0.95);
+}
+
 .playlist-container {
   height: calc(100vh - 120px); /* Taller, only leave space for header/controls */
-  width: calc(100vw - 32px); /* Nearly full width with margins */
+  width: 100%;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   border: 1px solid #ddd;
@@ -72,18 +93,26 @@
   height: 100%;
 }
 
-/* Add bottom padding to playlist container when at bottom to create space for button */
-.playlist-container.at-bottom {
-  padding-bottom: 80px;
-  box-sizing: border-box;
-  transition: padding-bottom 0.3s ease;
+.playlist-grid-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
+
+.playlist-grid-inner {
+  min-height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 
 .playlist-grid-row {
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   background: white;
   color: black;
-  min-height: 60px;
+  min-height: 50px;
   align-items: left;
   box-sizing: border-box;
 }
@@ -183,8 +212,8 @@
 /* Add responsive styles for smaller screens */
 @media (max-width: 768px) {
   .playlist-container {
-    width: calc(100vw - 16px);
-    margin: 8px;
+    width: 100%;
+    margin: 0;
   }
 
   .playlist-grid-header-row,
@@ -826,7 +855,7 @@
 
 .column-config-content p {
   margin: 0 0 20px 0;
-  color: #666;
+  color: var(--op-text-muted);
 }
 
 .column-checkboxes {
@@ -842,22 +871,30 @@
   gap: 8px;
   padding: 8px;
   border-radius: 4px;
-  transition: background-color 0.2s;
+  border: 1px solid var(--op-border);
+  background-color: var(--op-surface-subtle);
+  transition: background-color 0.2s, border-color 0.2s;
   cursor: pointer;
 }
 
 .column-checkbox-item:hover {
-  background-color: #f5f5f5;
+  background-color: var(--op-surface-muted);
+  border-color: var(--op-border);
 }
 
 .column-checkbox-item.draggable-column {
   cursor: grab;
-  border: 1px solid transparent;
+  border: 1px solid var(--op-border);
 }
 
 .column-checkbox-item.draggable-column:hover {
-  background-color: #e8f4fd;
-  border-color: #007bff;
+  background-color: rgba(32, 120, 255, 0.08);
+  border-color: rgba(32, 120, 255, 0.4);
+}
+
+html.dark .column-checkbox-item.draggable-column:hover {
+  background-color: rgba(100, 180, 255, 0.15);
+  border-color: rgba(100, 180, 255, 0.5);
 }
 
 .column-checkbox-item.hidden-column {
@@ -865,17 +902,17 @@
 }
 
 .column-checkbox-item.hidden-column:hover {
-  background-color: #f0f8f0;
+  background-color: var(--op-surface-muted);
 }
 
 .drag-handle {
-  color: #999;
+  color: var(--op-text-muted);
   font-size: 12px;
   user-select: none;
 }
 
 .column-checkbox-item:hover .drag-handle {
-  color: #666;
+  color: var(--op-text);
 }
 
 .column-checkbox-item input[type="checkbox"] {
@@ -890,12 +927,12 @@
 
 .column-label {
   font-weight: 500;
-  color: #333;
+  color: var(--op-text);
   margin-right: 8px;
 }
 
 .column-description {
-  color: #666;
+  color: var(--op-text-muted);
   font-size: 12px;
   line-height: 1.3;
   display: block;
@@ -907,38 +944,45 @@
   gap: 10px;
   justify-content: flex-end;
   padding-top: 16px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--op-border);
 }
 
 .reset-columns-btn,
 .close-config-btn {
   padding: 8px 16px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--op-border);
   border-radius: 4px;
-  background: white;
+  background: var(--op-surface-subtle);
+  color: var(--op-text);
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s;
 }
 
-.reset-columns-btn {
-  color: #666;
-}
-
 .reset-columns-btn:hover {
-  background: #f5f5f5;
-  border-color: #ccc;
+  background: var(--op-surface-muted);
+  border-color: var(--op-text-muted);
 }
 
 .close-config-btn {
-  background: #007bff;
-  color: white;
-  border-color: #007bff;
+  background: #2080ff;
+  color: var(--op-on-accent);
+  border-color: #2080ff;
+}
+
+html.dark .close-config-btn {
+  background: #4a9eff;
+  border-color: #4a9eff;
 }
 
 .close-config-btn:hover {
   background: #0056b3;
   border-color: #0056b3;
+}
+
+html.dark .close-config-btn:hover {
+  background: #2080ff;
+  border-color: #2080ff;
 }
 
 /* Notes column styling */
@@ -976,8 +1020,8 @@
   padding: 2px 4px;
   font-size: 12px;
   font-style: italic;
-  background: white !important;
-  color: #333 !important;
+  background: var(--op-surface);
+  color: var(--op-text);
   outline: none;
   box-shadow: 0 0 3px rgba(0, 123, 255, 0.3);
 }
@@ -1007,9 +1051,6 @@
   background-color: rgba(0, 123, 255, 0.3);
   border-left: 1px solid rgba(0, 123, 255, 0.5);
 }
-  background: transparent;
-  z-index: 10;
-}
 
 .resize-handle:hover .resize-indicator {
   opacity: 1 !important;
@@ -1029,4 +1070,132 @@
 /* Improve grid cell overflow for resizing */
 .playlist-grid-header-row .grid-cell {
   overflow: visible;
+}
+
+/* Dark mode */
+html.dark .playlist-grid-header-row {
+  background: #1f1f1f;
+  border-bottom-color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.87);
+}
+
+html.dark .playlist-options,
+html.dark .column-config-btn,
+html.dark .random-button {
+  background: #2a2a2a;
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.87);
+}
+
+html.dark .playlist-options:hover,
+html.dark .column-config-btn:hover,
+html.dark .random-button:hover {
+  background: #333;
+  border-color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+html.dark .playlist-grid-row {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  background: #242424;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+html.dark .playlist-grid-row:nth-child(odd) {
+  background-color: #1f1f1f;
+}
+
+html.dark .playlist-grid-row.dragging {
+  background: #333;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+html.dark .history-controls button:hover:not(:disabled) {
+  background: #333;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+html.dark .match-search-input {
+  background: #1f1f1f;
+  color: rgba(255, 255, 255, 0.87);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+html.dark .match-item {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .match-item:hover {
+  background-color: rgba(74, 158, 255, 0.15);
+}
+
+html.dark .match-details {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+html.dark .match-album-modal .album-info {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .match-album-modal .album-artist,
+html.dark .match-album-modal .track-count,
+html.dark .match-album-modal .no-matches {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+html.dark .match-album-modal .search-input {
+  background: #1f1f1f;
+  color: rgba(255, 255, 255, 0.87);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+html.dark .match-album-modal .album-match {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .match-album-modal .album-match:hover {
+  background-color: #333;
+}
+
+html.dark .match-album-modal .no-image {
+  background-color: #333;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+html.dark .hidden-entry {
+  background-color: #1a1a1a;
+}
+
+html.dark .hidden-indicator {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+html.dark .shuffle-button {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.87);
+}
+
+html.dark .shuffle-button:hover {
+  background-color: #333;
+}
+
+html.dark .random-seed {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+html.dark .mobile-menu-button {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+html.dark .spinner-icon {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+html.dark .notes-cell:hover {
+  background-color: rgba(100, 160, 255, 0.08);
+}
+
+html.dark .notes-display:hover {
+  background-color: rgba(100, 160, 255, 0.12);
+  color: rgba(255, 255, 255, 0.87);
 }

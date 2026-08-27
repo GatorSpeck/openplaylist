@@ -447,3 +447,160 @@
   text-align: center;
   padding: 20px;
 }
+
+/* Tailwind migration bridge: keep TrackDetails modal centered and theme-safe. */
+.track-details-modal-shell {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.5);
+  isolation: isolate;
+  pointer-events: auto;
+}
+
+.track-details-modal-panel {
+  width: min(700px, calc(100vw - 2rem));
+  margin-left: auto;
+  margin-right: auto;
+  position: relative;
+  z-index: 1;
+}
+
+.track-details-modal-panel > h2 {
+  margin-top: 0;
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.track-details {
+  margin: 15px auto;
+  max-width: 640px;
+}
+
+.track-details > p,
+.track-details .external-links > p {
+  text-align: center;
+}
+
+.track-details .album-art-section {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.track-details .album-art-thumbnail {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.track-details .source-section,
+.track-details .link-section,
+.track-details .search-results,
+.track-details .search-result-item,
+.track-details .notes-section,
+.track-details .external-source-item,
+.track-details .notes-editor,
+.track-details .notes-actions,
+.track-details .search-input-group,
+.track-details .link-input-group,
+.track-details .no-results-message {
+  text-align: left;
+}
+
+.track-details .modal-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.track-details-modal-panel .source-section,
+.track-details-modal-panel .link-section,
+.track-details-modal-panel .lastfm-search-results,
+.track-details-modal-panel .search-result-item,
+.track-details-modal-panel .notes-section,
+.track-details-modal-panel .external-source-item {
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.track-details-modal-panel .external-links a,
+.track-details-modal-panel .lastfm-link,
+.track-details-modal-panel a {
+  color: #0c4a6e;
+}
+
+.track-details-modal-panel .external-links a:hover,
+.track-details-modal-panel .lastfm-link:hover,
+.track-details-modal-panel a:hover {
+  color: #075985;
+}
+
+.dark .track-details-modal-panel .source-section,
+.dark .track-details-modal-panel .lastfm-search-results,
+.dark .track-details-modal-panel .notes-section,
+.dark .track-details-modal-panel .external-source-item {
+  background-color: rgba(30, 41, 59, 0.75);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.dark .track-details-modal-panel .link-section,
+.dark .track-details-modal-panel .search-result-item {
+  background-color: rgba(15, 23, 42, 0.9);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.dark .track-details-modal-panel .source-section h3,
+.dark .track-details-modal-panel .result-info strong,
+.dark .track-details-modal-panel .search-header h4,
+.dark .track-details-modal-panel .notes-header strong {
+  color: #f1f5f9;
+}
+
+.dark .track-details-modal-panel .result-info em,
+.dark .track-details-modal-panel .result-info span,
+.dark .track-details-modal-panel .no-results,
+.dark .track-details-modal-panel .no-notes,
+.dark .track-details-modal-panel .saving-indicator {
+  color: #cbd5e1;
+}
+
+.dark .track-details-modal-panel .no-results-message {
+  background-color: rgba(120, 53, 15, 0.35);
+  border-color: rgba(251, 191, 36, 0.45);
+}
+
+.dark .track-details-modal-panel .no-results-message p,
+.dark .track-details-modal-panel .no-results-message ul {
+  color: #fde68a;
+}
+
+.dark .track-details-modal-panel .notes-textarea,
+.dark .track-details-modal-panel .search-input,
+.dark .track-details-modal-panel .link-input-group input {
+  background-color: rgba(15, 23, 42, 0.95);
+  color: #e2e8f0;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.dark .track-details-modal-panel .notes-textarea::placeholder,
+.dark .track-details-modal-panel .search-input::placeholder,
+.dark .track-details-modal-panel .link-input-group input::placeholder {
+  color: #94a3b8;
+}
+
+.dark .track-details-modal-panel .external-links a,
+.dark .track-details-modal-panel .lastfm-link,
+.dark .track-details-modal-panel a {
+  color: #93c5fd;
+}
+
+.dark .track-details-modal-panel .external-links a:hover,
+.dark .track-details-modal-panel .lastfm-link:hover,
+.dark .track-details-modal-panel a:hover {
+  color: #bfdbfe;
+}

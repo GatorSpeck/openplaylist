@@ -165,6 +165,19 @@ def delete_scheduled_task(task_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@scheduled_tasks_router.post("/{task_id}/run", response_model=Dict[str, str])
+def run_scheduled_task_now(task_id: int):
+    """Trigger a scheduled task immediately without changing its schedule."""
+    try:
+        task_scheduler.run_task_now(task_id)
+        return {"message": "Task execution started"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to run task {task_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @scheduled_tasks_router.post("/validate-cron")
 def validate_cron_expression_post(data: dict):
     """Validate a cron expression via POST (to avoid URL encoding issues)"""

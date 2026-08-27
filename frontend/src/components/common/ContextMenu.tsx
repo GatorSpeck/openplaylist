@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 const ContextMenu = ({ x, y, options, onClose }) => {
   const [position, setPosition] = useState({ x, y });
@@ -29,63 +30,51 @@ const ContextMenu = ({ x, y, options, onClose }) => {
     setPosition({ x: newX, y: newY });
   }, [x, y]);
 
-  useEffect(() => {
-    // Add click outside handler
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        onClose();
-      }
-    };
-
-    // Add event listener
-    document.addEventListener('mousedown', handleClickOutside);
-
-    // Clean up
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [onClose]);
-
   const handleItemClick = (onClick) => {
     onClick();
     onClose();
   };
 
-  return (
-    <div 
-      ref={menuRef}
-      className="context-menu"
-      style={{ 
+  const menuMarkup = (
+    <div
+      style={{
         position: 'fixed',
-        left: position.x,
-        top: position.y,
-        zIndex: 1000,
-        background: 'white',
-        color: 'black',
-        border: '1px solid #ddd',
-        borderRadius: '4px',
-        padding: '8px 0',
-        boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+        inset: 0,
+        zIndex: 3999,
       }}
+      onMouseDown={onClose}
+      onContextMenu={(e) => e.preventDefault()}
     >
-      {options.map((option, index) => option ? (
-        <div
-          key={index}
-          className="context-menu-item"
-          onClick={option.onClick}
-          style={{
-            padding: '8px 16px',
-            cursor: 'pointer',
-            ':hover': {
-              backgroundColor: '#f5f5f5'
-            }
-          }}
-        >
-          {option.label}
-        </div>
-      ) : null)}
+      <div 
+        ref={menuRef}
+        className="context-menu min-w-40 overflow-hidden rounded border border-border bg-surface py-1 text-text shadow-sm dark:border-border-dark dark:bg-surface-dark-elevated dark:text-text-dark"
+        style={{ 
+          position: 'fixed',
+          left: position.x,
+          top: position.y,
+          zIndex: 4000,
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {options.map((option, index) => option ? (
+          <div
+            key={index}
+            className="context-menu-item cursor-pointer px-4 py-2 hover:bg-surface-subtle dark:hover:bg-surface-dark"
+            onClick={() => handleItemClick(option.onClick)}
+          >
+            {option.label}
+          </div>
+        ) : null)}
+      </div>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return menuMarkup;
+  }
+
+  return createPortal(menuMarkup, document.body);
 };
 
 export default ContextMenu;

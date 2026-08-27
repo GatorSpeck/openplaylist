@@ -1,0 +1,22 @@
+- the anniversary carousel is intended to show past and upcoming album birthdays/anniversaries
+- for each date, the carousel should show all of the albums released on that date, from oldest to most recent in the same column
+    - each album should receive a "card"
+    - each column of cards should be vertically scrollable so the div can be kept at the reasonable height
+- the carousel should start centered on today's date, showing N records ahead and N records behind
+- the user should be able to scroll left and right infinitely, with new records loading in dynamically as the carousel turns
+    - user should be able to scroll by clicking/dragging, using the arrow keys, swiping on mobile
+    - there should also be left/right nav arrows on either side of the div that can be manually clicked to advance the carousel
+- the carousel div should occupy a fixed width regardless of how many records are loaded into the container
+    - as the user scrolls, past albums should become invisible while future albums appear
+        - reverse applies when scrolling backwards
+        - should start by rendering a range of days (say, 2*N) so that we can smoothly load more dynamically
+- each album card should display the following:
+    - artist
+    - album
+    - original release date
+    - colored "years since" badge
+        - gold: 10 & 25 year anniversaries
+        - silver: 5 year anniversaries
+        - bronze: everything else >1 year
+        - green: 0 years
+- use tailwind - no vanilla CSS files

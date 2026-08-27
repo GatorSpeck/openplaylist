@@ -354,6 +354,7 @@ class PlaylistBase(BaseModel):
     updated_at: Optional[datetime] = None
     pinned: Optional[bool] = False
     pinned_order: Optional[int] = None
+    auto_sync_enabled: Optional[bool] = False
 
 class PlaylistEntryStub(BaseModel):
     id: Optional[int] = None
@@ -405,10 +406,12 @@ class MusicFileEntry(PlaylistEntryBase):
 
     def to_playlist(self, playlist_id, order=None) -> MusicFileEntryDB:
         return MusicFileEntryDB(
+            id=self.id,
             order=order,
             playlist_id=playlist_id,
             entry_type="music_file",  # deprecated
             music_file_id=self.music_file_id,
+            notes=self.notes,
             date_added = self.date_added or datetime.now()
         )
 
@@ -446,9 +449,11 @@ class NestedPlaylistEntry(PlaylistEntryBase):
 
     def to_playlist(self, playlist_id, order=None) -> NestedPlaylistEntryDB:
         return NestedPlaylistEntryDB(
+            id=self.id,
             order=order,
             entry_type=self.entry_type,
             playlist_id=playlist_id,
+            notes=self.notes,
             date_added = self.date_added or datetime.now()
         )
 
@@ -476,10 +481,12 @@ class AlbumEntry(PlaylistEntryBase):
 
     def to_playlist(self, playlist_id, order=None) -> AlbumEntryDB:
         return AlbumEntryDB(
+            id=self.id,
             order=order,
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             album_id=self.album_id,
+            notes=self.notes,
             date_added = self.date_added or datetime.now()
         )
 
@@ -531,10 +538,12 @@ class RequestedAlbumEntry(PlaylistEntryBase):
 
     def to_playlist(self, playlist_id, order=None) -> RequestedAlbumEntryDB:
         return RequestedAlbumEntryDB(
+            id=self.id,
             order=order,
             playlist_id=playlist_id,
             entry_type=self.entry_type,
             album_id=self.requested_album_id,
+            notes=self.notes,
             date_added = self.date_added or datetime.now(),
         )
 
@@ -601,7 +610,15 @@ class Playlist(PlaylistBase):
             else:
                 raise ValueError(f"Unknown entry type: {entry.entry_type}")
 
-        return cls(id=obj.id, name=obj.name, entries=entries, updated_at=obj.updated_at, pinned=obj.pinned, pinned_order=obj.pinned_order)
+        return cls(
+            id=obj.id,
+            name=obj.name,
+            entries=entries,
+            updated_at=obj.updated_at,
+            pinned=obj.pinned,
+            pinned_order=obj.pinned_order,
+            auto_sync_enabled=obj.auto_sync_enabled,
+        )
 
 
 class SearchQuery(BaseModel):
@@ -619,6 +636,24 @@ class ScanResults(BaseModel):
     files_updated: int = 0
     files_missing: int = 0
     progress: float = 0
+
+
+class LandingActivityEntry(BaseModel):
+    id: int
+    entry_type: str
+    date_added: Optional[datetime] = None
+    playlist_id: Optional[int] = None
+    playlist_name: Optional[str] = None
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    album: Optional[str] = None
+    notes: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
+
+
+class LandingActivityResponse(BaseModel):
+    lastfmEntries: List[LandingActivityEntry] = []
+    openPlaylistEntries: List[LandingActivityEntry] = []
 
 class LibraryStats(BaseModel):
     trackCount: int

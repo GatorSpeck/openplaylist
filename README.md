@@ -12,6 +12,8 @@ In addition to local music, your playlists can be augmented with search results 
 
 **DISCLAIMER: This is a hobby project! Much of it was developed with assistance from Copilot, including sections that were primarily vibecoded. Please expect instability on the develop branch, and take regular backups regardless of which release you use!**
 
+**SECOND DISCLAIMER: as of February 2026, Spotify Premium is required to use the Spotify Web API. For this reason, I'm no longer going to be regularly maintaining this integration.**
+
 ## Additional Features
 - **Advanced Playlist Management**
   - "Matching" tracks from external providers (e.g. Spotify, Youtube, Plex) with local files
@@ -101,7 +103,7 @@ ALLOW_ORIGINS=localhost  # for CORS
 # REDIS_HOST=localhost
 # REDIS_PORT=6379
 
-## Spotify configuration (for playlist import)
+## Spotify configuration (for playlist import, requires Spotify Premium to work!)
 # SPOTIFY_CLIENT_ID=foo  # https://developer.spotify.com/documentation/web-api/tutorials/getting-started
 # SPOTIFY_CLIENT_SECRET=foo
 

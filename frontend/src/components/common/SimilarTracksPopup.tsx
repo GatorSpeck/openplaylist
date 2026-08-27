@@ -75,31 +75,25 @@ export const SimilarTracksPopup: React.FC<SimilarTracksPopupProps> = ({ x, y, tr
     };
 
     return (
-        <div className="similar-tracks-popup"
+        <div
+        className="similar-tracks-popup max-h-[80vh] overflow-y-auto rounded border border-border bg-surface p-4 text-text shadow-sm dark:border-border-dark dark:bg-surface-dark-elevated dark:text-text-dark"
         onClick={e => e.stopPropagation()} // Stop clicks within popup from closing menu
         style={{
             position: 'fixed',
             left: position.x,
             top: position.y,
             zIndex: 1000,
-            background: 'white',
-            color: 'black',
-            padding: '1rem',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-            borderRadius: '4px',
-            maxHeight: '80vh',
-            overflowY: 'auto'
         }}
         >
-        <h3>Similar Tracks</h3>
-        <ul style={{ listStyle: 'none', padding: 0 }}>
+        <h3 className="mb-2 text-base font-semibold">Similar Tracks</h3>
+        <ul className="m-0 list-none p-0">
             {tracks.map((track, idx) => (
             <li key={idx} onClick={e => toggleTrack(e, idx)}
-                style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+                className="mb-2 flex items-center">
                 <input
                 type="checkbox"
                 checked={selectedTracks.has(idx)}
-                style={{ marginRight: '0.5rem' }}
+                className="mr-2"
                 readOnly
                 />
                 <span>{track.getArtist()} - {track.getTitle()}{track.getPath() ? (<span>&nbsp;<LibraryMusicIcon /></span>) : null}</span>
@@ -114,23 +108,17 @@ export const SimilarTracksPopup: React.FC<SimilarTracksPopupProps> = ({ x, y, tr
             </li>
             ))}
         </ul>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
+        <div className="mt-4 flex justify-between gap-2">
             <button
             onClick={handleAddSelected}
             disabled={selectedTracks.size === 0}
-            style={{
-                padding: '0.5rem 1rem',
-                background: '#4CAF50',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: selectedTracks.size === 0 ? 'not-allowed' : 'pointer',
-                opacity: selectedTracks.size === 0 ? 0.5 : 1
-            }}
+            className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-text-dark transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
             Add Selected ({selectedTracks.size})
             </button>
-            <button onClick={onClose}>Close</button>
+            <button onClick={onClose} className="rounded border border-border px-4 py-2 text-sm hover:bg-surface-subtle dark:border-border-dark dark:hover:bg-surface-dark">
+              Close
+            </button>
         </div>
         </div>
     );

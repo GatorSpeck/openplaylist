@@ -126,7 +126,7 @@ class TrackGenreDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     parent_type = Column(String(50), nullable=False)
     music_file_id = Column(Integer, ForeignKey("music_files.id"), nullable=True)
-    genre = Column(String(50), index=True)
+    genre = Column(String(255), index=True)
 
 
 class LocalFileDB(Base):
@@ -172,7 +172,7 @@ class LocalFileGenreDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     
     local_file_id = Column(Integer, ForeignKey("local_files.id"), nullable=False)
-    genre = Column(String(50), index=True)
+    genre = Column(String(255), index=True)
     
     local_file = relationship("LocalFileDB", back_populates="file_genres")
 

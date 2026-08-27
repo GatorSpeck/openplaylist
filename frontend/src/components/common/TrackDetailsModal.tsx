@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import '../../styles/TrackDetailsModal.css';
+import { createPortal } from 'react-dom';
 import { formatDate, formatDuration, formatSize } from '../../lib/misc';
 import playlistRepository from '../../repositories/PlaylistRepository';
 import libraryRepository from '../../repositories/LibraryRepository';
@@ -838,6 +838,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                   type="text"
                   placeholder={placeholder}
                   value={externalLinkInputs[sourceType]}
+                  className="link-input-group_input text-text placeholder:text-text/60 dark:text-text-dark dark:placeholder:text-text-dark/60"
                   onChange={(e) => handleExternalInputChange(sourceType, e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && externalLinkInputs[sourceType].trim()) {
@@ -846,6 +847,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                   }}
                 />
                 <button 
+                  className="link-input-group_button"
                   onClick={() => handleLinkExternalSource(sourceType)}
                   disabled={linkingExternal === sourceType || !externalLinkInputs[sourceType].trim()}
                 >
@@ -955,7 +957,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                         value={plexSearchFields.title}
                         onChange={(e) => setPlexSearchFields(prev => ({ ...prev, title: e.target.value }))}
                         placeholder="Enter track title..."
-                        className="search-input"
+                        className="search-input placeholder:text-text/60 dark:placeholder:text-text-dark/60"
                       />
                     </div>
                     
@@ -967,7 +969,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                         value={plexSearchFields.artist}
                         onChange={(e) => setPlexSearchFields(prev => ({ ...prev, artist: e.target.value }))}
                         placeholder="Enter artist name..."
-                        className="search-input"
+                        className="search-input placeholder:text-text/60 dark:placeholder:text-text-dark/60"
                       />
                     </div>
                     
@@ -979,7 +981,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                         value={plexSearchFields.album}
                         onChange={(e) => setPlexSearchFields(prev => ({ ...prev, album: e.target.value }))}
                         placeholder="Enter album name..."
-                        className="search-input"
+                        className="search-input placeholder:text-text/60 dark:placeholder:text-text-dark/60"
                       />
                     </div>
                     
@@ -1046,7 +1048,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                         value={youtubeSearchFields.title}
                         onChange={(e) => setYoutubeSearchFields(prev => ({ ...prev, title: e.target.value }))}
                         placeholder="Enter track title..."
-                        className="search-input"
+                        className="search-input placeholder:text-text/60 dark:placeholder:text-text-dark/60"
                       />
                     </div>
 
@@ -1058,7 +1060,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                         value={youtubeSearchFields.artist}
                         onChange={(e) => setYoutubeSearchFields(prev => ({ ...prev, artist: e.target.value }))}
                         placeholder="Enter artist name..."
-                        className="search-input"
+                        className="search-input placeholder:text-text/60 dark:placeholder:text-text-dark/60"
                       />
                     </div>
 
@@ -1070,7 +1072,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                         value={youtubeSearchFields.album}
                         onChange={(e) => setYoutubeSearchFields(prev => ({ ...prev, album: e.target.value }))}
                         placeholder="Enter album name..."
-                        className="search-input"
+                        className="search-input placeholder:text-text/60 dark:placeholder:text-text-dark/60"
                       />
                     </div>
 
@@ -1144,9 +1146,24 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
     youtubeUrlToUse = `https://www.youtube.com/watch?v=${youtubeUrlToUse}`;
   }
 
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()}>
+  const handleBackdropMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
+  const modalMarkup = (
+    <div
+      data-track-details-modal="backdrop"
+      className="z-[5000] flex items-center justify-center overflow-y-auto bg-surface-muted0 px-4 py-6"
+      style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0 }}
+      onMouseDown={handleBackdropMouseDown}
+    >
+      <div
+        data-track-details-modal="content"
+        className="my-4 w-[min(700px,calc(100vw-2rem))] max-h-[calc(100vh-3rem)] overflow-y-auto rounded border border-border bg-surface p-5 text-text shadow-lg dark:border-border-dark dark:bg-surface-dark-elevated dark:text-text-dark [&_.track-details]:mx-auto [&_.track-details]:max-w-[640px] [&_.track-details]:space-y-2 [&_.track-details>p]:text-center [&_.album-art-section]:flex [&_.album-art-section]:justify-center [&_.album-art-thumbnail]:block [&_.album-art-thumbnail]:mx-auto [&_.source-section]:my-4 [&_.source-section]:rounded-md [&_.source-section]:border [&_.source-section]:border-border [&_.source-section]:bg-surface-subtle [&_.source-section]:p-3 dark:[&_.source-section]:border-border-dark dark:[&_.source-section]:bg-surface-dark [&_.link-section]:mt-3 [&_.link-section]:rounded-md [&_.link-section]:border [&_.link-section]:border-border [&_.link-section]:bg-surface [&_.link-section]:p-3 dark:[&_.link-section]:border-border-dark dark:[&_.link-section]:bg-surface-dark-elevated [&_.external-source-item]:rounded-md [&_.external-source-item]:border [&_.external-source-item]:border-border [&_.external-source-item]:bg-surface [&_.external-source-item]:p-2 [&_.external-source-item]:my-2 dark:[&_.external-source-item]:border-border-dark dark:[&_.external-source-item]:bg-surface-dark-elevated [&_.search-input-group]:flex [&_.search-input-group]:flex-col [&_.search-input-group]:gap-2 [&_.search-fields-group]:space-y-2 [&_.search-field]:space-y-1 [&_.search-input]:w-full [&_.search-input]:rounded [&_.search-input]:border [&_.search-input]:border-border [&_.search-input]:bg-surface [&_.search-input]:px-3 [&_.search-input]:py-2 [&_.search-input]:text-sm [&_.search-input]:text-text dark:[&_.search-input]:border-border-dark dark:[&_.search-input]:bg-surface-dark dark:[&_.search-input]:text-text-dark [&_.search-actions]:mt-2 [&_.search-actions]:flex [&_.search-actions]:justify-end [&_.search-button]:rounded [&_.search-button]:bg-accent [&_.search-button]:px-3 [&_.search-button]:py-1.5 [&_.search-button]:text-xs [&_.search-button]:font-semibold [&_.search-button]:text-text-dark [&_.search-button]:transition hover:[&_.search-button]:bg-accent-hover disabled:[&_.search-button]:cursor-not-allowed disabled:[&_.search-button]:bg-surface-muted dark:disabled:[&_.search-button]:bg-surface-dark-elevated [&_.link-input-group]:mt-2 [&_.link-input-group]:flex [&_.link-input-group]:flex-wrap [&_.link-input-group]:gap-2 [&_.link-input-group_input]:min-w-[180px] [&_.link-input-group_input]:flex-1 [&_.link-input-group_input]:rounded [&_.link-input-group_input]:border [&_.link-input-group_input]:border-border [&_.link-input-group_input]:bg-surface [&_.link-input-group_input]:px-3 [&_.link-input-group_input]:py-2 [&_.link-input-group_input]:text-sm dark:[&_.link-input-group_input]:border-border-dark dark:[&_.link-input-group_input]:bg-surface-dark [&_.link-input-group_button]:rounded [&_.link-input-group_button]:border [&_.link-input-group_button]:border-border [&_.link-input-group_button]:bg-surface-subtle [&_.link-input-group_button]:px-3 [&_.link-input-group_button]:py-1.5 [&_.link-input-group_button]:text-xs [&_.link-input-group_button]:font-medium [&_.link-input-group_button]:text-text [&_.link-input-group_button]:transition hover:[&_.link-input-group_button]:bg-surface-muted dark:[&_.link-input-group_button]:border-border-dark dark:[&_.link-input-group_button]:bg-surface-dark dark:[&_.link-input-group_button]:text-text-dark dark:hover:[&_.link-input-group_button]:bg-surface-dark-elevated [&_.unlink-button]:ml-2 [&_.unlink-button]:rounded [&_.unlink-button]:border [&_.unlink-button]:border-red-500 [&_.unlink-button]:px-2 [&_.unlink-button]:py-1 [&_.unlink-button]:text-xs [&_.unlink-button]:font-medium [&_.unlink-button]:text-red-600 [&_.unlink-button]:transition hover:[&_.unlink-button]:bg-red-50 dark:[&_.unlink-button]:text-red-300 dark:hover:[&_.unlink-button]:bg-red-900/20 [&_.lastfm-search-results]:mt-3 [&_.lastfm-search-results]:rounded-md [&_.lastfm-search-results]:border [&_.lastfm-search-results]:border-border [&_.lastfm-search-results]:bg-surface-subtle [&_.lastfm-search-results]:p-3 dark:[&_.lastfm-search-results]:border-border-dark dark:[&_.lastfm-search-results]:bg-surface-dark [&_.plex-search-results]:mt-3 [&_.plex-search-results]:rounded-md [&_.plex-search-results]:border [&_.plex-search-results]:border-border [&_.plex-search-results]:bg-surface-subtle [&_.plex-search-results]:p-3 dark:[&_.plex-search-results]:border-border-dark dark:[&_.plex-search-results]:bg-surface-dark [&_.search-header]:mb-2 [&_.search-header]:flex [&_.search-header]:items-center [&_.search-header]:justify-between [&_.search-header_h4]:m-0 [&_.search-header_h4]:text-sm [&_.search-header_h4]:font-semibold [&_.close-search-button]:inline-flex [&_.close-search-button]:h-6 [&_.close-search-button]:w-6 [&_.close-search-button]:items-center [&_.close-search-button]:justify-center [&_.close-search-button]:rounded-full [&_.close-search-button]:bg-red-600 [&_.close-search-button]:text-text-dark [&_.close-search-button]:transition hover:[&_.close-search-button]:bg-red-700 [&_.search-results-list]:max-h-[280px] [&_.search-results-list]:space-y-2 [&_.search-results-list]:overflow-y-auto [&_.search-result-item]:flex [&_.search-result-item]:items-start [&_.search-result-item]:gap-2 [&_.search-result-item]:rounded [&_.search-result-item]:border [&_.search-result-item]:border-border [&_.search-result-item]:bg-surface [&_.search-result-item]:p-2 dark:[&_.search-result-item]:border-border-dark dark:[&_.search-result-item]:bg-surface-dark-elevated [&_.result-content]:flex [&_.result-content]:min-w-0 [&_.result-content]:flex-1 [&_.result-content]:items-start [&_.result-content]:gap-2 [&_.result-thumbnail]:h-14 [&_.result-thumbnail]:w-14 [&_.result-thumbnail]:rounded [&_.result-thumbnail]:object-cover [&_.result-info]:min-w-0 [&_.result-info]:text-sm [&_.result-info]:text-text dark:[&_.result-info]:text-text-dark [&_.result-info_em]:text-xs [&_.result-info_em]:text-text/70 dark:[&_.result-info_em]:text-text-dark/70 [&_.select-button]:rounded [&_.select-button]:bg-emerald-600 [&_.select-button]:px-3 [&_.select-button]:py-1.5 [&_.select-button]:text-xs [&_.select-button]:font-semibold [&_.select-button]:text-text-dark [&_.select-button]:transition hover:[&_.select-button]:bg-emerald-700 disabled:[&_.select-button]:cursor-not-allowed disabled:[&_.select-button]:bg-surface-muted dark:disabled:[&_.select-button]:bg-surface-dark-elevated [&_.lastfm-link]:font-medium [&_.lastfm-link]:underline [&_.lastfm-link]:decoration-text/35 [&_.lastfm-link]:underline-offset-2 [&_.lastfm-link]:text-text/90 hover:[&_.lastfm-link]:text-text dark:[&_.lastfm-link]:decoration-text-dark/40 dark:[&_.lastfm-link]:text-text-dark/90 dark:hover:[&_.lastfm-link]:text-text-dark [&_.track-details_a]:font-medium [&_.track-details_a]:underline [&_.track-details_a]:decoration-text/35 [&_.track-details_a]:underline-offset-2 [&_.track-details_a]:text-text/90 hover:[&_.track-details_a]:text-text dark:[&_.track-details_a]:decoration-text-dark/40 dark:[&_.track-details_a]:text-text-dark/90 dark:hover:[&_.track-details_a]:text-text-dark [&_.no-results]:rounded [&_.no-results]:border [&_.no-results]:border-border [&_.no-results]:bg-surface [&_.no-results]:px-3 [&_.no-results]:py-2 [&_.no-results]:text-sm [&_.no-results]:text-text/75 dark:[&_.no-results]:border-border-dark dark:[&_.no-results]:bg-surface-dark dark:[&_.no-results]:text-text-dark/75 [&_.search-results]:space-y-2 [&_.no-results-message]:rounded [&_.no-results-message]:border [&_.no-results-message]:border-amber-300 [&_.no-results-message]:bg-amber-50 [&_.no-results-message]:p-3 dark:[&_.no-results-message]:border-amber-700 dark:[&_.no-results-message]:bg-amber-900/30 [&_.no-results-message_p]:m-0 [&_.no-results-message_p]:mb-2 [&_.no-results-message_p]:font-semibold [&_.no-results-message_p]:text-amber-900 dark:[&_.no-results-message_p]:text-amber-200 [&_.no-results-message_ul]:m-0 [&_.no-results-message_ul]:list-disc [&_.no-results-message_ul]:pl-5 [&_.no-results-message_ul]:text-amber-900 dark:[&_.no-results-message_ul]:text-amber-200 [&_.external-links_h3]:mb-2 [&_.external-links_h3]:mt-2 [&_.external-links_h3]:text-sm [&_.external-links_h3]:font-semibold [&_.external-links]:rounded-md [&_.external-links]:border [&_.external-links]:border-border [&_.external-links]:bg-surface-subtle [&_.external-links]:p-3 dark:[&_.external-links]:border-border-dark dark:[&_.external-links]:bg-surface-dark [&_.external-links_a]:font-medium [&_.external-links_a]:underline [&_.external-links_a]:decoration-text/35 [&_.external-links_a]:underline-offset-2 [&_.external-links_a]:text-text/90 hover:[&_.external-links_a]:text-text dark:[&_.external-links_a]:decoration-text-dark/40 dark:[&_.external-links_a]:text-text-dark/90 dark:hover:[&_.external-links_a]:text-text-dark [&_.notes-section]:rounded-md [&_.notes-section]:border [&_.notes-section]:border-border [&_.notes-section]:bg-surface-subtle [&_.notes-section]:p-3 dark:[&_.notes-section]:border-border-dark dark:[&_.notes-section]:bg-surface-dark [&_.notes-header]:mb-2 [&_.notes-header]:flex [&_.notes-header]:items-center [&_.notes-header]:justify-between [&_.edit-notes-button]:rounded [&_.edit-notes-button]:bg-accent [&_.edit-notes-button]:px-2.5 [&_.edit-notes-button]:py-1 [&_.edit-notes-button]:text-xs [&_.edit-notes-button]:font-semibold [&_.edit-notes-button]:text-text-dark [&_.notes-editor]:space-y-2 [&_.notes-textarea]:w-full [&_.notes-textarea]:rounded [&_.notes-textarea]:border [&_.notes-textarea]:border-border [&_.notes-textarea]:bg-surface [&_.notes-textarea]:px-3 [&_.notes-textarea]:py-2 [&_.notes-textarea]:text-sm [&_.notes-textarea]:text-text dark:[&_.notes-textarea]:border-border-dark dark:[&_.notes-textarea]:bg-surface-dark dark:[&_.notes-textarea]:text-text-dark [&_.notes-actions]:flex [&_.notes-actions]:justify-end [&_.notes-actions]:gap-2 [&_.save-button]:rounded [&_.save-button]:bg-emerald-600 [&_.save-button]:px-3 [&_.save-button]:py-1.5 [&_.save-button]:text-xs [&_.save-button]:font-semibold [&_.save-button]:text-text-dark hover:[&_.save-button]:bg-emerald-700 [&_.cancel-button]:rounded [&_.cancel-button]:border [&_.cancel-button]:border-border [&_.cancel-button]:bg-surface-subtle [&_.cancel-button]:px-3 [&_.cancel-button]:py-1.5 [&_.cancel-button]:text-xs [&_.cancel-button]:font-medium [&_.cancel-button]:text-text hover:[&_.cancel-button]:bg-surface-muted dark:[&_.cancel-button]:border-border-dark dark:[&_.cancel-button]:bg-surface-dark dark:[&_.cancel-button]:text-text-dark dark:hover:[&_.cancel-button]:bg-surface-dark-elevated [&_.saving-indicator]:text-xs [&_.saving-indicator]:italic [&_.saving-indicator]:text-text/70 dark:[&_.saving-indicator]:text-text-dark/70 [&_.notes-text]:m-0 [&_.notes-text]:whitespace-pre-wrap [&_.no-notes]:m-0 [&_.no-notes]:italic [&_.no-notes]:text-text/70 dark:[&_.no-notes]:text-text-dark/70 [&_.detail-row]:rounded [&_.detail-row]:bg-surface-subtle [&_.detail-row]:px-2 [&_.detail-row]:py-1 dark:[&_.detail-row]:bg-surface-dark dark:[&_h3]:text-text-dark dark:[&_h4]:text-text-dark dark:[&_label]:text-text-dark dark:[&_small]:text-text-dark/80 dark:[&_li]:text-text-dark dark:[&_p]:text-text-dark"
+        onClick={e => e.stopPropagation()}
+      >
         <h2>Entry Details</h2>
         <div className="track-details">
           {/* Album Art Display */}
@@ -1212,7 +1229,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                               <div className="source-section">
                 <h3>Local File</h3>
                 <p>Not linked to a local file</p>
-                <button onClick={() => setShowLinkSection(!showLinkSection)}>
+                <button className="rounded border border-border bg-surface-subtle px-3 py-1.5 text-xs font-medium text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated" onClick={() => setShowLinkSection(!showLinkSection)}>
                   {showLinkSection ? 'Cancel' : 'Link to Local File'}
                 </button>
                 
@@ -1227,7 +1244,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                         onChange={(e) => handleSearchQueryChange(e.target.value)}
                         onKeyDown={handleSearchKeyPress}
                         placeholder="Enter artist and/or track name..."
-                        className="search-input"
+                        className="search-input placeholder:text-text/60 dark:placeholder:text-text-dark/60"
                       />
                       <button 
                         onClick={() => searchForLocalFiles()} 
@@ -1261,7 +1278,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                               <br />
                               <small>{result.path}</small>
                             </div>
-                            <button onClick={() => handleLinkToLocalFile(result)}>
+                            <button className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-text-dark transition hover:bg-emerald-700" onClick={() => handleLinkToLocalFile(result)}>
                               Link
                             </button>
                           </div>
@@ -1315,17 +1332,17 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
           </div>
 
           {entry.details.publisher ? <p><strong>Publisher:</strong> {entry.details.publisher}</p> : null}
-          {entry.details.url ? <p><strong>URL:</strong> <a href={entry.details.url}>{entry.details.url}</a></p> : null}
+          {entry.details.url ? <p><strong>URL:</strong> <a className="font-medium underline decoration-text/35 underline-offset-2 text-text/90 transition hover:text-text dark:decoration-text-dark/40 dark:text-text-dark/90 dark:hover:text-text-dark" href={entry.details.url}>{entry.details.url}</a></p> : null}
           {dateAdded ? <p><strong>Date Added to Playlist:</strong> {dateAdded}</p> : null}
           
           <div className="external-links">
             <h3>Search External Services</h3>
-            <p><a href={youtubeMusicSearchLink} target="_blank" rel="noopener noreferrer">Search on YouTube Music</a></p>
-            <p><a href={appleMusicSearchLink} target="_blank" rel="noopener noreferrer">Search on Apple Music</a></p>
-            <p><a href={spotifySearchLink} target="_blank" rel="noopener noreferrer">Search on Spotify</a></p>
-            <p><a href={lastFmSearchLink} target="_blank" rel="noopener noreferrer">Search on Last.fm</a></p>
-            {discogsSearchLink ? <p><a href={discogsSearchLink} target="_blank" rel="noopener noreferrer">Search on Discogs</a></p> : null}
-            {rateYourMusicSearchLink ? <p><a href={rateYourMusicSearchLink} target="_blank" rel="noopener noreferrer">Search on Rate Your Music</a></p> : null}
+            <p><a className="font-medium underline decoration-text/35 underline-offset-2 text-text/90 transition hover:text-text dark:decoration-text-dark/40 dark:text-text-dark/90 dark:hover:text-text-dark" href={youtubeMusicSearchLink} target="_blank" rel="noopener noreferrer">Search on YouTube Music</a></p>
+            <p><a className="font-medium underline decoration-text/35 underline-offset-2 text-text/90 transition hover:text-text dark:decoration-text-dark/40 dark:text-text-dark/90 dark:hover:text-text-dark" href={appleMusicSearchLink} target="_blank" rel="noopener noreferrer">Search on Apple Music</a></p>
+            <p><a className="font-medium underline decoration-text/35 underline-offset-2 text-text/90 transition hover:text-text dark:decoration-text-dark/40 dark:text-text-dark/90 dark:hover:text-text-dark" href={spotifySearchLink} target="_blank" rel="noopener noreferrer">Search on Spotify</a></p>
+            <p><a className="font-medium underline decoration-text/35 underline-offset-2 text-text/90 transition hover:text-text dark:decoration-text-dark/40 dark:text-text-dark/90 dark:hover:text-text-dark" href={lastFmSearchLink} target="_blank" rel="noopener noreferrer">Search on Last.fm</a></p>
+            {discogsSearchLink ? <p><a className="font-medium underline decoration-text/35 underline-offset-2 text-text/90 transition hover:text-text dark:decoration-text-dark/40 dark:text-text-dark/90 dark:hover:text-text-dark" href={discogsSearchLink} target="_blank" rel="noopener noreferrer">Search on Discogs</a></p> : null}
+            {rateYourMusicSearchLink ? <p><a className="font-medium underline decoration-text/35 underline-offset-2 text-text/90 transition hover:text-text dark:decoration-text-dark/40 dark:text-text-dark/90 dark:hover:text-text-dark" href={rateYourMusicSearchLink} target="_blank" rel="noopener noreferrer">Search on Rate Your Music</a></p> : null}
           </div>
           
           {playlistsList}
@@ -1351,7 +1368,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                   onChange={(e) => setNotesValue(e.target.value)}
                   placeholder="Add your notes here..."
                   rows={4}
-                  className="notes-textarea"
+                  className="notes-textarea placeholder:text-text/60 dark:placeholder:text-text-dark/60"
                 />
                 <div className="notes-actions">
                   <button 
@@ -1393,16 +1410,15 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
           )}
         </div>
         <div className="modal-actions">
-          <button onClick={onClose}>Close</button>
+          <button className="rounded border border-border bg-surface-subtle px-3 py-2 text-sm !text-text transition hover:bg-surface-muted dark:border-border-dark dark:bg-surface-dark dark:!text-text-dark dark:hover:bg-surface-dark-elevated" onClick={onClose}>Close</button>
         </div>
       </div>
       
       {/* Full-size album art modal */}
       {showFullSizeArt && modalAlbumArt && (
         <div 
-          className="modal-overlay" 
+          className="fixed inset-0 z-[6000] flex items-center justify-center bg-text/55 px-4 py-6 dark:bg-text-dark/30" 
           onClick={() => setShowFullSizeArt(false)}
-          style={{ zIndex: 2000 }}
         >
           <div 
             className="fullsize-art-container"
@@ -1434,7 +1450,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                 top: '20px',
                 right: '20px',
                 background: 'rgba(0,0,0,0.7)',
-                color: 'white',
+                color: 'rgba(255, 255, 255, 0.87)',
                 border: 'none',
                 borderRadius: '50%',
                 width: '40px',
@@ -1453,6 +1469,12 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
       )}
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return modalMarkup;
+  }
+
+  return createPortal(modalMarkup, document.body);
 };
 
 export default TrackDetailsModal;

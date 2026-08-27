@@ -26,7 +26,8 @@ from job_tracker import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import func
+from sqlalchemy import func, or_
+from sqlalchemy.orm import joinedload
 from starlette.middleware.base import BaseHTTPMiddleware
 from database import Database
 from models import *
@@ -48,6 +49,7 @@ from routes import router
 from routes.spotify_router import spotify_router
 from routes.scheduled_tasks import scheduled_tasks_router, playlist_sync_router
 from task_scheduler import task_scheduler
+from lib.app_config import get_music_paths, get_playlist_sync_defaults, get_lastfm_username, set_lastfm_username, set_music_paths, set_playlist_sync_defaults
 
 # Create a router for job management
 job_router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -315,12 +317,14 @@ def scan_directory(directory: str, full=False, job_id: str = None):
 
     logging.info(f"Scanning directory {directory}, full={full}")
     start_time = time.time()
+    scan_started_at = datetime.now().replace(microsecond=0)
     
     if job_context:
         job_context.update_progress(0.0, f"Starting {'full' if full else 'incremental'} scan")
 
     # read directory paths from config file
     all_files = []
+    music_paths = []
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r") as f:
             config = json.load(f)
@@ -332,37 +336,85 @@ def scan_directory(directory: str, full=False, job_id: str = None):
                         for file in files:
                             all_files.append(os.path.join(root, file))
 
+    if not music_paths:
+        music_paths = [str(directory)]
+        for root, _, files in os.walk(directory):
+            for file in files:
+                all_files.append(os.path.join(root, file))
+
     db = Database.get_session()
 
     albums_and_artists_seen = {}
+    for existing_album in db.query(AlbumDB).all():
+        key = AlbumAndArtist(album=existing_album.title, artist=existing_album.artist)
+        albums_and_artists_seen[key] = existing_album
 
     files_seen = 0
     total_files = float(len(all_files))
+    commit_interval = max(1, int(os.getenv("SCAN_COMMIT_INTERVAL", "1000")))
+    last_job_progress_update = time.time()
+
+    # Preload existing file records once to avoid one DB query per file.
+    existing_local_files_by_path = {}
+    existing_query = db.query(LocalFileDB).options(joinedload(LocalFileDB.music_file))
+
+    scan_roots = []
+    for root in music_paths:
+        normalized_root = str(pathlib.Path(root))
+        if not normalized_root.endswith(os.sep):
+            normalized_root = normalized_root + os.sep
+        scan_roots.append(normalized_root)
+
+    if scan_roots:
+        existing_query = existing_query.filter(or_(*[LocalFileDB.path.startswith(root) for root in scan_roots]))
+
+    for existing_local in existing_query.all():
+        existing_local_files_by_path[existing_local.path] = existing_local
+
+    logging.info(f"Loaded {len(existing_local_files_by_path)} existing file records for scan roots")
+    logging.info(f"Loaded {len(albums_and_artists_seen)} existing albums for scan cache")
+
     ops = 0
     for full_path in tqdm(all_files, desc="Scanning files"):
         try:
             files_seen += 1
-            scan_results.progress = round(files_seen / total_files * 100, 1)
+            scan_results.progress = round(files_seen / total_files * 100, 1) if total_files else 100.0
             
-            # Update job progress every 10 files or for the last file
-            if job_context and (files_seen % 10 == 0 or files_seen == len(all_files)):
+            # Update job progress at most every 5 seconds, every 100 files, or at completion.
+            now = time.time()
+            if job_context and (
+                files_seen % 100 == 0
+                or (now - last_job_progress_update) >= 5
+                or files_seen == len(all_files)
+            ):
                 progress = files_seen / total_files
                 job_context.update_progress(progress, f"Processing file {files_seen} of {len(all_files)}")
+                last_job_progress_update = now
 
             if not full_path.lower().endswith(SUPPORTED_FILETYPES):
                 continue
 
             last_modified_time = datetime.fromtimestamp(os.path.getmtime(full_path))
-            existing_file = (
-                db.query(MusicFileDB).join(LocalFileDB).filter(LocalFileDB.path == full_path).first()
-            )
+            
+            # Check in preloaded map (avoid per-file DB lookup)
+            existing_local_file = existing_local_files_by_path.get(full_path)
+            
+            # Then check for associated MusicFileDB through relationship
+            existing_file = None
+            if existing_local_file:
+                existing_file = existing_local_file.music_file
 
             found_existing_file = False
-            if existing_file and existing_file.missing:
+            if existing_local_file and existing_local_file.missing:
                 found_existing_file = True
-                existing_file.missing = False
+                existing_local_file.missing = False
 
-            if (not full) and (not found_existing_file) and existing_file and existing_file.last_scanned and existing_file.last_scanned >= last_modified_time:
+            if (not full) and (not found_existing_file) and existing_local_file and existing_local_file.last_scanned and existing_local_file.last_scanned >= last_modified_time:
+                existing_local_file.last_scanned = scan_started_at  # Touch so mark-and-sweep doesn't flag as missing
+                ops += 1
+                if ops >= commit_interval:
+                    db.commit()
+                    ops = 0
                 continue  # Skip files that have not changed
 
             metadata = None
@@ -408,31 +460,41 @@ def scan_directory(directory: str, full=False, job_id: str = None):
                     albums_and_artists_seen[album_and_artist] = album
 
             # Update or add the file in the database
-            if existing_file:
+            if existing_local_file:
+                # Update existing LocalFileDB record
                 scan_results.files_updated += 1
-
-                # existing_file.last_modified = last_modified_time
-                existing_file.title = metadata.title
-                existing_file.artist = metadata.artist
-                existing_file.album = metadata.album
-                existing_file.album_artist = metadata.album_artist
-                existing_file.year = year
-                existing_file.length = metadata.length
-                existing_file.publisher = metadata.publisher
-                existing_file.rating = metadata.rating
-                existing_file.genres = [
-                    TrackGenreDB(parent_type="music_file", genre=genre)
+                existing_local_file.last_scanned = scan_started_at
+                existing_local_file.size = file_size
+                existing_local_file.file_title = metadata.title
+                existing_local_file.file_artist = metadata.artist
+                existing_local_file.file_album_artist = metadata.album_artist
+                existing_local_file.file_album = metadata.album
+                existing_local_file.file_year = year
+                existing_local_file.file_length = metadata.length
+                existing_local_file.file_publisher = metadata.publisher
+                existing_local_file.file_rating = metadata.rating
+                existing_local_file.file_comments = metadata.comments
+                existing_local_file.file_track_number = metadata.track_number
+                existing_local_file.file_disc_number = metadata.disc_number
+                existing_local_file.file_genres = [
+                    LocalFileGenreDB(genre=genre)
                     for genre in metadata.genres
                 ]
-                existing_file.comments = metadata.comments
-                existing_file.track_number = metadata.track_number
-                existing_file.disc_number = metadata.disc_number
-
-                # get existing MusicFile record
-                this_track = db.query(MusicFileDB).join(LocalFileDB).filter(LocalFileDB.id == existing_file.id).first()
-                if this_track:
-                    db.flush()
+                
+                # Update or create associated MusicFileDB
+                if existing_file:
+                    # Update existing MusicFileDB with synced metadata from file
+                    existing_file.sync_from_file_metadata()
+                else:
+                    # Create new MusicFileDB for this LocalFileDB
+                    this_track = metadata.to_db()
+                    this_track.local_file = existing_local_file
                     this_track.sync_from_file_metadata()
+                    db.add(this_track)
+                    
+                    if album is not None:
+                        db.flush()
+                        album.tracks.append(AlbumTrackDB(linked_track_id=this_track.id, order=len(album.tracks)))
 
             else:
                 scan_results.files_indexed += 1
@@ -444,8 +506,8 @@ def scan_directory(directory: str, full=False, job_id: str = None):
                 local_file = LocalFileDB(
                     path=full_path,
                     kind=metadata.kind,
-                    first_scanned=datetime.now(),
-                    last_scanned=datetime.now(),
+                    first_scanned=scan_started_at,
+                    last_scanned=scan_started_at,
                     size=file_size,
                     # Store file metadata
                     file_title=metadata.title,
@@ -472,6 +534,7 @@ def scan_directory(directory: str, full=False, job_id: str = None):
                 
                 try:
                     db.add(this_track)
+                    existing_local_files_by_path[full_path] = local_file
 
                     if album is not None:
                         db.flush()
@@ -481,12 +544,33 @@ def scan_directory(directory: str, full=False, job_id: str = None):
                     raise
 
             ops += 1
-            if ops > 100:
+            if ops >= commit_interval:
                 db.commit()
                 ops = 0
         
         except Exception as e:
             logging.error(f"Failed to scan file {full_path}: {e}", exc_info=True)
+            db.rollback()
+            ops = 0
+
+    # Mark-and-sweep for deleted files: any active file under scanned roots that
+    # was not touched during this scan run is now considered missing.
+    missing_query = db.query(LocalFileDB).filter(
+        LocalFileDB.missing == False,
+        or_(LocalFileDB.last_scanned.is_(None), LocalFileDB.last_scanned < scan_started_at),
+    )
+
+    if scan_roots:
+        missing_query = missing_query.filter(or_(*[LocalFileDB.path.startswith(root) for root in scan_roots]))
+
+    stale_files = missing_query.all()
+    for stale_file in stale_files:
+        stale_file.missing = True
+        stale_file.last_scanned = scan_started_at
+
+    scan_results.files_missing = len(stale_files)
+    if stale_files:
+        logging.info(f"Marked {len(stale_files)} files as missing during scan sweep")
 
     db.commit()
     db.close()
@@ -496,11 +580,17 @@ def scan_directory(directory: str, full=False, job_id: str = None):
     # Complete job tracking if job_id was provided
     if job_context:
         duration = time.time() - start_time
-        result_message = f"Scan completed in {duration:.2f} seconds. Added {scan_results.files_added} new files, updated {scan_results.files_updated} existing files."
+        result_message = (
+            f"Scan completed in {duration:.2f} seconds. "
+            f"Added {scan_results.files_added} new files, "
+            f"updated {scan_results.files_updated} existing files, "
+            f"marked {scan_results.files_missing} missing files."
+        )
         job_context.update_progress(1.0, result_message)
         job_tracker.complete_job(job_id, {
             "added_count": scan_results.files_added,
             "updated_count": scan_results.files_updated,
+            "missing_count": scan_results.files_missing,
             "duration_seconds": duration,
             "total_files": len(all_files)
         })
@@ -539,7 +629,6 @@ def scan(background_tasks: BackgroundTasks):
         raise HTTPException(status_code=409, detail="Scan already in progress")
     
     background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), full=False)
-    background_tasks.add_task(prune_music_files)
 
     return HTTPException(status_code=202, detail="Scan started")
 
@@ -549,7 +638,6 @@ def full_scan(background_tasks: BackgroundTasks):
         raise HTTPException(status_code=409, detail="Scan already in progress")
 
     background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), full=True)
-    background_tasks.add_task(prune_music_files)
 
     return HTTPException(status_code=202, detail="Scan started")
 
@@ -569,7 +657,6 @@ def scan_with_job(background_tasks: BackgroundTasks):
     
     # Start background task with job tracking
     background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), False, job_id)
-    background_tasks.add_task(prune_music_files)
     
     return {"message": "Scan started", "job_id": job_id}
 
@@ -588,7 +675,6 @@ def full_scan_with_job(background_tasks: BackgroundTasks):
     
     # Start background task with job tracking
     background_tasks.add_task(scan_directory, os.getenv("MUSIC_PATH", "/music"), True, job_id)
-    background_tasks.add_task(prune_music_files)
     
     return {"message": "Full scan started", "job_id": job_id}
 
@@ -618,6 +704,7 @@ def sync_playlist_background(playlist_id: int, force_push: bool, job_id: str):
     from database import Database
     
     job_context = JobContext(job_id)
+    db = None
     
     try:
         job_context.update_progress(0.0, "Starting playlist sync")
@@ -642,6 +729,10 @@ def sync_playlist_background(playlist_id: int, force_push: bool, job_id: str):
     except Exception as e:
         logging.error(f"Playlist sync failed: {e}", exc_info=True)
         job_tracker.fail_job(job_id, str(e))
+    finally:
+        # Ensure session is properly closed
+        if db:
+            db.close()
 
 @router.get("/scan/progress", response_model=ScanResults)
 def scan_progress():
@@ -725,6 +816,86 @@ async def get_stats():
         totalLength=total_length if total_length else 0,
         missingTracks=missing_tracks
     )
+
+
+@router.get("/landing/activity", response_model=LandingActivityResponse)
+def get_landing_activity(
+    limit: int = Query(10, ge=1, le=50),
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+):
+    def _to_landing_activity_entry(entry):
+        details_obj = entry.get("details")
+        details = None
+        title = None
+        artist = None
+        album = None
+
+        if details_obj is not None and hasattr(details_obj, "title"):
+            title = details_obj.title
+        if details_obj is not None and hasattr(details_obj, "artist"):
+            artist = details_obj.artist
+        if details_obj is not None and hasattr(details_obj, "album"):
+            album = details_obj.album
+
+        if details_obj is not None:
+            if hasattr(details_obj, "to_json"):
+                details = details_obj.to_json()
+            else:
+                details = {
+                    key: value
+                    for key, value in details_obj.__dict__.items()
+                    if not key.startswith("_")
+                }
+
+        return LandingActivityEntry(
+            id=entry["id"],
+            entry_type=entry["entry_type"],
+            date_added=entry["date_added"],
+            playlist_id=entry["playlist_id"],
+            playlist_name=entry["playlist_name"],
+            title=title,
+            artist=artist,
+            album=album,
+            notes=entry["notes"],
+            details=details,
+        )
+
+    api_key = os.getenv("LASTFM_API_KEY")
+    lastfm_username = get_lastfm_username()
+    lastfm_entries = []
+
+    if api_key and lastfm_username:
+        lastfm_repo = last_fm_repository(api_key, requests_cache_session, redis_session=redis_session)
+        recent_tracks = lastfm_repo.get_recent_tracks(lastfm_username, limit=limit)
+
+        lastfm_entries = [
+            LandingActivityEntry(
+                id=index + 1,
+                entry_type="lastfm",
+                date_added=track.get("date_added"),
+                playlist_id=None,
+                playlist_name=f"Last.fm: {lastfm_username}",
+                title=track.get("title"),
+                artist=track.get("artist"),
+                album=track.get("album"),
+                notes="Recently played on Last.fm",
+                details={
+                    "title": track.get("title"),
+                    "artist": track.get("artist"),
+                    "album": track.get("album"),
+                    "last_fm_url": track.get("last_fm_url"),
+                    "date_added": track.get("date_added").isoformat() if track.get("date_added") else None,
+                },
+            )
+            for index, track in enumerate(recent_tracks)
+        ]
+
+    open_playlist_entries = [
+        _to_landing_activity_entry(entry)
+        for entry in repo.get_recent_activity_entries(limit=limit)
+    ]
+
+    return LandingActivityResponse(lastfmEntries=lastfm_entries, openPlaylistEntries=open_playlist_entries)
 
 @router.post("/library/findlocals")
 def find_local_files(tracks: List[MusicFile], repo: MusicFileRepository = Depends(get_music_file_repository)):
@@ -833,26 +1004,32 @@ async def get_album_list(
 
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
+
+class PlaylistSyncDefaultsPayload(BaseModel):
+    enabled: bool = False
+    services: dict[str, bool] = {}
+
+
+class SettingsPayload(BaseModel):
+    playlistSyncDefaults: Optional[PlaylistSyncDefaultsPayload] = None
+    lastFmUsername: Optional[str] = None
+
 @router.get("/settings/paths")
 def get_index_paths():
     """Get configured music indexing paths"""
-    if not os.path.exists(CONFIG_FILE):
-        return []
-    with open(CONFIG_FILE, 'r') as f:
-        config = json.load(f)
-    return config.get('music_paths', [])
+    return get_music_paths()
 
 @router.post("/settings/paths")
 def save_index_paths(paths: List[str]):
     """Save configured music indexing paths"""
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump({'music_paths': paths}, f)
+    set_music_paths(paths)
     return {"success": True}
 
 @router.get("/settings")
 def get_settings():
     return {
         "lastFmApiKeyConfigured": all([os.getenv("LASTFM_API_KEY"), os.getenv("LASTFM_SHARED_SECRET")]),
+        "lastFmUsername": get_lastfm_username(),
         "openAiApiKeyConfigured": os.getenv("OPENAI_API_KEY") is not None,
         "plexConfigured": all([os.getenv("PLEX_TOKEN"), os.getenv("PLEX_ENDPOINT"), os.getenv("PLEX_LIBRARY")]),
         "spotifyConfigured": all([os.getenv("SPOTIFY_CLIENT_ID"), os.getenv("SPOTIFY_CLIENT_SECRET")]),
@@ -860,7 +1037,21 @@ def get_settings():
         "redisConfigured": redis_session is not None,
         "configDir": str(CONFIG_DIR),
         "logLevel": log_level,
+        "playlistSyncDefaults": get_playlist_sync_defaults(),
     }
+
+
+@router.post("/settings")
+def save_settings(payload: SettingsPayload):
+    result = {"success": True}
+
+    if payload.playlistSyncDefaults is not None:
+        result["playlistSyncDefaults"] = set_playlist_sync_defaults(payload.playlistSyncDefaults.model_dump())
+
+    if payload.lastFmUsername is not None:
+        result["lastFmUsername"] = set_lastfm_username(payload.lastFmUsername)
+
+    return result
 
 @router.get("/settings/migrations/status")
 def get_migration_status():

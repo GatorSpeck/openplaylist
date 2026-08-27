@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Any
 from croniter import croniter
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.jobstores.memory import MemoryJobStore
 from sqlalchemy import create_engine
@@ -257,6 +258,35 @@ class TaskScheduler:
         try:
             task = db.query(ScheduledTaskDB).filter(ScheduledTaskDB.id == task_id).first()
             return self._task_to_dict(task) if task else None
+        finally:
+            db.close()
+
+    def run_task_now(self, task_id: int):
+        """Trigger a task immediately without modifying its configured schedule."""
+        db = Database.get_session()
+        try:
+            task = db.query(ScheduledTaskDB).filter(ScheduledTaskDB.id == task_id).first()
+            if not task:
+                raise ValueError(f"Task {task_id} not found")
+
+            if task.task_type == 'library_scan':
+                func = self._execute_library_scan
+            elif task.task_type == 'playlist_sync':
+                func = self._execute_playlist_sync
+            else:
+                raise ValueError(f"Unknown task type: {task.task_type}")
+
+            self.scheduler.add_job(
+                func=func,
+                trigger=DateTrigger(run_date=datetime.now(LOCAL_TIMEZONE)),
+                args=[task.id],
+                id=f"adhoc_task_{task.id}_{int(datetime.now(LOCAL_TIMEZONE).timestamp() * 1000)}",
+                name=f"Run now - {task.name}",
+                replace_existing=False,
+            )
+
+            logger.info(f"Triggered scheduled task {task_id} for immediate execution")
+
         finally:
             db.close()
     

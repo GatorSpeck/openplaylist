@@ -15,11 +15,13 @@ describe('AlbumArtGrid', () => {
 
   test('renders with a single album art', () => {
     const singleArt = [sampleArtUrls[0]];
-    render(<AlbumArtGrid artList={singleArt} />);
+    const { container } = render(<AlbumArtGrid artList={singleArt} />);
     
-    // Check if it renders with correct grid class for a single item
-    const gridElement = document.querySelector('.grid1x1');
+    // Check if it renders as a 1x1 grid
+    const gridElement = container.firstChild as HTMLElement;
     expect(gridElement).toBeInTheDocument();
+    expect(gridElement).toHaveStyle('grid-template-columns: 1fr');
+    expect(gridElement).toHaveStyle('grid-template-rows: 1fr');
     
     // Check if the image is rendered
     const imgElements = screen.getAllByAltText('Album Art');
@@ -29,11 +31,13 @@ describe('AlbumArtGrid', () => {
 
   test('renders with two album arts in a 2x2 grid', () => {
     const twoArts = sampleArtUrls.slice(0, 2);
-    render(<AlbumArtGrid artList={twoArts} />);
+    const { container } = render(<AlbumArtGrid artList={twoArts} />);
     
-    // Check if it renders with correct grid class for 2 items
-    const gridElement = document.querySelector('.grid2x2');
+    // Check if it renders as a 2x2 grid
+    const gridElement = container.firstChild as HTMLElement;
     expect(gridElement).toBeInTheDocument();
+    expect(gridElement).toHaveStyle('grid-template-columns: repeat(2, minmax(0, 1fr))');
+    expect(gridElement).toHaveStyle('grid-template-rows: repeat(2, minmax(0, 1fr))');
     
     // Check if both images are rendered
     const imgElements = screen.getAllByAltText('Album Art');
@@ -44,11 +48,13 @@ describe('AlbumArtGrid', () => {
 
   test('renders with four album arts in a 2x2 grid', () => {
     const fourArts = sampleArtUrls.slice(0, 4);
-    render(<AlbumArtGrid artList={fourArts} />);
+    const { container } = render(<AlbumArtGrid artList={fourArts} />);
     
-    // Check if it renders with correct grid class for 4 items
-    const gridElement = document.querySelector('.grid2x2');
+    // Check if it renders as a 2x2 grid
+    const gridElement = container.firstChild as HTMLElement;
     expect(gridElement).toBeInTheDocument();
+    expect(gridElement).toHaveStyle('grid-template-columns: repeat(2, minmax(0, 1fr))');
+    expect(gridElement).toHaveStyle('grid-template-rows: repeat(2, minmax(0, 1fr))');
     
     // Check if all four images are rendered
     const imgElements = screen.getAllByAltText('Album Art');
@@ -62,11 +68,13 @@ describe('AlbumArtGrid', () => {
 
   test('renders maximum of 4 album arts even when more are provided', () => {
     // Use all 5 sample URLs
-    render(<AlbumArtGrid artList={sampleArtUrls} />);
+    const { container } = render(<AlbumArtGrid artList={sampleArtUrls} />);
     
-    // Should still show a grid2x2 class even with 5 items
-    const gridElement = document.querySelector('.grid2x2');
+    // Should still render as 2x2 layout even with 5 items
+    const gridElement = container.firstChild as HTMLElement;
     expect(gridElement).toBeInTheDocument();
+    expect(gridElement).toHaveStyle('grid-template-columns: repeat(2, minmax(0, 1fr))');
+    expect(gridElement).toHaveStyle('grid-template-rows: repeat(2, minmax(0, 1fr))');
     
     // Should only render 4 images max
     const imgElements = screen.getAllByAltText('Album Art');
@@ -79,18 +87,20 @@ describe('AlbumArtGrid', () => {
   });
 
   test('applies the borderRadius style to album art divs', () => {
-    render(<AlbumArtGrid artList={[sampleArtUrls[0]]} />);
+    const { container } = render(<AlbumArtGrid artList={[sampleArtUrls[0]]} />);
     
-    const albumArtDiv = document.querySelector('.album-art');
-    expect(albumArtDiv).toHaveStyle('borderRadius: 0');
+    const albumArtDiv = container.firstChild as HTMLElement;
+    expect(albumArtDiv).toHaveStyle('border-radius: 4px');
   });
 
   test('renders empty grid when no album art is provided', () => {
-    render(<AlbumArtGrid artList={[]} />);
+    const { container } = render(<AlbumArtGrid artList={[]} />);
     
-    // Should render with grid1x1 class for empty list
-    const gridElement = document.querySelector('.grid1x1');
+    // Should render with 1x1 layout for empty list
+    const gridElement = container.firstChild as HTMLElement;
     expect(gridElement).toBeInTheDocument();
+    expect(gridElement).toHaveStyle('grid-template-columns: 1fr');
+    expect(gridElement).toHaveStyle('grid-template-rows: 1fr');
     
     // Should not have any images
     const imgElements = screen.queryAllByAltText('Album Art');

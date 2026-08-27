@@ -3,6 +3,8 @@ from models import (
     PlaylistDB,
     PlaylistEntryDB,
     MusicFileEntryDB,
+    NestedPlaylistEntryDB,
+    AlbumEntryDB,
     MusicFileDB,
     TrackGenreDB,
     BaseNode,
@@ -45,6 +47,7 @@ from tqdm import tqdm
 import time
 
 from lib.normalize_path import normalize_path, strip_path_root
+from lib.app_config import get_playlist_sync_defaults
 
 import dotenv
 dotenv.load_dotenv(override=True)
@@ -139,6 +142,61 @@ class PlaylistFilter(BaseModel):
 class PlaylistRepository(BaseRepository[PlaylistDB]):
     def __init__(self, session):
         super().__init__(session, PlaylistDB)
+
+    def reserve_entry_id(self, playlist_id: int, entry_type: str = "music_file") -> PlaylistEntryDB:
+        playlist = self.session.get(PlaylistDB, playlist_id)
+        if playlist is None:
+            raise ValueError(f"Playlist with ID {playlist_id} not found")
+
+        next_order = (
+            self.session.query(func.max(PlaylistEntryDB.order))
+            .filter(PlaylistEntryDB.playlist_id == playlist_id)
+            .scalar()
+            or 0
+        ) + 100
+
+        entry_map = {
+            "music_file": MusicFileEntryDB,
+            "nested_playlist": NestedPlaylistEntryDB,
+            "album": AlbumEntryDB,
+            "requested_album": RequestedAlbumEntryDB,
+        }
+        entry_cls = entry_map.get(entry_type)
+        if entry_cls is None:
+            raise ValueError(f"Unsupported entry type: {entry_type}")
+
+        placeholder = entry_cls(
+            playlist_id=playlist_id,
+            entry_type=entry_type,
+            order=next_order,
+            date_added=datetime.now(),
+            is_hidden=True,
+        )
+        self.session.add(placeholder)
+        self.session.commit()
+        self.session.refresh(placeholder)
+        return placeholder
+
+    def _populate_existing_entry(self, existing_entry: PlaylistEntryDB, entry: PlaylistEntryBase, order: int) -> PlaylistEntryDB:
+        existing_entry.order = order
+        existing_entry.date_added = entry.date_added or existing_entry.date_added or datetime.now()
+        existing_entry.is_hidden = entry.is_hidden if entry.is_hidden is not None else False
+        existing_entry.date_hidden = entry.date_hidden if existing_entry.is_hidden else None
+        if entry.notes is not None:
+            existing_entry.notes = entry.notes
+
+        if isinstance(existing_entry, MusicFileEntryDB):
+            existing_entry.music_file_id = getattr(entry, "music_file_id", None)
+        elif isinstance(existing_entry, NestedPlaylistEntryDB):
+            existing_entry.nested_playlist_id = getattr(entry, "playlist_id", None)
+        elif isinstance(existing_entry, AlbumEntryDB):
+            existing_entry.album_id = getattr(entry, "album_id", None)
+        elif isinstance(existing_entry, RequestedAlbumEntryDB):
+            existing_entry.album_id = getattr(entry, "requested_album_id", None)
+        else:
+            raise ValueError(f"Unsupported reserved entry type: {type(existing_entry)}")
+
+        return existing_entry
     
     def _get_playlist_query(self, playlist_id: int, details=False, limit=None, offset=None):
         # Start with a simple query for the playlist
@@ -375,13 +433,35 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         return [
             Playlist(
                 id=r.id, name=r.name, entries=[],
-                updated_at=r.updated_at, pinned=r.pinned, pinned_order=r.pinned_order
+                updated_at=r.updated_at, pinned=r.pinned, pinned_order=r.pinned_order,
+                auto_sync_enabled=r.auto_sync_enabled,
             ) for r in results
         ]
 
     def create(self, playlist: Playlist):
         playlist_db = PlaylistDB(name=playlist.name, entries=[])
         self.session.add(playlist_db)
+
+        sync_defaults = get_playlist_sync_defaults()
+        enabled_services = [
+            service for service, enabled in sync_defaults["services"].items()
+            if enabled
+        ]
+
+        if sync_defaults["enabled"] and enabled_services:
+            playlist_db.auto_sync_enabled = True
+            for service in enabled_services:
+                self.session.add(SyncTargetDB(
+                    playlist=playlist_db,
+                    service=service,
+                    config=json.dumps({"playlist_name": playlist.name}),
+                    enabled=True,
+                    send_entry_adds=True,
+                    send_entry_removals=True,
+                    receive_entry_adds=True,
+                    receive_entry_removals=True,
+                ))
+
         self.session.commit()
 
         self.add_entries(playlist_db.id, entries=playlist.entries)
@@ -543,12 +623,45 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         CHUNK_SIZE = 1000
         for i in range(0, len(entries), CHUNK_SIZE):
             chunk = entries[i:i + CHUNK_SIZE]
-            
-            # Create all entries for this chunk
-            playlist_entries = [
-                entry.to_playlist(playlist_id, order=next(order_generator))
-                for entry in chunk
-            ]
+
+            playlist_entries = []
+            for entry in chunk:
+                next_order = next(order_generator)
+                existing_entry = None
+                if entry.id is not None:
+                    existing_entry = self.session.query(PlaylistEntryDB).filter(
+                        PlaylistEntryDB.playlist_id == playlist_id,
+                        PlaylistEntryDB.id == entry.id
+                    ).first()
+
+                    if existing_entry is None:
+                        # Only allow explicit IDs when they target an existing row in this playlist
+                        # (e.g. reserved placeholder IDs). Otherwise let DB allocate a fresh PK.
+                        foreign_entry = self.session.get(PlaylistEntryDB, entry.id)
+                        if foreign_entry is not None:
+                            logging.warning(
+                                "Ignoring explicit playlist entry id=%s for playlist=%s; "
+                                "id belongs to playlist=%s",
+                                entry.id,
+                                playlist_id,
+                                foreign_entry.playlist_id,
+                            )
+                        else:
+                            logging.warning(
+                                "Ignoring explicit playlist entry id=%s for playlist=%s; "
+                                "no existing row found",
+                                entry.id,
+                                playlist_id,
+                            )
+                        entry.id = None
+
+                if existing_entry is not None:
+                    playlist_entries.append(
+                        self._populate_existing_entry(existing_entry, entry, next_order)
+                    )
+                    continue
+
+                playlist_entries.append(entry.to_playlist(playlist_id, order=next_order))
             
             this_playlist.entries.extend(playlist_entries)
         
@@ -1378,6 +1491,53 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         )
 
         return [Playlist(id=p.id, name=p.name, entries=[]) for p in query.all()]
+
+    def get_recent_activity_entries(self, limit: int = 10, entry_type: Optional[str] = None):
+        playlist_entries = PlaylistEntryDB.__table__
+        playlists = PlaylistDB.__table__
+        music_file_entries = MusicFileEntryDB.__table__
+
+        query = (
+            self.session.query(
+                playlist_entries.c.id.label("id"),
+                playlist_entries.c.entry_type.label("entry_type"),
+                playlist_entries.c.date_added.label("date_added"),
+                playlist_entries.c.playlist_id.label("playlist_id"),
+                playlists.c.name.label("playlist_name"),
+                playlist_entries.c.notes.label("notes"),
+                playlist_entries.c.details_id.label("details_id"),
+                music_file_entries.c.music_file_id.label("music_file_id"),
+            )
+            .select_from(
+                playlist_entries.join(playlists, playlist_entries.c.playlist_id == playlists.c.id)
+                .outerjoin(music_file_entries, music_file_entries.c.id == playlist_entries.c.id)
+            )
+            .order_by(playlist_entries.c.date_added.desc(), playlist_entries.c.id.desc())
+        )
+
+        if entry_type is not None:
+            query = query.filter(playlist_entries.c.entry_type == entry_type)
+
+        if limit is not None:
+            query = query.limit(limit)
+
+        rows = query.all()
+
+        recent_entries = []
+        for row in rows:
+            details_id = row.details_id if row.details_id is not None else row.music_file_id
+            details = self.session.get(BaseNode, details_id) if details_id is not None else None
+            recent_entries.append({
+                "id": row.id,
+                "entry_type": row.entry_type,
+                "date_added": row.date_added,
+                "playlist_id": row.playlist_id,
+                "playlist_name": row.playlist_name,
+                "notes": row.notes,
+                "details": details,
+            })
+
+        return recent_entries
     
     def update_pin(self, playlist_id, pinned):
         logging.info(f"Updating pinned status for playlist {playlist_id} to {pinned}")
@@ -1443,7 +1603,6 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             return
         
         # logging.info(list([e.order for e in entries]))
-        
         # Reorder the entries in the playlist (starting from the back)
         idx = len(entries)
         for entry in entries[::-1]:
@@ -1465,16 +1624,24 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
         targets = self.session.query(SyncTargetDB).filter(SyncTargetDB.playlist_id == playlist_id).all()
         
         # Convert to Pydantic models
-        return [SyncTarget(
-            id=target.id,
-            service=target.service,
-            config=json.loads(target.config),
-            enabled=target.enabled,
-            sendEntryAdds=target.send_entry_adds,
-            sendEntryRemovals=target.send_entry_removals,
-            receiveEntryAdds=target.receive_entry_adds,
-            receiveEntryRemovals=target.receive_entry_removals
-        ) for target in targets]
+        sync_targets = []
+        for target in targets:
+            config = json.loads(target.config)
+            if target.service == "youtube" and not config.get("playlist_name"):
+                config["playlist_name"] = playlist.name
+
+            sync_targets.append(SyncTarget(
+                id=target.id,
+                service=target.service,
+                config=config,
+                enabled=target.enabled,
+                sendEntryAdds=target.send_entry_adds,
+                sendEntryRemovals=target.send_entry_removals,
+                receiveEntryAdds=target.receive_entry_adds,
+                receiveEntryRemovals=target.receive_entry_removals
+            ))
+
+        return sync_targets
 
     def create_sync_target(self, playlist_id: int, target: SyncTarget) -> SyncTarget:
         """Create a new sync target for a playlist"""
@@ -1487,12 +1654,16 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             # Validate service
             if target.service not in ['plex', 'spotify', 'youtube']:
                 raise ValueError(f"Invalid service: {target.service}")
+
+            config = dict(target.config or {})
+            if target.service == "youtube" and not config.get("playlist_name"):
+                config["playlist_name"] = playlist.name
             
             # Create new sync target
             new_target = SyncTargetDB(
                 playlist_id=playlist_id,
                 service=target.service,
-                config=json.dumps(target.config),
+                config=json.dumps(config),
                 enabled=target.enabled,
                 send_entry_adds=target.sendEntryAdds,
                 send_entry_removals=target.sendEntryRemovals,
@@ -1505,6 +1676,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             
             # Set the ID and return
             target.id = new_target.id
+            target.config = config
             return target
         except Exception as e:
             self.session.rollback()
@@ -1523,10 +1695,16 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             
             if not db_target:
                 raise ValueError(f"Sync target with ID {target.id} not found for playlist {playlist_id}")
+
+            config = dict(target.config or {})
+            if target.service == "youtube" and not config.get("playlist_name"):
+                playlist = self.session.query(PlaylistDB).filter(PlaylistDB.id == playlist_id).first()
+                if playlist:
+                    config["playlist_name"] = playlist.name
             
             # Update fields
             db_target.service = target.service
-            db_target.config = json.dumps(target.config)
+            db_target.config = json.dumps(config)
             db_target.enabled = target.enabled
             db_target.send_entry_adds = target.sendEntryAdds
             db_target.send_entry_removals = target.sendEntryRemovals
@@ -1534,6 +1712,7 @@ class PlaylistRepository(BaseRepository[PlaylistDB]):
             db_target.receive_entry_removals = target.receiveEntryRemovals
 
             self.session.commit()
+            target.config = config
             return target
         except Exception as e:
             self.session.rollback()

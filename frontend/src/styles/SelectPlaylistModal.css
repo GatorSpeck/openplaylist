@@ -65,3 +65,28 @@
     display: flex;
     justify-content: flex-end;
 }
+
+/* Dark mode */
+html.dark .playlist-filter-input {
+    background: #1f1f1f;
+    color: rgba(255, 255, 255, 0.87);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+html.dark .playlist-list {
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .playlist-item {
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .playlist-item:hover {
+    background-color: #2a2a2a;
+}
+
+html.dark .playlist-info,
+html.dark .no-playlists,
+html.dark .loading-spinner {
+    color: rgba(255, 255, 255, 0.6);
+}

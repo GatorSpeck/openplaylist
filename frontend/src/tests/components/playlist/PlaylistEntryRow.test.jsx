@@ -136,7 +136,7 @@ describe('PlaylistEntryRow', () => {
     
     render(<PlaylistEntryRow entry={entry} {...defaultProps} isDragging={true} />);
     
-    const row = document.querySelector('.playlist-entry-row.dragging');
+    const row = document.querySelector('.playlist-entry-row.shadow-sm');
     expect(row).toBeInTheDocument();
   });
   
@@ -146,7 +146,7 @@ describe('PlaylistEntryRow', () => {
     
     render(<PlaylistEntryRow entry={entry} {...defaultProps} />);
     
-    const img = document.querySelector('.album-art img');
+    const img = screen.getByAltText('Album Art');
     expect(img).toBeInTheDocument();
     expect(img).toHaveAttribute('src', 'https://example.com/album.jpg');
     expect(img).toHaveAttribute('alt', 'Album Art');
@@ -161,11 +161,61 @@ describe('PlaylistEntryRow', () => {
     render(<PlaylistEntryRow entry={entry} {...defaultProps} />);
     
     await waitFor(() => {
-      const img = document.querySelector('.album-art img');
+      const img = screen.getByAltText('Album Art');
       expect(img).toBeInTheDocument();
       expect(img).toHaveAttribute('src', 'https://lastfm.com/album.jpg');
     });
     
     expect(lastFMRepository.fetchAlbumArt).toHaveBeenCalledWith('Test Artist', 'Test Album');
+  });
+
+  test('does not reset inline notes value during rerender while editing', () => {
+    const entry = new PlaylistEntry({
+      id: 1,
+      order: 0,
+      entry_type: 'music_file',
+      notes: '',
+      details: {
+        title: 'Test Track',
+        artist: 'Test Artist',
+        album: 'Test Album'
+      }
+    });
+
+    const { rerender, container } = render(
+      <PlaylistEntryRow
+        entry={entry}
+        {...defaultProps}
+        visibleColumns={['notes']}
+      />
+    );
+
+    const notesCell = container.querySelector('.notes-cell');
+    expect(notesCell).toBeInTheDocument();
+    fireEvent.click(notesCell);
+    const notesInput = screen.getByPlaceholderText('Add notes...');
+    fireEvent.change(notesInput, { target: { value: 'typing quickly' } });
+
+    const refreshedEntry = new PlaylistEntry({
+      id: 1,
+      order: 0,
+      entry_type: 'music_file',
+      notes: '',
+      details: {
+        title: 'Test Track',
+        artist: 'Test Artist',
+        album: 'Test Album'
+      }
+    });
+
+    rerender(
+      <PlaylistEntryRow
+        entry={refreshedEntry}
+        {...defaultProps}
+        visibleColumns={['notes']}
+      />
+    );
+
+    expect(screen.getByPlaceholderText('Add notes...')).toHaveValue('typing quickly');
   });
 });
