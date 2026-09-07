@@ -295,6 +295,11 @@ def extract_metadata(file_path, extractor) -> Optional[MusicFile]:
 # singleton
 scan_results = ScanResults()
 
+# A full scan must re-find at least this fraction of previously known files
+# before it's trusted to mark the rest as missing. Guards against a flaky or
+# unmounted storage backend wiping out "missing" status for the whole library.
+MIN_SCAN_COVERAGE_RATIO = 0.5
+
 def scan_directory(directory: str, full=False, job_id: str = None):
     """Scan the music directory for music files and save them to the database.
 
@@ -318,286 +323,319 @@ def scan_directory(directory: str, full=False, job_id: str = None):
     scan_results.in_progress = True
     scan_results.files_missing = 0
     scan_results.files_updated = 0
-    
+
     job_context = JobContext(job_id) if job_id else None
+    db = None
 
-    logging.info(f"Scanning directory {directory}, full={full}")
-    start_time = time.time()
-    scan_started_at = datetime.now()
-    
-    if job_context:
-        job_context.update_progress(0.0, f"Starting {'full' if full else 'incremental'} scan")
+    try:
+        logging.info(f"Scanning directory {directory}, full={full}")
+        start_time = time.time()
+        scan_started_at = datetime.now()
 
-    # read directory paths from config file
-    all_files = []
-    music_paths = []
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "r") as f:
-            config = json.load(f)
-            music_paths = config.get("music_paths", [])
-            if music_paths:
-                logging.info(f"Found {len(music_paths)} music paths in config file")
-                for path in music_paths:
-                    for root, _, files in os.walk(path):
-                        for file in files:
-                            all_files.append(os.path.join(root, file))
+        if job_context:
+            job_context.update_progress(0.0, f"Starting {'full' if full else 'incremental'} scan")
 
-    if not music_paths:
-        music_paths = [str(directory)]
-        for root, _, files in os.walk(directory):
-            for file in files:
-                all_files.append(os.path.join(root, file))
+        # read directory paths from config file
+        all_files = []
+        music_paths = []
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, "r") as f:
+                config = json.load(f)
+                music_paths = config.get("music_paths", [])
+                if music_paths:
+                    logging.info(f"Found {len(music_paths)} music paths in config file")
+                    for path in music_paths:
+                        for root, _, files in os.walk(path):
+                            for file in files:
+                                all_files.append(os.path.join(root, file))
 
-    db = Database.get_session()
+        if not music_paths:
+            music_paths = [str(directory)]
+            for root, _, files in os.walk(directory):
+                for file in files:
+                    all_files.append(os.path.join(root, file))
 
-    albums_and_artists_seen = {}
-    for existing_album in db.query(AlbumDB).all():
-        key = AlbumAndArtist(album=existing_album.title, artist=existing_album.artist)
-        albums_and_artists_seen[key] = existing_album
+        db = Database.get_session()
 
-    files_seen = 0
-    total_files = float(len(all_files))
-    commit_interval = max(1, int(os.getenv("SCAN_COMMIT_INTERVAL", "1000")))
-    last_job_progress_update = time.time()
+        albums_and_artists_seen = {}
+        for existing_album in db.query(AlbumDB).all():
+            key = AlbumAndArtist(album=existing_album.title, artist=existing_album.artist)
+            albums_and_artists_seen[key] = existing_album
 
-    # Preload existing file records once to avoid one DB query per file.
-    existing_local_files_by_path = {}
-    existing_query = db.query(LocalFileDB).options(joinedload(LocalFileDB.music_file))
+        files_seen = 0
+        total_files = float(len(all_files))
+        commit_interval = max(1, int(os.getenv("SCAN_COMMIT_INTERVAL", "1000")))
+        last_job_progress_update = time.time()
 
-    scan_roots = []
-    for root in music_paths:
-        normalized_root = str(pathlib.Path(root))
-        if not normalized_root.endswith(os.sep):
-            normalized_root = normalized_root + os.sep
-        scan_roots.append(normalized_root)
+        # Preload existing file records once to avoid one DB query per file.
+        existing_local_files_by_path = {}
+        existing_query = db.query(LocalFileDB).options(joinedload(LocalFileDB.music_file))
 
-    if scan_roots:
-        existing_query = existing_query.filter(or_(*[LocalFileDB.path.startswith(root) for root in scan_roots]))
+        scan_roots = []
+        for root in music_paths:
+            normalized_root = str(pathlib.Path(root))
+            if not normalized_root.endswith(os.sep):
+                normalized_root = normalized_root + os.sep
+            scan_roots.append(normalized_root)
 
-    for existing_local in existing_query.all():
-        existing_local_files_by_path[existing_local.path] = existing_local
+        if scan_roots:
+            existing_query = existing_query.filter(or_(*[LocalFileDB.path.startswith(root) for root in scan_roots]))
 
-    logging.info(f"Loaded {len(existing_local_files_by_path)} existing file records for scan roots")
-    logging.info(f"Loaded {len(albums_and_artists_seen)} existing albums for scan cache")
+        for existing_local in existing_query.all():
+            existing_local_files_by_path[existing_local.path] = existing_local
 
-    ops = 0
-    for full_path in tqdm(all_files, desc="Scanning files"):
-        try:
-            files_seen += 1
-            scan_results.progress = round(files_seen / total_files * 100, 1) if total_files else 100.0
-            
-            # Update job progress at most every 5 seconds, every 100 files, or at completion.
-            now = time.time()
-            if job_context and (
-                files_seen % 100 == 0
-                or (now - last_job_progress_update) >= 5
-                or files_seen == len(all_files)
-            ):
-                progress = files_seen / total_files
-                job_context.update_progress(progress, f"Processing file {files_seen} of {len(all_files)}")
-                last_job_progress_update = now
+        logging.info(f"Loaded {len(existing_local_files_by_path)} existing file records for scan roots")
+        logging.info(f"Loaded {len(albums_and_artists_seen)} existing albums for scan cache")
 
-            if not full_path.lower().endswith(SUPPORTED_FILETYPES):
-                continue
+        touched_existing_count = 0
+        ops = 0
+        for full_path in tqdm(all_files, desc="Scanning files"):
+            try:
+                files_seen += 1
+                scan_results.progress = round(files_seen / total_files * 100, 1) if total_files else 100.0
 
-            last_modified_time = datetime.fromtimestamp(os.path.getmtime(full_path))
-            
-            # Check in preloaded map (avoid per-file DB lookup)
-            existing_local_file = existing_local_files_by_path.get(full_path)
-            
-            # Then check for associated MusicFileDB through relationship
-            existing_file = None
-            if existing_local_file:
-                existing_file = existing_local_file.music_file
+                # Update job progress at most every 5 seconds, every 100 files, or at completion.
+                now = time.time()
+                if job_context and (
+                    files_seen % 100 == 0
+                    or (now - last_job_progress_update) >= 5
+                    or files_seen == len(all_files)
+                ):
+                    progress = files_seen / total_files
+                    job_context.update_progress(progress, f"Processing file {files_seen} of {len(all_files)}")
+                    last_job_progress_update = now
 
-            found_existing_file = False
-            if existing_local_file and existing_local_file.missing:
-                found_existing_file = True
-                existing_local_file.missing = False
+                if not full_path.lower().endswith(SUPPORTED_FILETYPES):
+                    continue
 
-            if (not full) and (not found_existing_file) and existing_local_file and existing_local_file.last_scanned and existing_local_file.last_scanned >= last_modified_time:
-                existing_local_file.last_scanned = scan_started_at  # Touch so mark-and-sweep doesn't flag as missing
+                last_modified_time = datetime.fromtimestamp(os.path.getmtime(full_path))
+
+                # Check in preloaded map (avoid per-file DB lookup)
+                existing_local_file = existing_local_files_by_path.get(full_path)
+                if existing_local_file:
+                    # Track how many previously known files we actually encountered on
+                    # disk this run, so we can sanity-check the scan before trusting it
+                    # to mark anything as missing.
+                    touched_existing_count += 1
+
+                # Then check for associated MusicFileDB through relationship
+                existing_file = None
+                if existing_local_file:
+                    existing_file = existing_local_file.music_file
+
+                found_existing_file = False
+                if existing_local_file and existing_local_file.missing:
+                    found_existing_file = True
+                    existing_local_file.missing = False
+
+                if (not full) and (not found_existing_file) and existing_local_file and existing_local_file.last_scanned and existing_local_file.last_scanned >= last_modified_time:
+                    existing_local_file.last_scanned = scan_started_at  # Touch so mark-and-sweep doesn't flag as missing
+                    ops += 1
+                    if ops >= commit_interval:
+                        db.commit()
+                        ops = 0
+                    continue  # Skip files that have not changed
+
+                metadata = None
+
+                try:
+                    if full_path.lower().endswith(".mp3"):
+                        metadata = extract_metadata(full_path, EasyID3)
+                    elif full_path.lower().endswith(".flac"):
+                        metadata = extract_metadata(full_path, FLAC)
+                    elif full_path.lower().endswith(".wav"):
+                        metadata = extract_metadata(full_path, WAVE)
+                    elif full_path.lower().endswith(".m4a"):
+                        metadata = extract_m4a(full_path)
+                    else:
+                        metadata = extract_metadata(full_path, MutagenFile)
+                except Exception as e:
+                    logging.error(f"Failed to read metadata for {full_path}: {e}", exc_info=True)
+                    continue
+
+                if not metadata:
+                    logging.warning(f"Failed to read metadata for {full_path}")
+                    continue
+
+                file_size = os.path.getsize(full_path)
+
+                year = metadata.year
+
+                album = None
+
+                # create album entry if applicable
+                if metadata.album and metadata.get_album_artist():
+                    album_and_artist = AlbumAndArtist(album=metadata.album, artist=metadata.get_album_artist())
+                    album = albums_and_artists_seen.get(album_and_artist)
+                    if not album:
+                        album = AlbumDB(
+                            artist=metadata.get_album_artist(),
+                            title=metadata.album,
+                            year=year,
+                            tracks = []
+                        )
+                        db.add(album)
+                        db.flush()
+                        albums_and_artists_seen[album_and_artist] = album
+
+                # Update or add the file in the database
+                if existing_local_file:
+                    # Update existing LocalFileDB record
+                    scan_results.files_updated += 1
+                    existing_local_file.last_scanned = scan_started_at
+                    existing_local_file.size = file_size
+                    existing_local_file.file_title = metadata.title
+                    existing_local_file.file_artist = metadata.artist
+                    existing_local_file.file_album_artist = metadata.album_artist
+                    existing_local_file.file_album = metadata.album
+                    existing_local_file.file_year = year
+                    existing_local_file.file_length = metadata.length
+                    existing_local_file.file_publisher = metadata.publisher
+                    existing_local_file.file_rating = metadata.rating
+                    existing_local_file.file_comments = metadata.comments
+                    existing_local_file.file_track_number = metadata.track_number
+                    existing_local_file.file_disc_number = metadata.disc_number
+                    existing_local_file.file_genres = [
+                        LocalFileGenreDB(genre=genre)
+                        for genre in metadata.genres
+                    ]
+
+                    # Update or create associated MusicFileDB
+                    if existing_file:
+                        # Update existing MusicFileDB with synced metadata from file
+                        existing_file.sync_from_file_metadata()
+                    else:
+                        # Create new MusicFileDB for this LocalFileDB
+                        this_track = metadata.to_db()
+                        this_track.local_file = existing_local_file
+                        this_track.sync_from_file_metadata()
+                        db.add(this_track)
+
+                        if album is not None:
+                            db.flush()
+                            album.tracks.append(AlbumTrackDB(linked_track_id=this_track.id, order=len(album.tracks)))
+
+                else:
+                    scan_results.files_indexed += 1
+                    scan_results.files_added += 1
+
+                    this_track = metadata.to_db()
+
+                    # Set up local file with file metadata
+                    local_file = LocalFileDB(
+                        path=full_path,
+                        kind=metadata.kind,
+                        first_scanned=scan_started_at,
+                        last_scanned=scan_started_at,
+                        size=file_size,
+                        # Store file metadata
+                        file_title=metadata.title,
+                        file_artist=metadata.artist,
+                        file_album_artist=metadata.album_artist,
+                        file_album=metadata.album,
+                        file_year=year,
+                        file_length=metadata.length,
+                        file_publisher=metadata.publisher,
+                        file_rating=metadata.rating,
+                        file_comments=metadata.comments,
+                        file_track_number=metadata.track_number,
+                        file_disc_number=metadata.disc_number,
+                    )
+
+                    # Add file genres
+                    for genre in metadata.genres:
+                        local_file.file_genres.append(LocalFileGenreDB(genre=genre))
+
+                    this_track.local_file = local_file
+
+                    # Initially sync the main metadata from file metadata
+                    this_track.sync_from_file_metadata()
+
+                    try:
+                        db.add(this_track)
+                        existing_local_files_by_path[full_path] = local_file
+
+                        if album is not None:
+                            db.flush()
+                            album.tracks.append(AlbumTrackDB(linked_track_id=this_track.id, order=len(album.tracks)))
+                    except Exception as e:
+                        logging.error(f"Failed to add track {this_track.id} to album {album.id}: {e}", exc_info=True)
+                        raise
+
                 ops += 1
                 if ops >= commit_interval:
                     db.commit()
                     ops = 0
-                continue  # Skip files that have not changed
 
-            metadata = None
-
-            try:
-                if full_path.lower().endswith(".mp3"):
-                    metadata = extract_metadata(full_path, EasyID3)
-                elif full_path.lower().endswith(".flac"):
-                    metadata = extract_metadata(full_path, FLAC)
-                elif full_path.lower().endswith(".wav"):
-                    metadata = extract_metadata(full_path, WAVE)
-                elif full_path.lower().endswith(".m4a"):
-                    metadata = extract_m4a(full_path)
-                else:
-                    metadata = extract_metadata(full_path, MutagenFile)
             except Exception as e:
-                logging.error(f"Failed to read metadata for {full_path}: {e}", exc_info=True)
-                continue
+                logging.error(f"Failed to scan file {full_path}: {e}", exc_info=True)
 
-            if not metadata:
-                logging.warning(f"Failed to read metadata for {full_path}")
-                continue
-
-            file_size = os.path.getsize(full_path)
-
-            year = metadata.year
-            
-            album = None
-
-            # create album entry if applicable
-            if metadata.album and metadata.get_album_artist():
-                album_and_artist = AlbumAndArtist(album=metadata.album, artist=metadata.get_album_artist())
-                album = albums_and_artists_seen.get(album_and_artist)
-                if not album:
-                    album = AlbumDB(
-                        artist=metadata.get_album_artist(),
-                        title=metadata.album,
-                        year=year,
-                        tracks = []
-                    )
-                    db.add(album)
-                    db.flush()
-                    albums_and_artists_seen[album_and_artist] = album
-
-            # Update or add the file in the database
-            if existing_local_file:
-                # Update existing LocalFileDB record
-                scan_results.files_updated += 1
-                existing_local_file.last_scanned = scan_started_at
-                existing_local_file.size = file_size
-                existing_local_file.file_title = metadata.title
-                existing_local_file.file_artist = metadata.artist
-                existing_local_file.file_album_artist = metadata.album_artist
-                existing_local_file.file_album = metadata.album
-                existing_local_file.file_year = year
-                existing_local_file.file_length = metadata.length
-                existing_local_file.file_publisher = metadata.publisher
-                existing_local_file.file_rating = metadata.rating
-                existing_local_file.file_comments = metadata.comments
-                existing_local_file.file_track_number = metadata.track_number
-                existing_local_file.file_disc_number = metadata.disc_number
-                existing_local_file.file_genres = [
-                    LocalFileGenreDB(genre=genre)
-                    for genre in metadata.genres
-                ]
-                
-                # Update or create associated MusicFileDB
-                if existing_file:
-                    # Update existing MusicFileDB with synced metadata from file
-                    existing_file.sync_from_file_metadata()
-                else:
-                    # Create new MusicFileDB for this LocalFileDB
-                    this_track = metadata.to_db()
-                    this_track.local_file = existing_local_file
-                    this_track.sync_from_file_metadata()
-                    db.add(this_track)
-                    
-                    if album is not None:
-                        db.flush()
-                        album.tracks.append(AlbumTrackDB(linked_track_id=this_track.id, order=len(album.tracks)))
-
-            else:
-                scan_results.files_indexed += 1
-                scan_results.files_added += 1
-
-                this_track = metadata.to_db()
-
-                # Set up local file with file metadata
-                local_file = LocalFileDB(
-                    path=full_path,
-                    kind=metadata.kind,
-                    first_scanned=scan_started_at,
-                    last_scanned=scan_started_at,
-                    size=file_size,
-                    # Store file metadata
-                    file_title=metadata.title,
-                    file_artist=metadata.artist,
-                    file_album_artist=metadata.album_artist,
-                    file_album=metadata.album,
-                    file_year=year,
-                    file_length=metadata.length,
-                    file_publisher=metadata.publisher,
-                    file_rating=metadata.rating,
-                    file_comments=metadata.comments,
-                    file_track_number=metadata.track_number,
-                    file_disc_number=metadata.disc_number,
+        if full:
+            # Only a full scan is allowed to mark files as missing: an incremental
+            # scan's walk isn't a trustworthy census of the whole library, and
+            # trusting it to sweep would flag everything it didn't happen to touch
+            # (e.g. because of a slow or flaky network mount) as missing.
+            existing_count = len(existing_local_files_by_path)
+            coverage = (touched_existing_count / existing_count) if existing_count else 1.0
+            if existing_count > 0 and coverage < MIN_SCAN_COVERAGE_RATIO:
+                error_message = (
+                    f"Full scan only found {touched_existing_count} of {existing_count} previously known files "
+                    f"under {scan_roots} ({coverage:.0%}, below the {MIN_SCAN_COVERAGE_RATIO:.0%} safety threshold). "
+                    "Aborting without marking anything missing in case the storage is unhealthy or unmounted."
                 )
-                
-                # Add file genres
-                for genre in metadata.genres:
-                    local_file.file_genres.append(LocalFileGenreDB(genre=genre))
-                
-                this_track.local_file = local_file
-                
-                # Initially sync the main metadata from file metadata
-                this_track.sync_from_file_metadata()
-                
-                try:
-                    db.add(this_track)
-                    existing_local_files_by_path[full_path] = local_file
+                logging.error(error_message)
+                if job_id:
+                    job_tracker.fail_job(job_id, error_message)
+                raise RuntimeError(error_message)
 
-                    if album is not None:
-                        db.flush()
-                        album.tracks.append(AlbumTrackDB(linked_track_id=this_track.id, order=len(album.tracks)))
-                except Exception as e:
-                    logging.error(f"Failed to add track {this_track.id} to album {album.id}: {e}", exc_info=True)
-                    raise
+            # Mark-and-sweep for deleted files: any active file under scanned roots that
+            # was not touched during this scan run is now considered missing.
+            # Flush first: the session uses autoflush=False, so without this the
+            # query below wouldn't see last_scanned updates from files this run
+            # already touched but hasn't committed yet, and would sweep them too.
+            db.flush()
+            missing_query = db.query(LocalFileDB).filter(
+                LocalFileDB.missing == False,
+                or_(LocalFileDB.last_scanned.is_(None), LocalFileDB.last_scanned < scan_started_at),
+            )
 
-            ops += 1
-            if ops >= commit_interval:
-                db.commit()
-                ops = 0
-        
-        except Exception as e:
-            logging.error(f"Failed to scan file {full_path}: {e}", exc_info=True)
+            if scan_roots:
+                missing_query = missing_query.filter(or_(*[LocalFileDB.path.startswith(root) for root in scan_roots]))
 
-    # Mark-and-sweep for deleted files: any active file under scanned roots that
-    # was not touched during this scan run is now considered missing.
-    missing_query = db.query(LocalFileDB).filter(
-        LocalFileDB.missing == False,
-        or_(LocalFileDB.last_scanned.is_(None), LocalFileDB.last_scanned < scan_started_at),
-    )
+            stale_files = missing_query.all()
+            for stale_file in stale_files:
+                stale_file.missing = True
+                stale_file.last_scanned = scan_started_at
 
-    if scan_roots:
-        missing_query = missing_query.filter(or_(*[LocalFileDB.path.startswith(root) for root in scan_roots]))
+            scan_results.files_missing = len(stale_files)
+            if stale_files:
+                logging.info(f"Marked {len(stale_files)} files as missing during scan sweep")
+        else:
+            logging.info("Incremental scan: skipping missing-file sweep (run a full scan to detect deletions)")
 
-    stale_files = missing_query.all()
-    for stale_file in stale_files:
-        stale_file.missing = True
-        stale_file.last_scanned = scan_started_at
+        db.commit()
 
-    scan_results.files_missing = len(stale_files)
-    if stale_files:
-        logging.info(f"Marked {len(stale_files)} files as missing during scan sweep")
-
-    db.commit()
-    db.close()
-
-    scan_results.in_progress = False
-    
-    # Complete job tracking if job_id was provided
-    if job_context:
-        duration = time.time() - start_time
-        result_message = (
-            f"Scan completed in {duration:.2f} seconds. "
-            f"Added {scan_results.files_added} new files, "
-            f"updated {scan_results.files_updated} existing files, "
-            f"marked {scan_results.files_missing} missing files."
-        )
-        job_context.update_progress(1.0, result_message)
-        job_tracker.complete_job(job_id, {
-            "added_count": scan_results.files_added,
-            "updated_count": scan_results.files_updated,
-            "missing_count": scan_results.files_missing,
-            "duration_seconds": duration,
-            "total_files": len(all_files)
-        })
+        # Complete job tracking if job_id was provided
+        if job_context:
+            duration = time.time() - start_time
+            result_message = (
+                f"Scan completed in {duration:.2f} seconds. "
+                f"Added {scan_results.files_added} new files, "
+                f"updated {scan_results.files_updated} existing files, "
+                f"marked {scan_results.files_missing} missing files."
+            )
+            job_context.update_progress(1.0, result_message)
+            job_tracker.complete_job(job_id, {
+                "added_count": scan_results.files_added,
+                "updated_count": scan_results.files_updated,
+                "missing_count": scan_results.files_missing,
+                "duration_seconds": duration,
+                "total_files": len(all_files)
+            })
+    finally:
+        if db is not None:
+            db.close()
+        scan_results.in_progress = False
 
 @router.get("/logs/recent")
 def get_recent_logs(level: Optional[str] = None, since: Optional[float] = None):

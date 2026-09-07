@@ -155,8 +155,10 @@ class LocalFileDB(Base):
     file_disc_number = Column(Integer, nullable=True)
     file_track_number = Column(Integer, nullable=True)
     
-    # Relationship back to MusicFileDB
-    music_file_id = Column(Integer, ForeignKey("music_files.id"), nullable=True)
+    # Relationship back to MusicFileDB (one-to-one: unique enforces at most
+    # one local_files row per music_file, matching the uselist=False
+    # relationship below)
+    music_file_id = Column(Integer, ForeignKey("music_files.id"), nullable=True, unique=True)
     music_file = relationship("MusicFileDB", back_populates="local_file")
     
     # File-based genres (one-to-many)
