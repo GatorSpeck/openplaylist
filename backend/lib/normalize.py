@@ -54,3 +54,19 @@ def normalize_artist(artist: str) -> str:
         return artist
 
     return ' '.join(normalized_tokens)
+
+# Straight and curly apostrophes are dropped (not split on) during search tokenizing, so
+# "Don't" becomes "dont" rather than "don" + "t".
+SEARCH_APOSTROPHES = ("'", "’", "‘", "`")
+
+
+def tokenize_search_query(query: str) -> list[str]:
+    """
+    Split a free-text search query into lowercase word tokens, ignoring punctuation such as
+    parens, brackets, quotes and dashes. Apostrophes are removed rather than split on.
+    """
+    value = (query or "").lower()
+    for apostrophe in SEARCH_APOSTROPHES:
+        value = value.replace(apostrophe, "")
+
+    return [token for token in re.split(r"[^\w]+", value) if token]

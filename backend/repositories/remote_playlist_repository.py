@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 from models import PlaylistSnapshot as PlaylistSnapshotModel, PlaylistDB
 from response_models import PlaylistItem, PlaylistSnapshot, SyncTarget
+from lib.match import TrackStub, get_match_confidence, no_match_confidence
 
 def get_local_tz():
     return datetime.now().astimezone().tzinfo
@@ -227,6 +228,31 @@ class RemotePlaylistRepository(ABC):
     def clear_playlist(self) -> None:
         """Clear all items from the remote playlist"""
         pass
+
+    @staticmethod
+    def record_match(
+        item: PlaylistItem,
+        title: Optional[str] = None,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+        alt_artists: Optional[List[str]] = None,
+        matched: bool = True,
+        remote_id: Optional[str] = None,
+    ) -> None:
+        """Attach a match-confidence result to an item being pushed to this service, comparing
+        the local item's metadata with what the service resolved it to (see lib.match)."""
+        target = TrackStub(artist=item.artist, title=item.title, album=item.album)
+        try:
+            if not matched:
+                item.sync_match = no_match_confidence(target)
+            else:
+                item.sync_match = get_match_confidence(
+                    target, TrackStub(artist=artist, title=title, album=album), alt_artists
+                )
+                item.sync_match["remote_id"] = remote_id
+        except Exception as e:
+            logging.warning(f"Failed to compute match confidence for {item.to_string()}: {e}")
+            item.sync_match = None
     
     def create_force_push_sync_plan(self, 
                                    new_remote_snapshot: Optional[PlaylistSnapshot],

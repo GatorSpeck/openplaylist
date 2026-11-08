@@ -514,6 +514,28 @@ class RemoteSyncEventDB(Base):
     event_metadata = Column("metadata", JSON, nullable=True)
 
 
+class SyncTrackStateDB(Base):
+    """What happened the last time a local track was pushed to one sync target.
+
+    Lets later syncs retry tracks that failed to match once their details are fixed, and
+    replace a remote match once the local track is relinked/edited - without confusing either
+    case with a track that was deliberately removed on the remote side.
+    """
+    __tablename__ = "sync_track_states"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sync_target_id = Column(Integer, ForeignKey("sync_targets.id", ondelete="CASCADE"), nullable=False, index=True)
+    music_file_id = Column(Integer, nullable=True, index=True)
+    # Normalized title/artist key, used to find tracks that have no music_file_id
+    item_key = Column(String(1024), nullable=False)
+    status = Column(String(20), nullable=False)  # 'matched' | 'unmatched'
+    remote_id = Column(String(1024), nullable=True)  # service id the track resolved to
+    # Hash of the lowercased artist/title/album at the time of the push
+    metadata_fingerprint = Column(String(64), nullable=False)
+    confidence = Column(JSON, nullable=True)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class ScheduledTaskDB(Base):
     __tablename__ = "scheduled_tasks"
 

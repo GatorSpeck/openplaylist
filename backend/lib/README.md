@@ -4,8 +4,8 @@ This folder contains backend helpers that support matching, normalization, and p
 
 ## Main Modules
 
-- `match.py`: matching logic used when relating local tracks to remote or requested items
-- `normalize.py`: normalization helpers for titles, artists, and other metadata fields
+- `match.py`: matching logic used when relating local tracks to remote or requested items; `get_match_score` ranks search candidates, `get_match_confidence` scores a resolved sync match (0-100 + `high`/`medium`/`low`, `needs_review`) for the sync log
+- `normalize.py`: normalization helpers for titles, artists, and other metadata fields, plus `tokenize_search_query` for library search (drops punctuation, removes apostrophes)
 - `normalize_path.py`: path cleanup and normalization helpers
 - `timing.py`: timing and profiling utilities
 

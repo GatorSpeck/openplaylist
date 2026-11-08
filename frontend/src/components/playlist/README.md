@@ -19,7 +19,7 @@ These components cover:
 - `PlaylistEntryRow.tsx`: row-level rendering and per-entry actions
 - `AlbumArtGrid.tsx`: compact album-art summary used in the playlist header
 - `SyncConfig.tsx`: per-playlist remote sync target configuration
-- `SyncLogModal.tsx`: result and history surface for sync runs
+- `SyncLogModal.tsx`: result and history surface for sync runs; shows per-track match confidence (`metadata.match`, helpers in `src/lib/syncMatch.ts`) and a "Needs Review" filter for low-confidence or failed matches
 - `PlaylistAutoSyncDialog.tsx`: detailed auto-sync configuration for a playlist
 
 ## Important Supporting Flows

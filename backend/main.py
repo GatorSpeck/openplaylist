@@ -740,6 +740,32 @@ def sync_playlist_with_job(
     
     return {"message": "Playlist sync started", "job_id": job_id}
 
+class ResyncTrackRequest(BaseModel):
+    music_file_id: int
+
+
+@app.post("/api/playlists/{playlist_id}/sync/resync-track")
+def resync_playlist_track(
+    playlist_id: int,
+    request: ResyncTrackRequest,
+    background_tasks: BackgroundTasks,
+    repo: PlaylistRepository = Depends(get_playlist_repository),
+):
+    """Re-match one track on the playlist's sync targets, then run a normal sync to apply it"""
+    from routes.playlists import mark_track_for_resync
+
+    target_count = mark_track_for_resync(repo, playlist_id, request.music_file_id)
+
+    job_id = job_tracker.create_job(
+        JobType.PLAYLIST_SYNC,
+        f"Playlist Sync - ID {playlist_id}",
+        f"Resyncing track {request.music_file_id} on playlist {playlist_id}"
+    )
+    background_tasks.add_task(sync_playlist_background, playlist_id, False, job_id)
+
+    return {"message": "Track resync started", "job_id": job_id, "targets": target_count}
+
+
 def sync_playlist_background(playlist_id: int, force_push: bool, job_id: str):
     """Background task for syncing playlist with job tracking"""
     from dependencies import get_playlist_repository
@@ -838,9 +864,10 @@ def search_music_files(
     query: str = Query(..., min_length=1),
     limit: int = 50,
     offset: int = 0,
+    include_missing: bool = True,
     repo: MusicFileRepository = Depends(get_music_file_repository),
 ):
-    return repo.search(query=query, limit=limit, offset=offset)
+    return repo.search(query=query, limit=limit, offset=offset, include_missing=include_missing)
 
 @router.get("/stats", response_model=LibraryStats)
 async def get_stats():

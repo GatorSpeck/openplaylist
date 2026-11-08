@@ -67,6 +67,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
     artist: entry.getArtist() || '',
     album: entry.getAlbum() || ''
   });
+  const [resyncStatus, setResyncStatus] = useState<{ state: 'idle' | 'running' | 'done' | 'error'; message?: string }>({ state: 'idle' });
   const [showFullSizeArt, setShowFullSizeArt] = useState(false);
   const [modalAlbumArt, setModalAlbumArt] = useState(null);
   
@@ -116,7 +117,7 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
     setHasSearched(true);
     try {
       const queryToUse = searchQuery || customSearchQuery || `${entry.getArtist()} ${entry.getTitle()}`;
-      const results = await libraryRepository.searchLibrary(queryToUse);
+      const results = await libraryRepository.searchLibrary(queryToUse, { includeMissing: false });
       setSearchResults(results || []);
     } catch (error) {
       console.error('Error searching for local files:', error);
@@ -390,6 +391,19 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
       ...prev,
       [sourceType]: value
     }));
+  };
+
+  const handleResyncTrack = async () => {
+    if (!playlistId || !entry.music_file_id) {
+      return;
+    }
+    setResyncStatus({ state: 'running' });
+    try {
+      await playlistRepository.resyncTrack(playlistId, entry.music_file_id);
+      setResyncStatus({ state: 'done', message: 'Resync finished. Check the sync log for the new match.' });
+    } catch (error) {
+      setResyncStatus({ state: 'error', message: error instanceof Error ? error.message : 'Resync failed' });
+    }
   };
 
   const handleSearchLastFm = async () => {
@@ -1005,6 +1019,9 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
                               <strong>{result.title}</strong>
                               {result.artist && <><br /><em>by {result.artist}</em></>}
                               {result.album && <><br /><span>Album: {result.album}</span></>}
+                              {result.album_artist && result.album_artist !== result.artist && (
+                                <><br /><span>Album artist: {result.album_artist}</span></>
+                              )}
                               <br /><small>Rating Key: {result.plex_rating_key}</small>
                             </div>
                           </div>
@@ -1329,6 +1346,25 @@ const TrackDetailsModal: React.FC<TrackDetailsModalProps> = ({
               entry.details.plex_rating_key,
               'Enter Plex Rating Key'
             )}
+
+            {playlistId && entry.music_file_id ? (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  className="select-button"
+                  onClick={handleResyncTrack}
+                  disabled={resyncStatus.state === 'running'}
+                  title="Re-match this track on the playlist's sync targets, replacing its current remote match"
+                >
+                  {resyncStatus.state === 'running' ? 'Resyncing…' : 'Resync to sync targets'}
+                </button>
+                {resyncStatus.message && (
+                  <p className={`mt-1 text-sm ${resyncStatus.state === 'error' ? 'text-red-700 dark:text-red-300' : 'text-text/75 dark:text-text-dark/75'}`}>
+                    {resyncStatus.message}
+                  </p>
+                )}
+              </div>
+            ) : null}
           </div>
 
           {entry.details.publisher ? <p><strong>Publisher:</strong> {entry.details.publisher}</p> : null}

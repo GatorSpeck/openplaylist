@@ -762,6 +762,9 @@ class PlaylistItem(BaseModel):
     spotify_uri: Optional[str] = None  # Spotify URI for the item
     youtube_url: Optional[str] = None  # YouTube Music URI
     plex_rating_key: Optional[str] = None  # Plex rating key for the item
+    # Transient: set by a remote repository when it resolves this item during a sync, so the
+    # sync log can report match confidence. Never persisted in snapshots or returned by the API.
+    sync_match: Optional[Dict[str, Any]] = Field(default=None, exclude=True)
     
 
     def to_string(self, normalize=False):

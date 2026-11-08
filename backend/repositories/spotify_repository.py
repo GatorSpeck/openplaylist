@@ -230,6 +230,23 @@ class SpotifyRepository(RemotePlaylistRepository):
     # Required methods from RemotePlaylistRepository
     
     def fetch_media_item(self, item: PlaylistItem) -> Any:
+        """Resolve a track on Spotify and record how confident the match is."""
+        track = self._resolve_media_item(item)
+        if not track:
+            self.record_match(item, matched=False)
+        else:
+            artists = [a.get("name") for a in (track.get("artists") or []) if a.get("name")]
+            self.record_match(
+                item,
+                title=track.get("name"),
+                artist=artists[0] if artists else None,
+                album=(track.get("album") or {}).get("name"),
+                alt_artists=artists[1:],
+                remote_id=track.get("uri"),
+            )
+        return track
+
+    def _resolve_media_item(self, item: PlaylistItem) -> Any:
         """Search for a track on Spotify"""
         if not self.sp:
             raise HTTPException(status_code=401, detail="Not authenticated with Spotify")
@@ -280,11 +297,8 @@ class SpotifyRepository(RemotePlaylistRepository):
 
             best_match = results["tracks"]["items"][0]
 
-            item = PlaylistItem(
-                artist=best_match["artists"][0]["name"],
-                title=best_match["name"],
-            )
-
+            # Write the URI back onto the local track being matched (not whichever local file
+            # happens to share the remote track's title/artist).
             music_file = self.music_file_repo.search_by_playlist_item(item)
             if not music_file:
                 logging.warning(f"No music file found for {item.to_string()}")

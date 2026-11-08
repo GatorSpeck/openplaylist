@@ -24,6 +24,8 @@ from datetime import datetime
 from repositories.remote_repository_factory import create_remote_repository
 from repositories.remote_playlist_repository import SyncChange, create_snapshot, RemoteUnavailableError
 from dataclasses import dataclass, field
+from lib.match import TrackStub, get_match_confidence
+from repositories.sync_track_state_repository import SyncTrackStateRepository, plan_track_repairs, item_remote_id
 
 router = APIRouter()
 
@@ -81,6 +83,86 @@ def _get_enabled_sync_targets(repo: PlaylistRepository, playlist_id: int) -> Lis
 def _chunk_changes(changes: List[SyncChange], chunk_size: int):
     for idx in range(0, len(changes), chunk_size):
         yield changes[idx:idx + chunk_size]
+
+
+def mark_track_for_resync(repo: PlaylistRepository, playlist_id: int, music_file_id: int) -> int:
+    """Flag one playlist track so the next sync re-matches it on every enabled target that can
+    send adds (removing its current remote match first where send-removals allows). Returns
+    the number of targets flagged."""
+    sync_targets = _get_enabled_sync_targets(repo, playlist_id)
+
+    playlist = repo.get_by_id(playlist_id)
+    if not playlist:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+
+    local_item = next(
+        (item for item in create_snapshot(playlist).items if item.music_file_id == music_file_id), None
+    )
+    if local_item is None:
+        raise HTTPException(status_code=404, detail="Track is not a syncable entry in this playlist")
+
+    targets = [t for t in sync_targets if t.sendEntryAdds]
+    if not targets:
+        raise HTTPException(status_code=400, detail="No enabled sync target allows sending adds")
+
+    db = Database.get_session()
+    try:
+        state_repo = SyncTrackStateRepository(db)
+        for target in targets:
+            state_repo.mark_for_resync(target.id, local_item)
+    finally:
+        db.close()
+
+    return len(targets)
+
+
+def _remote_add_log_entry(item, reason: str, service: str, target_name: Optional[str]) -> SyncLogEntry:
+    """Log entry for an item pushed to a remote service, carrying the match confidence the
+    remote repository recorded on it (item.sync_match). Items the service couldn't resolve at
+    all are logged as failed matches rather than successful adds."""
+    match = getattr(item, "sync_match", None)
+
+    if match and not match.get("matched", True):
+        return SyncLogEntry(
+            action="failed_match",
+            track=item.to_string(),
+            target=service,
+            target_name=target_name,
+            reason=f"No match found on {service}; track was not added",
+            success=False,
+            eventKind="failed_match",
+            metadata={"match": match, "original_reason": reason, "music_file_id": item.music_file_id},
+        )
+
+    return SyncLogEntry(
+        action="add",
+        track=item.to_string(),
+        target=service,
+        target_name=target_name,
+        reason=reason,
+        success=True,
+        eventKind="change",
+        metadata={"match": match, "music_file_id": item.music_file_id} if match else None,
+    )
+
+
+def _local_match_confidence(item, entries) -> Optional[Dict[str, Any]]:
+    """Confidence that the local library track an incoming remote item was linked to is the
+    same track (remote -> local adds)."""
+    for entry in entries or []:
+        details = getattr(entry, "details", None)
+        if not getattr(entry, "music_file_id", None) or not details:
+            continue
+        try:
+            return get_match_confidence(
+                TrackStub(artist=item.artist, title=item.title, album=item.album),
+                TrackStub(artist=details.artist, title=details.title, album=details.album),
+                [details.album_artist] if getattr(details, "album_artist", None) else None,
+            )
+        except Exception as e:
+            logging.warning(f"Failed to compute local match confidence for {item.to_string()}: {e}")
+            return None
+    return None
 
 
 @router.post("/", response_model=Playlist)
@@ -646,8 +728,19 @@ def sync_playlist(
 
         sync_log.extend(decision.receive_log_entries)
 
-        # Step 5: Flush batched remote operations for each target
-        flush_log_entries, flush_failures = _flush_remote_operations(decision.remote_ops, plan_result.individual_plans)
+        # Step 5: Fix previously failed / relinked / resync-requested tracks per target, then
+        # flush batched remote operations for each target
+        state_repo = SyncTrackStateRepository(db)
+        if not force_push:
+            repair_log_entries, repair_failures = _apply_track_repairs(
+                state_repo, plan_result.individual_plans, init_result.current_snapshots, local_snapshot, decision.remote_ops
+            )
+            sync_log.extend(repair_log_entries)
+            results["failed"].extend(repair_failures)
+
+        flush_log_entries, flush_failures = _flush_remote_operations(
+            decision.remote_ops, plan_result.individual_plans, state_repo=state_repo
+        )
         sync_log.extend(flush_log_entries)
         results["failed"].extend(flush_failures)
 
@@ -869,7 +962,16 @@ def _initialize_target_contexts(
                 ))
                 logging.info(f"Creating new remote playlist for {target.service} target {target.id}")
 
+                for item in local_snapshot.items:
+                    item.sync_match = None
                 created_playlist = remote_repo.create_playlist(target_create_title, local_snapshot)
+                state_repo = SyncTrackStateRepository(db)
+                for item in local_snapshot.items:
+                    if item.sync_match:
+                        state_repo.record_push(target.id, item)
+                        result.log_entries.append(_remote_add_log_entry(
+                            item, "Added while creating remote playlist", target.service, context['target_name']
+                        ))
 
                 remote_playlist_id = getattr(remote_repo, "playlist_id", None)
                 if not remote_playlist_id:
@@ -1149,6 +1251,7 @@ def _apply_local_change(repo: PlaylistRepository, playlist_id: int, playlist_nam
                         }
                     ))
 
+            local_match = _local_match_confidence(change.item, result)
             entries.append(SyncLogEntry(
                 action="add",
                 track=change.item.to_string(),
@@ -1156,7 +1259,8 @@ def _apply_local_change(repo: PlaylistRepository, playlist_id: int, playlist_nam
                 target_name=playlist_name,
                 reason=change.reason,
                 success=True,
-                eventKind="change"
+                eventKind="change",
+                metadata={"match": local_match} if local_match else None
             ))
 
         if change.action == 'remove':
@@ -1189,10 +1293,86 @@ def _apply_local_change(repo: PlaylistRepository, playlist_id: int, playlist_nam
     return entries
 
 
+def _apply_track_repairs(
+    state_repo: SyncTrackStateRepository,
+    individual_plans: Dict[int, Dict[str, Any]],
+    current_snapshots: Dict[int, Optional[PlaylistSnapshot]],
+    local_snapshot: PlaylistSnapshot,
+    pending_remote_ops: Dict[int, Dict[str, List[SyncChange]]],
+) -> Tuple[List[SyncLogEntry], List[Dict[str, Any]]]:
+    """Per target: retry previously unmatched tracks that were fixed locally, replace remote
+    matches for tracks that were relinked, and handle manual resync requests (see
+    plan_track_repairs). These are scoped to the one target the state belongs to, unlike
+    ordinary local adds which fan out to every target. Repaired items are dropped from that
+    target's queued adds so they aren't pushed twice."""
+    log_entries: List[SyncLogEntry] = []
+    failures: List[Dict[str, Any]] = []
+
+    for target_id, plan_info in individual_plans.items():
+        repo_info = plan_info['repo_info']
+        remote_repo = repo_info['repo']
+        target = repo_info['target']
+        target_name = repo_info['target_name']
+        target_ref = repo_info['target_ref']
+
+        try:
+            repairs, stale, skipped = plan_track_repairs(
+                state_repo.get_states(target_id), local_snapshot, current_snapshots.get(target_id), target
+            )
+            state_repo.delete(stale)
+        except Exception as e:
+            logging.error(f"Failed to plan track repairs for target {target_id}: {e}", exc_info=True)
+            continue
+
+        for item, reason in skipped:
+            log_entries.append(SyncLogEntry(
+                action="skip", track=item.to_string(), target=target.service, target_name=target_name,
+                reason=reason, success=False, eventKind="system",
+                metadata={"music_file_id": item.music_file_id},
+            ))
+
+        if not repairs:
+            continue
+
+        repaired_keys = {r.local_item.to_string() for r in repairs}
+        queued = pending_remote_ops.get(target_id)
+        if queued:
+            queued["add"] = [c for c in queued["add"] if c.item.to_string() not in repaired_keys]
+
+        for repair in repairs:
+            item = repair.local_item
+            try:
+                if repair.remove_item is not None:
+                    remote_repo.remove_items(target_ref, [repair.remove_item])
+                    log_entries.append(SyncLogEntry(
+                        action="remove", track=repair.remove_item.to_string(), target=target.service,
+                        target_name=target_name, reason=repair.reason, success=True, eventKind="change",
+                        metadata={"music_file_id": item.music_file_id, "replaced_by": item.to_string()},
+                    ))
+
+                if repair.add:
+                    item.sync_match = None
+                    remote_repo.add_items(target_ref, [item])
+                    state_repo.record_push(target_id, item)
+                    log_entries.append(_remote_add_log_entry(item, repair.reason, target.service, target_name))
+                else:
+                    state_repo.mark_matched(target_id, item, item_remote_id(target.service, item))
+            except Exception as e:
+                logging.error(f"Failed to repair {item.to_string()} on target {target_id}: {e}", exc_info=True)
+                log_entries.append(SyncLogEntry(
+                    action="add" if repair.add else "remove", track=item.to_string(), target=target.service,
+                    target_name=target_name, reason=repair.reason, success=False, error=str(e), eventKind="error",
+                ))
+                failures.append({"service": target.service, "target_id": target_id, "error": f"Failed to repair track: {e}"})
+
+    return log_entries, failures
+
+
 def _flush_remote_operations(
     pending_remote_ops: Dict[int, Dict[str, List[SyncChange]]],
     individual_plans: Dict[int, Dict[str, Any]],
     remote_batch_size: int = 100,
+    state_repo: Optional[SyncTrackStateRepository] = None,
 ) -> Tuple[List[SyncLogEntry], List[Dict[str, str]]]:
     """Push each target's queued adds/removes to its remote, in chunks.
 
@@ -1215,17 +1395,14 @@ def _flush_remote_operations(
         if add_changes:
             try:
                 for change_chunk in _chunk_changes(add_changes, remote_batch_size):
+                    # Items can be shared across targets; clear any confidence a previous target left
+                    for change in change_chunk:
+                        change.item.sync_match = None
                     remote_repo.add_items(target_ref, [change.item for change in change_chunk])
                     for change in change_chunk:
-                        log_entries.append(SyncLogEntry(
-                            action="add",
-                            track=change.item.to_string(),
-                            target=target.service,
-                            target_name=target_name,
-                            reason=change.reason,
-                            success=True,
-                            eventKind="change"
-                        ))
+                        if state_repo:
+                            state_repo.record_push(target_id, change.item)
+                        log_entries.append(_remote_add_log_entry(change.item, change.reason, target.service, target_name))
             except Exception as e:
                 logging.error(f"Failed to apply batched add sync for target {target_id}: {e}", exc_info=True)
                 for change in add_changes:

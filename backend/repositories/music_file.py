@@ -2,12 +2,12 @@ from .base import BaseRepository
 from models import MusicFileDB, TrackGenreDB, LocalFileDB
 from typing import Optional, List
 from response_models import MusicFile, SearchQuery, TrackDetails, Playlist, MusicFileEntry, try_parse_int, PlaylistItem
-from sqlalchemy import text, or_, func
+from sqlalchemy import text, or_, and_, func, case
 import time
 import urllib
 import logging
 from repositories.playlist_repository import PlaylistRepository
-from lib.normalize import normalize_title
+from lib.normalize import normalize_title, tokenize_search_query, SEARCH_APOSTROPHES
 from lib.normalize_path import strip_path_root, normalize_path
 from lib.match import TrackStub, get_match_score
 
@@ -55,58 +55,62 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
     def __init__(self, session):
         super().__init__(session, MusicFileDB)
 
-    def search(self, query: str, limit: int = 50, offset: int = 0) -> list[MusicFile]:
+    def search(self, query: str, limit: int = 50, offset: int = 0, include_missing: bool = True) -> list[MusicFile]:
         query_package = SearchQuery(full_search=query, limit=limit, offset=offset)
         start_time = time.time()
 
         search_query = urllib.parse.unquote(query_package.full_search or "")
-        tokens = search_query.split()
+        tokens = tokenize_search_query(search_query)
+        if not tokens:
+            return []
 
-        # Build scoring expression
-        scoring = """
-            CASE
-                -- Exact title match (highest priority)
-                WHEN lower(file_title) = lower(:token) THEN 100
-                -- Title starts with token
-                WHEN lower(file_title) LIKE lower(:token || '%') THEN 75
-                -- Title contains token
-                WHEN lower(file_title) LIKE lower('%' || :token || '%') THEN 50
-                -- Artist exact match
-                WHEN lower(file_artist) = lower(:token) THEN 40
-                -- Artist contains token
-                WHEN lower(file_artist) LIKE lower('%' || :token || '%') THEN 30
-                -- Album exact match
-                WHEN lower(file_album) = lower(:token) THEN 20
-                -- Album contains token
-                WHEN lower(file_album) LIKE lower('%' || :token || '%') THEN 10
-                ELSE 0
-            END
-        """
+        # Compare against lowercased columns with apostrophes removed, so "Don't",
+        # "Don’t" and "Dont" all match each other (tokens are normalized the same way).
+        def searchable(column):
+            value = func.lower(func.coalesce(column, ""))
+            for apostrophe in SEARCH_APOSTROPHES:
+                value = func.replace(value, apostrophe, "")
+            return value
 
-        # Add score for each token
-        score_sum = "+".join(
-            [scoring.replace(":token", f":token{i}") for i in range(len(tokens))]
-        )
+        title = searchable(LocalFileDB.file_title)
+        artist = searchable(LocalFileDB.file_artist)
+        album = searchable(LocalFileDB.file_album)
+
+        token_scores = []
+        token_matches = []
+        for token in tokens:
+            contains = f"%{token}%"
+            token_scores.append(case(
+                (title == token, 100),
+                (title.like(f"{token}%"), 75),
+                (title.like(contains), 50),
+                (artist == token, 40),
+                (artist.like(contains), 30),
+                (album == token, 20),
+                (album.like(contains), 10),
+                else_=0,
+            ))
+            token_matches.append(or_(title.like(contains), artist.like(contains), album.like(contains)))
+
+        relevance = sum(token_scores[1:], token_scores[0])
+        matched_tokens = sum((case((m, 1), else_=0) for m in token_matches[1:]), case((token_matches[0], 1), else_=0))
 
         # Build query with scoring on LocalFileDB directly (includes unlinked files)
-        query = self.session.query(LocalFileDB, text(f"({score_sum}) as relevance"))
+        base_query = self.session.query(LocalFileDB)
+        if not include_missing:
+            base_query = base_query.filter(or_(LocalFileDB.missing == False, LocalFileDB.missing.is_(None)))
 
-        # Add token parameters
-        for i, token in enumerate(tokens):
-            query = query.params({f"token{i}": token})
+        # Prefer results where every token matches. If nothing does (e.g. the query carries an
+        # extra "(Live)" or "2015 Remaster" the local tags don't have), fall back to results
+        # matching any token, ranked by how many tokens matched.
+        strict_query = base_query.filter(and_(*token_matches))
+        if len(tokens) > 1 and strict_query.first() is None:
+            ranked_query = base_query.filter(or_(*token_matches)).order_by(matched_tokens.desc(), relevance.desc())
+        else:
+            ranked_query = strict_query.order_by(relevance.desc())
 
-            # Filter to only include results matching at least one token
-            query = query.filter(
-                or_(
-                    LocalFileDB.file_title.ilike(f"%{token}%"),
-                    LocalFileDB.file_artist.ilike(f"%{token}%"),
-                    LocalFileDB.file_album.ilike(f"%{token}%"),
-                )
-            )
-
-        # Order by relevance score
         results = (
-            query.order_by(text("relevance DESC"))
+            ranked_query
                 .order_by(LocalFileDB.file_artist, LocalFileDB.file_album, LocalFileDB.file_title)
                 .limit(query_package.limit).offset(query_package.offset).all()
         )
@@ -115,8 +119,7 @@ class MusicFileRepository(BaseRepository[MusicFileDB]):
             f"Search query: {search_query} returned {len(results)} results in {time.time() - start_time:.2f} seconds"
         )
 
-        # Extract just the LocalFileDB objects from results (first element of each tuple)
-        local_files = [result[0] for result in results]
+        local_files = results
         
         # Convert to MusicFile objects, preferring MusicFileDB if it exists
         music_files = []

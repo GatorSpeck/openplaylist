@@ -17,6 +17,7 @@ Repositories in this folder handle:
 - `spotify_repository.py`: Spotify playlist integration
 - `youtube_repository.py`: YouTube Music playlist integration
 - `plex_repository.py`: Plex playlist sync behavior
+- `sync_track_state_repository.py`: per-target push state (`sync_track_states`) used to retry fixed tracks, replace relinked matches, and handle manual resyncs
 - `last_fm_repository.py`: Last.fm album art and suggestion workflows
 - `open_ai_repository.py`: OpenAI-backed suggestion or enrichment flows
 - `requests_cache_session.py`: request caching support for expensive or rate-limited APIs

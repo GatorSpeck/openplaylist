@@ -21,7 +21,7 @@ const MatchTrackModal = ({
     
     try {
       setIsLoading(true);
-      const results = await libraryRepository.searchLibrary(searchQuery);
+      const results = await libraryRepository.searchLibrary(searchQuery, { includeMissing: false });
       
       if (results && results.length > 0) {
         setMatchingTracks(results.map((track) => new PlaylistEntry(track)));

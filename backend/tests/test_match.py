@@ -362,3 +362,40 @@ class TestAlbumStub:
         
         assert album1 == album2
         assert album1 != album3
+
+class TestGetMatchConfidence:
+    def test_remaster_on_compilation_is_high_confidence(self):
+        from lib.match import get_match_confidence
+        result = get_match_confidence(
+            TrackStub(artist="Queen", title="Bohemian Rhapsody", album="A Night at the Opera"),
+            TrackStub(artist="Queen", title="Bohemian Rhapsody - Remastered 2011", album="Greatest Hits"),
+        )
+        assert result["level"] == "high"
+        assert result["needs_review"] is False
+
+    def test_cover_by_different_artist_needs_review(self):
+        from lib.match import get_match_confidence
+        result = get_match_confidence(
+            TrackStub(artist="Johnny Cash", title="Hurt", album="American IV"),
+            TrackStub(artist="Nine Inch Nails", title="Hurt", album="The Downward Spiral"),
+        )
+        assert result["level"] == "low"
+        assert result["needs_review"] is True
+        assert result["fields"]["artist"] == {"target": "Johnny Cash", "matched": "Nine Inch Nails", "score": result["fields"]["artist"]["score"]}
+
+    def test_alt_artist_is_used_when_it_matches_better(self):
+        from lib.match import get_match_confidence
+        result = get_match_confidence(
+            TrackStub(artist="David Bowie", title="Under Pressure", album=None),
+            TrackStub(artist="Queen", title="Under Pressure", album="Hot Space"),
+            ["David Bowie"],
+        )
+        assert result["level"] == "high"
+        assert result["fields"]["artist"]["matched"] == "David Bowie"
+        assert result["fields"]["album"]["score"] is None
+
+    def test_no_match(self):
+        from lib.match import no_match_confidence
+        result = no_match_confidence(TrackStub(artist="A", title="B", album=None))
+        assert result["matched"] is False
+        assert result["needs_review"] is True

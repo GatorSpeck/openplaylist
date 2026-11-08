@@ -9,6 +9,7 @@ from repositories.remote_playlist_repository import RemotePlaylistRepository, ge
 from response_models import PlaylistSnapshot, PlaylistItem
 from lib.normalize import normalize_title
 from lib.match import TrackStub, get_match_score
+from repositories.sync_track_state_repository import canonical_remote_id
 
 import dotenv
 dotenv.load_dotenv(override=True)
@@ -250,6 +251,27 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             raise
     
     def fetch_media_item(self, item: PlaylistItem) -> Any:
+        """Resolve a track on YouTube Music and record how confident the match is."""
+        track = self._resolve_media_item(item)
+        if not track:
+            self.record_match(item, matched=False)
+            return track
+
+        details = track.get("videoDetails") or {}  # shape returned by get_song()
+        artists = [a.get("name") for a in (track.get("artists") or []) if a.get("name")]
+        if not artists and details.get("author"):
+            artists = [details["author"]]
+        self.record_match(
+            item,
+            title=track.get("title") or details.get("title"),
+            artist=artists[0] if artists else None,
+            album=(track.get("album") or {}).get("name"),
+            alt_artists=artists[1:],
+            remote_id=get_video_id_from_track(track),
+        )
+        return track
+
+    def _resolve_media_item(self, item: PlaylistItem) -> Any:
         """Search for a track on YouTube Music"""
         if not self.ytmusic:
             logging.error("Not authenticated with YouTube Music")
@@ -542,6 +564,21 @@ class YouTubeMusicRepository(RemotePlaylistRepository):
             
             for item in items:
                 match_stub = TrackStub(artist=item.artist, title=item.title, album=item.album)
+
+                # Prefer the exact video when we know it, so replacing a wrong match can't
+                # remove a different track with a similar title.
+                exact = [
+                    track for track in playlist.get("tracks", [])
+                    if track and item.youtube_url and track.get("setVideoId")
+                    and get_video_id_from_track(track) == canonical_remote_id("youtube", item.youtube_url)
+                ]
+                if exact:
+                    try:
+                        self.ytmusic.remove_playlist_items(self.playlist_id, exact[:1])
+                        logging.info(f"Removed {item.to_string()} from YouTube Music playlist by video id")
+                    except Exception as e:
+                        logging.error(f"Error removing {item.to_string()} from YouTube Music playlist: {e}")
+                    continue
 
                 # Find matching track in the playlist
                 for track in playlist.get("tracks", []):

@@ -4,8 +4,10 @@ export interface PlexSearchResult {
   title: string;
   artist: string;
   album: string;
+  album_artist?: string;  // Plex album artist, when it differs from the track artist
   service: 'plex';
   plex_rating_key: string;
+  score?: number;
 }
 
 export class PlexRepository {

@@ -86,3 +86,50 @@ def test_search_and_filter(repo, sample_music_file):
     assert result[0].kind == sample_music_file.kind
     assert result[0].last_scanned == sample_music_file.last_scanned
     assert result[0].genres == sample_music_file.genres
+
+
+def _add_track(repo, path, title, artist, album="Album"):
+    return repo.add_music_file(MusicFile(
+        path=path, title=title, artist=artist, album=album, kind="audio/mp3",
+        last_scanned=datetime.now(), genres=[],
+    ))
+
+
+@pytest.mark.parametrize("query, expected_title", [
+    ("Queen Don't Stop Me Now", "Don’t Stop Me Now"),           # straight vs curly apostrophe
+    ("Queen Don’t Stop Me Now", "Don’t Stop Me Now"),
+    ("Oasis Dont Look Back", "Don't Look Back in Anger"),        # apostrophe omitted entirely
+    ("Beatles Hey Jude (Remastered 2015)", "Hey Jude (Remastered 2015)"),
+    ("Beatles Hey Jude (2015 Remaster)", "Hey Jude (Remastered 2015)"),  # extra tokens not in tags
+    ("Pink Floyd - Wish You Were Here [Live]", "Wish You Were Here"),
+])
+def test_search_handles_punctuation_and_extra_tokens(repo, query, expected_title):
+    _add_track(repo, "/x/1.mp3", "Don’t Stop Me Now", "Queen")
+    _add_track(repo, "/x/2.mp3", "Don't Look Back in Anger", "Oasis")
+    _add_track(repo, "/x/3.mp3", "Hey Jude (Remastered 2015)", "The Beatles")
+    _add_track(repo, "/x/4.mp3", "Wish You Were Here", "Pink Floyd")
+
+    results = repo.search(query=query)
+
+    assert results
+    assert results[0].title == expected_title
+
+
+def test_search_prefers_all_token_matches_over_partial(repo):
+    _add_track(repo, "/x/1.mp3", "Yellow", "Coldplay")
+    _add_track(repo, "/x/2.mp3", "Yellow Submarine", "The Beatles")
+
+    results = repo.search(query="Beatles Yellow")
+
+    assert [r.title for r in results] == ["Yellow Submarine"]
+
+
+def test_search_can_exclude_missing_files(repo, session):
+    from models import LocalFileDB
+    _add_track(repo, "/x/present.mp3", "Same Song", "Artist")
+    _add_track(repo, "/x/gone.mp3", "Same Song", "Artist")
+    session.query(LocalFileDB).filter(LocalFileDB.path == "/x/gone.mp3").update({"missing": True})
+    session.commit()
+
+    assert len(repo.search(query="Same Song")) == 2
+    assert [r.path for r in repo.search(query="Same Song", include_missing=False)] == ["/x/present.mp3"]

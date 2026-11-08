@@ -1,5 +1,6 @@
 import axios from 'axios';
 import PlaylistEntry, { PlaylistEntryStub } from '../lib/PlaylistEntry';
+import jobRepository from './JobRepository';
 
 interface PlaylistFilter {
     filter?: String,
@@ -166,6 +167,38 @@ export class PlaylistRepository {
     async syncToPlex(id: number, forcePush: boolean = false) {
         const response = await axios.post(`/api/playlists/${id}/sync?force_push=${forcePush}`);
         return response.data;
+    }
+
+    /**
+     * Re-match one track on the playlist's sync targets (removing its current remote match
+     * where the target allows removals), then wait for the resulting sync job to finish.
+     * Resolves with the sync result; rejects with the backend's error detail on failure.
+     */
+    async resyncTrack(id: number, musicFileId: number, options: { pollMs?: number; timeoutMs?: number } = {}) {
+        const { pollMs = 2000, timeoutMs = 300000 } = options;
+        let jobId: string;
+        try {
+            const response = await axios.post(`/api/playlists/${id}/sync/resync-track`, { music_file_id: musicFileId });
+            jobId = response.data?.job_id;
+        } catch (error: any) {
+            throw new Error(error?.response?.data?.detail || error?.message || 'Failed to start resync');
+        }
+        if (!jobId) {
+            throw new Error('Resync did not return a job id');
+        }
+
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+            const job = await jobRepository.getJob(jobId);
+            if (job.status === 'completed') {
+                return job.result;
+            }
+            if (job.status === 'failed' || job.status === 'cancelled') {
+                throw new Error(job.error || `Resync ${job.status}`);
+            }
+            await new Promise((resolve) => setTimeout(resolve, pollMs));
+        }
+        throw new Error('Timed out waiting for resync to finish');
     }
 
     async getSyncLog(id: number, params: {

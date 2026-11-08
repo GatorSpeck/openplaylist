@@ -441,3 +441,12 @@ class TestNormalizeFunctionIntegration:
         many_filtered = " ".join(["deluxe"] * 100)
         result = normalize_title(many_filtered)
         assert result == many_filtered  # Returns original when all filtered
+
+class TestTokenizeSearchQuery:
+    def test_strips_punctuation_and_apostrophes(self):
+        from lib.normalize import tokenize_search_query
+        assert tokenize_search_query("Guns N' Roses - Don’t Cry (Live) [1992]") == ["guns", "n", "roses", "dont", "cry", "live", "1992"]
+
+    def test_empty_query(self):
+        from lib.normalize import tokenize_search_query
+        assert tokenize_search_query("  ()  ") == []

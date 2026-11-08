@@ -1,6 +1,56 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Modal from '../common/Modal';
 import playlistRepository, { PersistentSyncLogEntry } from '../../repositories/PlaylistRepository';
+import { getSyncMatch, needsReview, SyncMatchConfidence, SYNC_MATCH_LEVEL_LABELS } from '../../lib/syncMatch';
+
+type LogFilter = 'all' | 'errors' | 'review';
+
+const isReviewEntry = (entry: { eventKind?: string; metadata?: Record<string, any> | null }) => needsReview(entry) || entry.eventKind === 'failed_match';
+
+const LEVEL_BADGE_CLASSES: Record<string, string> = {
+  high: 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200',
+  medium: 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200',
+  low: 'border-red-300 bg-red-100 text-red-800 dark:border-red-700 dark:bg-red-900/40 dark:text-red-200',
+  none: 'border-red-300 bg-red-100 text-red-800 dark:border-red-700 dark:bg-red-900/40 dark:text-red-200',
+};
+
+const MatchConfidenceBadge: React.FC<{ match: SyncMatchConfidence }> = ({ match }) => (
+  <span
+    className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${LEVEL_BADGE_CLASSES[match.level] || LEVEL_BADGE_CLASSES.low}`}
+    title="How closely the synced track's title/artist/album match the track that was requested"
+  >
+    {match.needs_review && <span aria-hidden="true">⚑</span>}
+    {SYNC_MATCH_LEVEL_LABELS[match.level] || match.level}
+    {match.matched && <span className="font-normal">({match.score}%)</span>}
+  </span>
+);
+
+const MatchComparison: React.FC<{ match: SyncMatchConfidence }> = ({ match }) => (
+  <table className="mt-2 w-full border-collapse text-xs">
+    <thead>
+      <tr className="text-left text-text/70 dark:text-text-dark/70">
+        <th className="pr-3 font-medium"></th>
+        <th className="pr-3 font-medium">Requested</th>
+        <th className="pr-3 font-medium">Synced to</th>
+        <th className="font-medium">Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      {(['title', 'artist', 'album'] as const).map((fieldName) => {
+        const field = match.fields?.[fieldName] || {};
+        const weak = typeof field.score === 'number' && field.score < 60;
+        return (
+          <tr key={fieldName} className="align-top text-text dark:text-text-dark">
+            <td className="pr-3 capitalize text-text/70 dark:text-text-dark/70">{fieldName}</td>
+            <td className="pr-3">{field.target || '—'}</td>
+            <td className={`pr-3 ${weak ? 'font-semibold text-red-700 dark:text-red-300' : ''}`}>{field.matched || '—'}</td>
+            <td>{typeof field.score === 'number' ? `${field.score}%` : '—'}</td>
+          </tr>
+        );
+      })}
+    </tbody>
+  </table>
+);
 
 interface SyncLogEntry {
   action: string;
@@ -10,6 +60,8 @@ interface SyncLogEntry {
   reason: string;
   success: boolean;
   error?: string;
+  eventKind?: string;
+  metadata?: Record<string, any> | null;
 }
 
 interface SyncResult {
@@ -42,11 +94,14 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
   const [entries, setEntries] = useState<PersistentSyncLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [errorsOnly, setErrorsOnly] = useState(false);
+  const [filter, setFilter] = useState<LogFilter>('all');
+  const [reloadToken, setReloadToken] = useState(0);
+  const [resyncing, setResyncing] = useState<Record<number, 'running' | 'done' | string>>({});
+  const errorsOnly = filter === 'errors';
 
   useEffect(() => {
     if (!open) {
-      setErrorsOnly(false);
+      setFilter('all');
     }
   }, [open]);
 
@@ -74,10 +129,29 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
     };
 
     fetchSyncLog();
-  }, [open, playlistId, errorsOnly]);
+  }, [open, playlistId, errorsOnly, reloadToken]);
+
+  const handleResync = async (musicFileId: number) => {
+    setResyncing((prev) => ({ ...prev, [musicFileId]: 'running' }));
+    try {
+      await playlistRepository.resyncTrack(playlistId, musicFileId);
+      setResyncing((prev) => ({ ...prev, [musicFileId]: 'done' }));
+      setReloadToken((token) => token + 1);
+    } catch (resyncError) {
+      const message = resyncError instanceof Error ? resyncError.message : 'Resync failed';
+      setResyncing((prev) => ({ ...prev, [musicFileId]: message }));
+    }
+  };
+
+  const reviewCount = useMemo(() => entries.filter(isReviewEntry).length, [entries]);
+  const lastSyncReviewCount = useMemo(
+    () => (syncResult?.log || []).filter(isReviewEntry).length,
+    [syncResult]
+  );
 
   const orderedEntries = useMemo(() => {
-    return [...entries].sort((a, b) => {
+    const visible = filter === 'review' ? entries.filter(isReviewEntry) : entries;
+    return [...visible].sort((a, b) => {
       const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
 
@@ -87,7 +161,7 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
 
       return b.id - a.id;
     });
-  }, [entries]);
+  }, [entries, filter]);
 
   const getActionIcon = (action: string) => {
     switch (action) {
@@ -142,6 +216,10 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
               <span className="text-2xl font-bold text-red-600 dark:text-red-400">{syncResult.summary?.failed || 0}</span>
               <span className="text-xs font-medium uppercase tracking-wide text-text/70 dark:text-text-dark/70">Failed</span>
             </div>
+            <div className="flex flex-col items-center">
+              <span className={`text-2xl font-bold ${lastSyncReviewCount ? 'text-amber-600 dark:text-amber-400' : 'text-text dark:text-text-dark'}`}>{lastSyncReviewCount}</span>
+              <span className="text-xs font-medium uppercase tracking-wide text-text/70 dark:text-text-dark/70">Needs Review</span>
+            </div>
           </div>
         </div>
         )}
@@ -169,17 +247,25 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
           <div className="mb-3 flex gap-2">
             <button
               type="button"
-              className={`rounded border px-3 py-1.5 text-xs font-medium transition ${!errorsOnly ? 'border-accent bg-accent text-text-dark' : 'border-border bg-surface text-text hover:bg-surface-subtle dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated'}`}
-              onClick={() => setErrorsOnly(false)}
+              className={`rounded border px-3 py-1.5 text-xs font-medium transition ${filter === 'all' ? 'border-accent bg-accent text-text-dark' : 'border-border bg-surface text-text hover:bg-surface-subtle dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated'}`}
+              onClick={() => setFilter('all')}
             >
               All Events
             </button>
             <button
               type="button"
-              className={`rounded border px-3 py-1.5 text-xs font-medium transition ${errorsOnly ? 'border-accent bg-accent text-text-dark' : 'border-border bg-surface text-text hover:bg-surface-subtle dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated'}`}
-              onClick={() => setErrorsOnly(true)}
+              className={`rounded border px-3 py-1.5 text-xs font-medium transition ${filter === 'errors' ? 'border-accent bg-accent text-text-dark' : 'border-border bg-surface text-text hover:bg-surface-subtle dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated'}`}
+              onClick={() => setFilter('errors')}
             >
               Errors Only
+            </button>
+            <button
+              type="button"
+              className={`rounded border px-3 py-1.5 text-xs font-medium transition ${filter === 'review' ? 'border-accent bg-accent text-text-dark' : 'border-border bg-surface text-text hover:bg-surface-subtle dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated'}`}
+              onClick={() => setFilter('review')}
+              title="Synced tracks whose title/artist differ from what was requested, plus tracks that couldn't be matched"
+            >
+              Needs Review{filter !== 'errors' && reviewCount > 0 ? ` (${reviewCount})` : ''}
             </button>
           </div>
 
@@ -210,11 +296,22 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
                   const timestamp = entry.createdAt
                     ? new Date(entry.createdAt).toLocaleString()
                     : 'Unknown time';
+                  const match = getSyncMatch(entry);
+                  const flagged = Boolean(match?.needs_review);
+                  const musicFileId: number | undefined = entry.metadata?.music_file_id ?? undefined;
+                  const canResync = Boolean(musicFileId) && entry.target !== 'local' && isReviewEntry(entry);
+                  const resyncState = musicFileId ? resyncing[musicFileId] : undefined;
+                  const rowColor = !entry.success
+                    ? 'bg-red-50 dark:bg-red-900/15'
+                    : flagged
+                      ? 'bg-amber-50 dark:bg-amber-900/15'
+                      : 'bg-emerald-50 dark:bg-emerald-900/15';
 
                   return (
                     <div
                       key={entry.id}
-                      className={`flex items-start gap-3 border-b px-4 py-3 last:border-b-0 ${entry.success ? 'border-border bg-emerald-50 dark:border-border-dark dark:bg-emerald-900/15' : 'border-border bg-red-50 dark:border-border-dark dark:bg-red-900/15'}`}
+                      data-testid="sync-log-entry"
+                      className={`flex items-start gap-3 border-b border-border px-4 py-3 last:border-b-0 dark:border-border-dark ${rowColor}`}
                     >
                       <div className="w-6 text-center text-lg">
                         {getActionIcon(entry.action)}
@@ -226,6 +323,31 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
                         </div>
                         {entry.error && (
                           <div className="text-xs italic text-red-700 dark:text-red-300">Error: {entry.error}</div>
+                        )}
+                        {match && (
+                          <div className="mt-1">
+                            <MatchConfidenceBadge match={match} />
+                            {(flagged || match.level === 'medium') && <MatchComparison match={match} />}
+                          </div>
+                        )}
+                        {canResync && (
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              className="rounded border border-border bg-surface px-2 py-1 text-xs font-medium text-text transition hover:bg-surface-subtle disabled:opacity-60 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark dark:hover:bg-surface-dark-elevated"
+                              onClick={() => handleResync(musicFileId as number)}
+                              disabled={resyncState === 'running'}
+                              title="Re-match this track on the playlist's sync targets, replacing its current remote match"
+                            >
+                              {resyncState === 'running' ? 'Resyncing…' : 'Resync track'}
+                            </button>
+                            {resyncState === 'done' && (
+                              <span className="text-xs text-emerald-700 dark:text-emerald-300">Resynced — see newest events</span>
+                            )}
+                            {resyncState && resyncState !== 'running' && resyncState !== 'done' && (
+                              <span className="text-xs text-red-700 dark:text-red-300">{resyncState}</span>
+                            )}
+                          </div>
                         )}
                       </div>
                       <div className="min-w-[90px] text-right text-xs font-semibold capitalize text-accent dark:text-sky-300">
@@ -241,7 +363,13 @@ const SyncLogModal: React.FC<SyncLogModalProps> = ({
 
           {!loading && !error && orderedEntries.length === 0 && (
             <div className="py-10 text-center text-sm text-text/70 dark:text-text-dark/70">
-              <p>{errorsOnly ? 'No sync errors found for this playlist.' : 'No sync log events found for this playlist.'}</p>
+              <p>
+                {filter === 'errors'
+                  ? 'No sync errors found for this playlist.'
+                  : filter === 'review'
+                    ? 'No synced tracks need review.'
+                    : 'No sync log events found for this playlist.'}
+              </p>
             </div>
           )}
         </div>

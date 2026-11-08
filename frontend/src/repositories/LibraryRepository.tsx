@@ -7,11 +7,12 @@ const axios = Axios.create();
 const axiosCached = setupCache(axios);
 
 export class LibraryRepository {
-    async searchLibrary(query) {
+    async searchLibrary(query, options: { includeMissing?: boolean } = {}) {
         try {
             const response = await axiosCached.get(`/api/search`, {
                 params: {
-                    query: query
+                    query: query,
+                    include_missing: options.includeMissing ?? true
                 }
             });
 

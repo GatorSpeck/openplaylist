@@ -32,9 +32,11 @@ This spec documents the remote sync feature **as currently implemented**, to loc
     - **Spotify**: searches, scores top 10 results, always accepts the highest-scoring candidate regardless of score
     - **YouTube**: searches, scores top 10, accepts the top result even if its score is 0
     - **Plex**: two-pass — filtered search (artist+album) accepts immediately at score ≥ 80, or accepts at score ≥ 30; falls back to a broader title-only search (up to 50 results) and accepts the top result with no floor
+- **Plex artist**: Plex stores the album artist in `grandparentTitle` and the track artist in `originalTitle` (only set when it differs). Matching, snapshots, and the track-details Plex search use the track artist, falling back to the album artist; scoring takes the better of the two. Plex's `artist.title` search filter only matches album artist, so the manual search also runs a title-only search and ranks by score
+- **match confidence**: every track a service resolves while pushing (adds and initial playlist creation) gets a `get_match_confidence` result comparing requested vs resolved title/artist/album (title 55%, artist 35%, album 10%; album ignored when blank on either side). Levels: `high` ≥ 85, `medium` ≥ 65, else `low`; a title or artist below 60 forces `low` (catches covers by other artists). `low` and unresolved tracks set `needs_review`. Remote → local adds get the same comparison against the linked local track
 - on a successful match, Spotify/YouTube/Plex repositories write the resolved remote id (`spotify_uri`/`youtube_url`/`plex_rating_key`) back onto the local `MusicFileDB` row as a side effect of matching, not just of syncing
 - Plex additionally supports bulk lookup by known rating key (chunks of 100), falling back to per-item fuzzy search only for chunks that fail
-- unmatched items (no resolvable remote id) are skipped when pushing to a remote service — no placeholder is created on the remote side for any service
+- unmatched items (no resolvable remote id) are skipped when pushing to a remote service — no placeholder is created on the remote side for any service; they are logged as `failed_match` events (not successful adds)
 - unmatched items arriving *from* a remote (i.e. remote has a track with no local match) become a bare local track entry with no `music_file_id` ("requested" style placeholder), carrying just title/artist/album
 
 ## 4. Sync plan / diff engine
@@ -50,6 +52,16 @@ This spec documents the remote sync feature **as currently implemented**, to loc
 - **removal guardrail** (local side only): if the local playlist has at least 10 entries and a remote-driven sync would remove more than 25 items or more than 30% of the playlist, all remote-driven removals are dropped from the plan for that run (adds still apply); this is configurable per-target via `config` keys (`allow_bulk_receive_removals`, `max_receive_removal_percent`, `max_receive_removal_count`, `min_local_size_for_removal_guard`). There is no equivalent guardrail protecting the remote side from a bulk local deletion.
 - when multiple targets are synced together, their individual plans are merged into one plan, deduped by track identity, before being applied
 
+### Per-track push state and repairs
+- after every push (adds, initial creation, repairs) each track's outcome is stored per target in `sync_track_states`: `matched` (with the resolved remote id) or `unmatched`, plus a hash of its artist/title/album (`repositories/sync_track_state_repository.py`)
+- on every non-force-push sync, before flushing, `plan_track_repairs` checks each stored state against the current local and remote snapshots. Repairs only affect the target the state belongs to; they don't fan out to every target like ordinary local adds:
+    - **unmatched** track whose details changed, or that now has a remote link for this service → retried as an add. Unchanged unmatched tracks are not retried, so there are no repeated failing searches
+    - **matched** track that was relinked locally to a different remote id (ids compared after normalizing Spotify URI/URL and YouTube URL/id forms), or that has no link and whose details changed → old remote match removed, track re-added. If the new id is already on the remote, only the old one is removed. Needs `sendEntryRemovals`; otherwise a `skip` event is logged and nothing changes, to avoid duplicates
+    - a matched track whose old match is no longer on the remote (removed there) is left alone, so remote removals are respected even with `receiveEntryRemovals` off
+    - states whose track left the local playlist (or an unmatched track now on the remote) are deleted
+- **manual resync**: `POST /api/playlists/{id}/sync/resync-track` `{music_file_id}` marks the track `resync` on every enabled target with `sendEntryAdds`, then starts the normal sync job (returns `job_id`). That sync removes the track's current remote match (by stored id, else by snapshot match keys; requires `sendEntryRemovals` when one exists) and re-adds it. Going through the full sync keeps the stored snapshots consistent, so the remove/re-add isn't later read as a remote-side change
+- force push skips repairs (it re-pushes everything) but still records fresh state
+
 ## 5. Sync execution (on-demand, per run)
 
 1. load enabled sync targets for the playlist; 404 if none exist/enabled
@@ -59,7 +71,7 @@ This spec documents the remote sync feature **as currently implemented**, to loc
 5. if every target failed to initialize, the whole sync fails
 6. build per-target sync plans (or force-push plans), filter by receive flags, apply removal guardrails, merge into one plan
 7. remote-originated changes are applied to the local playlist immediately (adds/removes); local-originated changes are queued per target
-8. queued remote-bound changes are flushed in batches of 100 per target
+8. per-target track repairs run (see "Per-track push state and repairs"), then queued remote-bound changes are flushed in batches of 100 per target
 9. after flushing, each target's live remote snapshot is re-fetched and stored as the new baseline; a local snapshot is stored as well
 10. overall status: `success` if no target failed, `partial` if some did, `failed` for total pipeline failure (no targets configured/authenticated, or unhandled error)
 11. response includes per-target results plus a change log
@@ -100,7 +112,8 @@ This spec documents the remote sync feature **as currently implemented**, to loc
 ## 8. Sync history / logging
 
 - every `/sync` invocation (manual or scheduled) creates one run record: `started_at`, `completed_at`, `status` (`running`/`success`/`partial`/`failed`), `force_push`, summary, error
-- each individual change within a run is logged as an event: kind (`change`/`system`/`failed_match`/`error`), action (`add`/`remove`/`create`/`force_push`), track, target service, target name, reason, success flag, error
+- each individual change within a run is logged as an event: kind (`change`/`system`/`failed_match`/`error`), action (`add`/`remove`/`create`/`force_push`/`failed_match`), track, target service, target name, reason, success flag, error
+- add and failed-match events carry `metadata.match` (the match-confidence payload from section 3) when the track was resolved during that run
 - run/event history is queryable per playlist (`GET /api/playlists/{id}/sync-log`), paginated, filterable by run id and by success/failure
 
 ## 9. Frontend
@@ -112,6 +125,12 @@ This spec documents the remote sync feature **as currently implemented**, to loc
 - both buttons are disabled when there are no enabled targets
 - also exposes a bare auto-sync enable/disable checkbox for the playlist (schedule value itself is not editable here)
 - sync runs as a background job; the UI polls job status every 2 seconds for up to 5 minutes
+
+### Sync log modal (`SyncLogModal.tsx`)
+- event history with All / Errors Only / Needs Review filters; Needs Review shows events with `metadata.match.needs_review` or `failed_match`
+- each matched event shows a confidence badge; medium/low matches also show a requested-vs-synced comparison table
+- flagged remote events (which carry `metadata.music_file_id`) have a "Resync track" button that calls the manual resync and reloads the log when the job finishes; the track details modal has the same action ("Resync to sync targets")
+- the post-sync summary includes a Needs Review count for that run
 
 ### Scheduled tasks panel (`ScheduledTasksPanel.tsx`)
 - generic CRUD list for all scheduled tasks (`library_scan` and `playlist_sync`)

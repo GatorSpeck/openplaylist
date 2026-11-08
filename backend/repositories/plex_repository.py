@@ -13,6 +13,26 @@ from lib.timing import timing
 
 from repositories.remote_playlist_repository import RemotePlaylistRepository, PlaylistSnapshot, PlaylistItem, get_local_tz, RemoteUnavailableError
 
+def plex_track_artist(plex_item: Any) -> Optional[str]:
+    """Plex stores the album artist as grandparentTitle and only sets originalTitle (the track
+    artist) when it differs, so prefer the track artist and fall back to the album artist."""
+    return getattr(plex_item, "originalTitle", None) or getattr(plex_item, "grandparentTitle", None)
+
+
+def plex_alt_artists(plex_item: Any) -> List[str]:
+    album_artist = getattr(plex_item, "grandparentTitle", None)
+    return [album_artist] if album_artist else []
+
+
+def _plex_artist_candidates(plex_item: Any) -> List[str]:
+    """Track artist first, then album artist, de-duplicated."""
+    candidates = []
+    for artist in [plex_track_artist(plex_item)] + plex_alt_artists(plex_item):
+        if artist and artist not in candidates:
+            candidates.append(artist)
+    return candidates or [""]
+
+
 class PlexRepository(RemotePlaylistRepository):
     """Repository for Plex playlists"""
     
@@ -200,14 +220,14 @@ class PlexRepository(RemotePlaylistRepository):
         def score_plex_results(candidates):
             match_stub = TrackStub(artist=item.artist, title=item.title, album=item.album)
             for plex_item in candidates:
-                artist = plex_item.grandparentTitle
                 album = plex_item.parentTitle
 
-                score = get_match_score(match_stub, TrackStub(
-                    artist=artist,
-                    title=plex_item.title,
-                    album=album
-                ))
+                # Score against the track artist first; the album artist still counts (e.g. when
+                # the local file only knows the album artist), whichever scores best wins.
+                score = max(
+                    get_match_score(match_stub, TrackStub(artist=artist, title=plex_item.title, album=album))
+                    for artist in _plex_artist_candidates(plex_item)
+                )
 
                 plex_item.score = score
                 logging.info(f"Score for {plex_item.title}: {score}")
@@ -252,6 +272,20 @@ class PlexRepository(RemotePlaylistRepository):
         self._update_music_file_plex_rating_key(item, str(plex_items[0].ratingKey))
         return plex_items[0]
 
+    def _record_plex_match(self, item: PlaylistItem, plex_item: Any) -> None:
+        if plex_item is None:
+            self.record_match(item, matched=False)
+            return
+
+        self.record_match(
+            item,
+            title=getattr(plex_item, "title", None),
+            artist=plex_track_artist(plex_item),
+            album=getattr(plex_item, "parentTitle", None),
+            alt_artists=plex_alt_artists(plex_item),
+            remote_id=str(getattr(plex_item, "ratingKey", "") or "") or None,
+        )
+
     def _update_music_file_plex_rating_key(self, item: PlaylistItem, plex_rating_key: str):
         """Update the music file with the Plex rating key if we have a music file repository"""
         if not self.music_file_repo:
@@ -279,6 +313,7 @@ class PlexRepository(RemotePlaylistRepository):
             media_by_item = self.fetch_media_items(snapshot.items)
             for item in snapshot.items:
                 audio = media_by_item.get(id(item))
+                self._record_plex_match(item, audio)
                 if audio:
                     audio_items.append(audio)
 
@@ -335,7 +370,7 @@ class PlexRepository(RemotePlaylistRepository):
             for item in tqdm(playlist.items(), desc="Fetching Plex playlist entries"):
                 album = item.parentTitle
                 i = PlaylistItem(
-                    artist=item.grandparentTitle,
+                    artist=plex_track_artist(item),
                     album=album,
                     title=item.title,
                     local_path=item.media[0].parts[0].file if item.media else None,
@@ -367,6 +402,7 @@ class PlexRepository(RemotePlaylistRepository):
         plex_items = []
         for item in items:
             plex_item = media_by_item.get(id(item))
+            self._record_plex_match(item, plex_item)
             if plex_item:
                 item.plex_rating_key = str(plex_item.ratingKey)  # enrich the item with Plex rating key
                 plex_items.append(plex_item)
@@ -416,44 +452,62 @@ class PlexRepository(RemotePlaylistRepository):
     
     @timing
     def search_tracks(self, query: str, title: str = None, artist: str = None, album: str = None, max_results: int = 20):
-        """Search for tracks in Plex library"""
+        """Search for tracks in Plex library.
+
+        Plex's "artist.title" filter only matches the album artist, which misses tracks on
+        compilations or with a different track artist. So we also run a title-only search and
+        rank everything by match score against the track artist (falling back to album artist).
+        """
         try:
-            # Build search filters
-            filters = {}
-            if artist:
-                filters["artist.title"] = artist
-            if album:
-                filters["album.title"] = album
-            
-            # Use title if provided, otherwise fall back to general query
             search_title = title if title else query
-            
-            # Search for tracks in Plex library
-            plex_items = self.section.search(
-                libtype="track",
-                title=search_title,
-                filters=filters,
-                maxresults=max_results
-            )
-            
+
+            candidates: Dict[str, Any] = {}
+
+            def collect(plex_items):
+                for plex_item in plex_items or []:
+                    candidates.setdefault(str(plex_item.ratingKey), plex_item)
+
+            if artist or album:
+                filters = {}
+                if artist:
+                    filters["artist.title"] = artist
+                if album:
+                    filters["album.title"] = album
+                collect(self.section.search(libtype="track", title=search_title, filters=filters, maxresults=max_results))
+
+            collect(self.section.search(libtype="track", title=search_title, maxresults=max(max_results, 50)))
+
+            def score(plex_item) -> int:
+                if not artist:
+                    return 0
+                return max(
+                    get_match_score(
+                        TrackStub(artist=artist, title=search_title, album=album),
+                        TrackStub(artist=candidate, title=plex_item.title, album=plex_item.parentTitle),
+                    )
+                    for candidate in _plex_artist_candidates(plex_item)
+                )
+
             results = []
-            for item in plex_items:
-                try:                    
-                    result = {
-                        "title": item.title,
-                        "artist": item.grandparentTitle,
-                        "album": item.parentTitle,
+            for plex_item in candidates.values():
+                try:
+                    results.append({
+                        "title": plex_item.title,
+                        "artist": plex_track_artist(plex_item),
+                        "album_artist": getattr(plex_item, "grandparentTitle", None),
+                        "album": plex_item.parentTitle,
                         "service": "plex",
-                        "plex_rating_key": str(item.ratingKey),
-                        "score": 0
-                    }
-                    results.append(result)
+                        "plex_rating_key": str(plex_item.ratingKey),
+                        "score": score(plex_item),
+                    })
                 except Exception as e:
-                    logging.warning(f"Error processing Plex item {item.title}: {e}")
+                    logging.warning(f"Error processing Plex item {getattr(plex_item, 'title', '?')}: {e}")
                     continue
-            
-            return results
-            
+
+            # Stable sort keeps Plex's own ordering for ties
+            results.sort(key=lambda r: r["score"], reverse=True)
+            return results[:max_results]
+
         except Exception as e:
             logging.error(f"Error searching Plex: {e}")
             raise e
